@@ -10,6 +10,26 @@ pub const COMPOSITION_JAVASCRIPT: &str = include_str!("../runtime/composition.js
 
 pub const PROTOCOL_VERSION: u32 = 1;
 
+/// Attributes on an island's host element. The server writes them; the
+/// browser registry and preview activation check them before binding.
+pub mod attributes {
+    pub const ISLAND: &str = "data-fusor-island";
+    pub const UNIT: &str = "data-fusor-unit";
+    pub const GENERATION: &str = "data-fusor-generation";
+    pub const SCHEMA: &str = "data-fusor-schema";
+    pub const HASH: &str = "data-fusor-hash";
+    pub const ACTIVATE: &str = "data-fusor-activate";
+    pub const PREFETCH: &str = "data-fusor-prefetch";
+    /// Marks the host's inert script that carries the props as JSON text.
+    pub const PROPS: &str = "data-fusor-props";
+    pub const PROPS_SCRIPT: &str = r#"script[type="application/json"][data-fusor-props]"#;
+    /// Every attribute that identifies an instance, in the order the server
+    /// writes them. The registry keeps its own copy as `metadataNames`.
+    pub const METADATA: [&str; 8] = [
+        "id", ISLAND, UNIT, GENERATION, SCHEMA, HASH, ACTIVATE, PREFETCH,
+    ];
+}
+
 /// Implement in a small shared wire-types crate. Changing a wire contract needs
 /// a new schema identifier; derives do not prove cross-target compatibility.
 pub trait Island: 'static {
@@ -88,6 +108,18 @@ pub struct Entry {
     pub props_schema: String,
     pub template_hash: String,
     pub mode: RenderMode,
+}
+impl Entry {
+    /// The entry for island `D`, rendered by the component template with this hash.
+    pub fn new<D: Island>(template_hash: &str) -> Self {
+        Self {
+            unit: D::UNIT.into(),
+            descriptor: D::NAME.into(),
+            props_schema: D::SCHEMA.into(),
+            template_hash: template_hash.into(),
+            mode: D::MODE,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -186,3 +218,17 @@ pub fn decode<T: DeserializeOwned>(value: &str) -> Result<T, serde_json::Error> 
 
 #[cfg(feature = "browser")]
 pub mod browser;
+
+#[cfg(test)]
+mod tests {
+    use super::{REGISTRY_JAVASCRIPT, attributes};
+
+    #[test]
+    fn the_registry_checks_the_same_host_attributes() {
+        let names = attributes::METADATA
+            .map(|name| format!("'{name}'"))
+            .join(", ");
+        assert!(REGISTRY_JAVASCRIPT.contains(&format!("const metadataNames = [{names}];")));
+        assert!(REGISTRY_JAVASCRIPT.contains(attributes::PROPS_SCRIPT));
+    }
+}

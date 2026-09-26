@@ -6,7 +6,7 @@ pub use html::{Html, Writer};
 
 use fusor::{Owner, OwnerHandle};
 use fusor_islands::{
-    Activation, DeliveryManifest, Entry, Island, Prefetch, RenderMode, UnitWitness,
+    Activation, DeliveryManifest, Entry, Island, Prefetch, RenderMode, UnitWitness, attributes,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -218,16 +218,17 @@ pub struct PreparedIsland {
 }
 impl PreparedIsland {
     pub fn attributes(&self, html: &mut Writer) {
-        for (name, value) in [
-            ("id", self.id.as_str()),
-            ("data-fusor-island", self.descriptor),
-            ("data-fusor-unit", self.unit),
-            ("data-fusor-generation", self.generation.as_str()),
-            ("data-fusor-schema", self.schema),
-            ("data-fusor-hash", self.hash.as_str()),
-            ("data-fusor-activate", self.activation.as_str()),
-            ("data-fusor-prefetch", self.prefetch.as_str()),
-        ] {
+        let values = [
+            self.id.as_str(),
+            self.descriptor,
+            self.unit,
+            self.generation.as_str(),
+            self.schema,
+            self.hash.as_str(),
+            self.activation.as_str(),
+            self.prefetch.as_str(),
+        ];
+        for (name, value) in attributes::METADATA.into_iter().zip(values) {
             html.attr(name, value);
         }
     }
@@ -235,7 +236,7 @@ impl PreparedIsland {
         html.child(&self.initial);
         html.open("script");
         html.attr("type", "application/json");
-        html.attr("data-fusor-props", "");
+        html.attr(attributes::PROPS, "");
         html.end_open();
         html.inert_json(&self.props);
         html.close("script");
@@ -245,7 +246,6 @@ impl PreparedIsland {
 type ServerFactory = dyn Fn(&str, &mut Context<'_>) -> Result<Html>;
 struct Registration {
     entry: Entry,
-    unit: String,
     render: Box<ServerFactory>,
 }
 #[derive(Default)]
@@ -263,18 +263,10 @@ impl Registry {
         if self.entries.contains_key(D::NAME) {
             return Err(format!("duplicate island {}", D::NAME));
         }
-        let entry = Entry {
-            unit: D::UNIT.into(),
-            descriptor: D::NAME.into(),
-            props_schema: D::SCHEMA.into(),
-            template_hash: C::TEMPLATE_HASH.into(),
-            mode: D::MODE,
-        };
         self.entries.insert(
             D::NAME.into(),
             Registration {
-                entry,
-                unit: D::UNIT.into(),
+                entry: Entry::new::<D>(C::TEMPLATE_HASH),
                 render: Box::new(move |props, context| {
                     let props = fusor_islands::decode(props).map_err(|error| error.to_string())?;
                     fusor::coherence::prepare_state(context.owner(), |_| make(props))
@@ -302,7 +294,7 @@ impl Registry {
                     .entries
                     .get(&entry.descriptor)
                     .ok_or_else(|| format!("no native registration for {}", entry.descriptor))?;
-                if &registration.unit != unit_name
+                if &registration.entry.unit != unit_name
                     || registration.entry.props_schema != entry.props_schema
                     || registration.entry.mode != entry.mode
                     || entry.mode == RenderMode::Attach

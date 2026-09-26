@@ -239,15 +239,20 @@ try {
       )
         throw Error("Rust waiter leaked");
     });
-    await page.evaluate(() => controllerUnit.exercise_control(true));
+    await page.evaluate(() => controllerUnit.exercise_messages());
+    await page.evaluate(() => controllerUnit.exercise_control("prefetch"));
     assert.equal(api.length, 0);
     assert.equal(
       await page.getAttribute("#designer", "data-fusor-status"),
       "dormant",
     );
+    assert.equal(
+      await page.evaluate(() => controllerUnit.exercise_status()),
+      "Dormant",
+    );
     await page.evaluate(() => {
       globalThis.originalPreview = document.querySelector("#designer .preview");
-      globalThis.designerActivation = controllerUnit.exercise_control(false);
+      globalThis.designerActivation = controllerUnit.exercise_control("activate");
     });
     // A concurrent keyboard policy request joins the prepared activation.
     await page.locator("#open-designer").focus();
@@ -280,6 +285,13 @@ try {
     assert.equal(await page.locator("#designer .selection").textContent(), "A");
     await page.evaluate(() => designerActivation);
     assert.equal(await page.locator("#designer .preview").count(), 0);
+    assert.equal(
+      await page.evaluate(() => controllerUnit.exercise_status()),
+      "Active",
+    );
+    // Retrying an active island joins its completed activation.
+    await page.evaluate(() => controllerUnit.exercise_control("retry"));
+    assert.equal(await page.locator("#designer .designer").count(), 1);
     // A same-document move preserves the registration. Reusing an ID does not.
     await page.evaluate(() => {
       const host = document.querySelector("#cart-two");
