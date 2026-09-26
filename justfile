@@ -40,6 +40,18 @@ setup-examples:
 check:
     cargo run --locked -p fusor-cli --bin fusor --target-dir target/cli -- repo check
 
+# Update the lockfiles of the Cargo projects outside the workspace, which
+# `setup` and `check` read with --locked. Run it after changing a workspace
+# crate's dependencies and commit the result. Only required changes are made.
+[group('develop')]
+lock:
+    cargo fetch --manifest-path tests/fixtures/consumer/Cargo.toml
+    cargo fetch --manifest-path tests/fixtures/application/Cargo.toml
+    cargo fetch --manifest-path tests/fixtures/component-tags/Cargo.toml
+    cargo fetch --manifest-path tests/fixtures/native-javascript/Cargo.toml
+    cargo fetch --manifest-path examples/npm/Cargo.toml
+    cargo fetch --manifest-path apps/docs/tutorial/Cargo.toml
+
 # Develop the whole site (landing page, docs, benchmarks) with live reload.
 [group('develop')]
 dev:

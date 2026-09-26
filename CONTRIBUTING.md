@@ -162,7 +162,10 @@ the methodology before changing a measurement. Never change a workload to help
 one framework's numbers.
 
 **Dependencies.** Commit lockfile changes along with the change that needs them,
-and don't update unrelated dependencies in the same pull request.
+and don't update unrelated dependencies in the same pull request. The test
+fixtures, `examples/npm` and `apps/docs/tutorial` are separate Cargo projects
+that depend on the workspace crates by path; after changing a crate's
+dependencies, run `just lock` and commit their updated lockfiles.
 
 ## Sending a pull request
 

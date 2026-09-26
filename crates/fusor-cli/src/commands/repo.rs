@@ -124,7 +124,10 @@ fn check_consumers(run: &impl Fn(&mut Command) -> Result, root: &Path) -> Result
             .args(["check", "--locked", "--manifest-path"])
             .arg(root.join(manifest))
             .arg("--target-dir")
-            .arg(root.join(target)))?;
+            .arg(root.join(target)))
+        .map_err(|error| {
+            error.remedy("if its lockfile is stale, run `just lock` and commit the result")
+        })?;
     }
     Ok(())
 }

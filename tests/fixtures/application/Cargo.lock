@@ -81,6 +81,7 @@ name = "fusor-build"
 version = "0.1.0"
 dependencies = [
  "fusor-core",
+ "fusor-islands",
  "fusor-router",
  "html5gum",
  "proc-macro2",
@@ -100,6 +101,15 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "fusor-islands"
+version = "0.1.0"
+dependencies = [
+ "fusor-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
