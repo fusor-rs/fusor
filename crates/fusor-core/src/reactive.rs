@@ -109,6 +109,13 @@ impl<T> Signal<T> {
         notify(&self.0.source);
         result
     }
+
+    /// Replace the value and notify subscribers, returning the previous value.
+    /// Unlike `set`, this needs no `PartialEq` and always notifies. Dropping
+    /// the result retires the old value after notification.
+    pub fn replace(&self, value: T) -> T {
+        self.update(|current| std::mem::replace(current, value))
+    }
 }
 
 impl<T: Clone> Signal<T> {

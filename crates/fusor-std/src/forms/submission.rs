@@ -117,9 +117,7 @@ impl Acknowledgment {
     pub fn signal<T: 'static>(&mut self, signal: &Signal<T>, value: T) {
         let signal = signal.clone();
         self.writes.push(Box::new(move |retired| {
-            retired.push(Box::new(
-                signal.update(|current| std::mem::replace(current, value)),
-            ));
+            retired.push(Box::new(signal.replace(value)));
         }));
     }
     pub fn version(&mut self, signal: &Signal<u64>, value: u64) {

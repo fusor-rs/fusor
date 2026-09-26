@@ -61,13 +61,16 @@ impl<K, T, E> ResourceState<K, T, E> {
     }
 }
 
-// Shared by `Resource` and `AsyncValue`.
-type Loader<K, T, E> = dyn Fn(K, CancellationToken) -> LocalBoxFuture<'static, Result<T, E>>;
-type Spawner = dyn Fn(LocalBoxFuture<'static, ()>);
-fn boxed_loader<K, T, E, F: Future<Output = Result<T, E>> + 'static>(
-    load: impl Fn(K, CancellationToken) -> F + 'static,
-) -> Rc<Loader<K, T, E>> {
-    Rc::new(move |key, cancel| Box::pin(load(key, cancel)))
+/// A type-erased async operation: an input and its cancellation token in, a
+/// local future of `O` out. Reads use `Loader<K, Result<T, E>>`.
+pub type Loader<I, O> = dyn Fn(I, CancellationToken) -> LocalBoxFuture<'static, O>;
+/// Schedules a local future on the current thread's executor, without blocking.
+pub type Spawner = dyn Fn(LocalBoxFuture<'static, ()>);
+/// Erase a loader's future type, so one loader can serve many operations.
+pub fn boxed_loader<I, O, F: Future<Output = O> + 'static>(
+    load: impl Fn(I, CancellationToken) -> F + 'static,
+) -> Rc<Loader<I, O>> {
+    Rc::new(move |input, cancel| Box::pin(load(input, cancel)))
 }
 /// Increment and return `counter`. Overflow is a bug, never a wraparound.
 fn increment(counter: &Cell<u64>, name: &str) -> u64 {
@@ -90,8 +93,8 @@ struct Inner<K, T, E> {
     disposed: Cell<bool>,
     subscription: RefCell<Option<Effect>>,
     registrations: RefCell<Vec<Registration>>,
-    load: Rc<Loader<K, T, E>>,
-    spawn: Box<Spawner>,
+    load: Rc<Loader<K, Result<T, E>>>,
+    spawn: Rc<Spawner>,
 }
 
 /// A shared handle to one owned read, with no `Clone` bound on data or errors.
@@ -109,6 +112,17 @@ impl<K: Clone + PartialEq + 'static, T: 'static, E: 'static> Resource<K, T, E> {
         load: impl Fn(K, CancellationToken) -> F + 'static,
         spawn: impl Fn(LocalBoxFuture<'static, ()>) + 'static,
     ) -> Self {
+        Self::shared(owner, key, boxed_loader(load), Rc::new(spawn))
+    }
+
+    /// Like [`Self::new`], with a loader and spawner shared by other reads,
+    /// such as the entries of one query cache.
+    pub fn shared(
+        owner: &OwnerHandle,
+        key: impl Fn() -> Option<K> + 'static,
+        load: Rc<Loader<K, Result<T, E>>>,
+        spawn: Rc<Spawner>,
+    ) -> Self {
         let inner = Rc::new(Inner {
             in_flight: RefCell::new(None),
             owner: owner.clone(),
@@ -118,8 +132,8 @@ impl<K: Clone + PartialEq + 'static, T: 'static, E: 'static> Resource<K, T, E> {
             disposed: Cell::new(false),
             subscription: RefCell::new(None),
             registrations: RefCell::new(Vec::new()),
-            load: boxed_loader(load),
-            spawn: Box::new(spawn),
+            load,
+            spawn,
         });
         let weak = Rc::downgrade(&inner);
         let cleanup = owner.on_cleanup(move || {
@@ -192,7 +206,7 @@ impl<K, T, E> Inner<K, T, E> {
     // then retire payloads outside the borrow. Caller-written update closures keep
     // their non-reentrant contract; framework-owned replacement does not drop there.
     fn publish(&self, next: ResourceState<K, T, E>) {
-        drop(self.state.update(|state| std::mem::replace(state, next)));
+        drop(self.state.replace(next));
     }
     fn is_stopped(&self) -> bool {
         self.disposed.get() || self.owner.is_disposed()

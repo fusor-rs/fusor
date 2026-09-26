@@ -718,6 +718,7 @@ dependencies = [
 name = "fusor-query"
 version = "0.1.0"
 dependencies = [
+ "derive-where",
  "fusor-async",
  "fusor-core",
  "fusor-test",

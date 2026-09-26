@@ -42,7 +42,7 @@ struct Inner<K, T, E> {
     generation: Cell<u64>,
     retry: Cell<u64>,
     cleanup: RefCell<Option<Registration>>,
-    load: Rc<Loader<K, T, E>>,
+    load: Rc<Loader<K, Result<T, E>>>,
     spawn: Box<Spawner>,
 }
 

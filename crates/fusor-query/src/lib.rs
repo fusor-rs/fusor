@@ -10,37 +10,38 @@ mod state;
 pub use observer::Query;
 pub use state::{CacheInfo, Freshness, QueryOptions, QueryState};
 
+use derive_where::derive_where;
 use entry::Entry;
 use fusor::{Owner, OwnerHandle, Registration, Signal, batch, signal, untrack};
-use fusor_async::CancellationToken;
+use fusor_async::{CancellationToken, Loader, Spawner, boxed_loader};
 use futures_util::future::LocalBoxFuture;
 use std::{cell::RefCell, collections::BTreeMap, future::Future, rc::Rc, time::Duration};
 
-type Loader<K, T, E> = dyn Fn(K, CancellationToken) -> LocalBoxFuture<'static, Result<T, E>>;
-type Spawner = dyn Fn(LocalBoxFuture<'static, ()>);
+/// What a query key needs: it is cloned into states and ordered in the cache.
+pub trait Key: Clone + Ord + 'static {}
+impl<K: Clone + Ord + 'static> Key for K {}
+
+type Clock = dyn Fn() -> Duration;
 type Entries<K, T, E> = BTreeMap<K, Rc<Entry<K, T, E>>>;
-struct Inner<K: Clone + Ord + 'static, T: 'static, E: 'static> {
+
+struct Inner<K, T, E> {
     owner: Owner,
     alive: Signal<bool>,
     options: QueryOptions,
     entries: RefCell<Entries<K, T, E>>,
-    load: Rc<Loader<K, T, E>>,
+    load: Rc<Loader<K, Result<T, E>>>,
     spawn: Rc<Spawner>,
-    clock: Rc<dyn Fn() -> Duration>,
+    clock: Rc<Clock>,
     cleanup: RefCell<Option<Registration>>,
 }
 
 /// One loader, one typed key space, and one application/session lifetime.
 /// Consumer owners only own subscriptions. The last consumer leaving cancels
 /// unfinished work; completed data may remain until eviction or client disposal.
-pub struct QueryClient<K: Clone + Ord + 'static, T: 'static, E: 'static>(Rc<Inner<K, T, E>>);
-impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Clone for QueryClient<K, T, E> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
+#[derive_where(Clone)]
+pub struct QueryClient<K, T, E>(Rc<Inner<K, T, E>>);
 
-impl<K: Clone + Ord + 'static, T: 'static, E: 'static> QueryClient<K, T, E> {
+impl<K: Key, T: 'static, E: 'static> QueryClient<K, T, E> {
     /// `clock` must be monotonic. `spawn` schedules local futures without blocking.
     /// The client's owner is a child of `parent`; a retained clone cannot revive it.
     pub fn new<F: Future<Output = Result<T, E>> + 'static>(
@@ -55,7 +56,7 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> QueryClient<K, T, E> {
             alive: signal(true),
             options,
             entries: RefCell::new(BTreeMap::new()),
-            load: Rc::new(move |key, request| Box::pin(load(key, request))),
+            load: boxed_loader(load),
             spawn: Rc::new(spawn),
             clock: Rc::new(clock),
             cleanup: RefCell::new(None),
@@ -65,8 +66,7 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> QueryClient<K, T, E> {
             if let Some(inner) = weak.upgrade() {
                 batch(|| {
                     inner.alive.set(false);
-                    let entries = inner.entries.take();
-                    for entry in entries.into_values() {
+                    for entry in inner.entries.take().into_values() {
                         entry.dispose();
                     }
                 });
@@ -91,13 +91,11 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> QueryClient<K, T, E> {
     /// Returns false if it is absent. Inactive entries reload when next observed.
     pub fn invalidate(&self, key: &K) -> bool {
         untrack(|| {
-            let entry = self.0.entries.borrow().get(key).cloned();
-            if let Some(entry) = entry {
-                entry.invalidate();
-                true
-            } else {
-                false
-            }
+            let Some(entry) = self.entry(key) else {
+                return false;
+            };
+            entry.invalidate();
+            true
         })
     }
 
@@ -106,19 +104,20 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> QueryClient<K, T, E> {
     pub fn collect(&self) -> usize {
         untrack(|| {
             let now = (self.0.clock)();
-            let mut entries = self.0.entries.borrow_mut();
-            let keys: Vec<_> = entries
-                .iter()
-                .filter(|(_, e)| e.expired(now, self.0.options.retention))
-                .map(|(k, _)| k.clone())
-                .collect();
-            let removed: Vec<_> = keys.iter().filter_map(|key| entries.remove(key)).collect();
-            drop(entries);
-            let count = removed.len();
-            for entry in removed {
+            let retention = self.0.options.retention;
+            let mut expired = Vec::new();
+            self.0.entries.borrow_mut().retain(|_, entry| {
+                let keep = !entry.expired(now, retention);
+                if !keep {
+                    expired.push(entry.clone());
+                }
+                keep
+            });
+            // Dispose outside the borrow: disposal runs owner cleanup callbacks.
+            for entry in &expired {
                 entry.dispose();
             }
-            count
+            expired.len()
         })
     }
 
@@ -127,7 +126,7 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> QueryClient<K, T, E> {
         let entries = self.0.entries.borrow();
         CacheInfo {
             entries: entries.len(),
-            observers: entries.values().map(|e| e.observers.get()).sum(),
+            observers: entries.values().map(|entry| entry.observers()).sum(),
         }
     }
 
@@ -138,44 +137,60 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> QueryClient<K, T, E> {
         untrack(|| self.0.owner.dispose());
     }
 
+    /// Whether the client is alive, subscribing the running effect to disposal.
+    fn track_alive(&self) -> bool {
+        self.0.alive.get()
+    }
+
+    fn is_alive(&self) -> bool {
+        self.0.alive.get_untracked()
+    }
+
+    fn entry(&self, key: &K) -> Option<Rc<Entry<K, T, E>>> {
+        self.0.entries.borrow().get(key).cloned()
+    }
+
+    /// Subscribe to the entry for `key`, creating it if there is room. `None`
+    /// when the client is disposed or every entry is in use.
     fn acquire(&self, key: &K) -> Option<Rc<Entry<K, T, E>>> {
         self.collect();
-        if !self.0.alive.get_untracked() {
+        if !self.is_alive() {
             return None;
         }
-        let existing = self.0.entries.borrow().get(key).cloned();
-        let entry = if let Some(entry) = existing {
-            entry
-        } else {
-            let removed = {
-                let mut entries = self.0.entries.borrow_mut();
-                if entries.len() >= self.0.options.capacity.get() {
-                    let oldest = entries
-                        .iter()
-                        .filter(|(_, e)| e.observers.get() == 0)
-                        .min_by_key(|(_, e)| e.unused_since.get())
-                        .map(|(key, _)| key.clone());
-                    let oldest = oldest?;
-                    entries.remove(&oldest)
-                } else {
-                    None
-                }
-            };
-            if let Some(entry) = removed {
-                entry.dispose();
-            }
-            if !self.0.alive.get_untracked() {
-                return None;
-            }
-            let entry = Entry::new(&self.0, key.clone());
-            self.0
-                .entries
-                .borrow_mut()
-                .insert(key.clone(), entry.clone());
-            entry
+        let entry = match self.entry(key) {
+            Some(entry) => entry,
+            None => self.insert(key)?,
         };
         entry.acquire(self.0.options.freshness);
         Some(entry)
+    }
+
+    /// Add an entry for `key`. A full cache first evicts its longest-unused
+    /// idle entry; with none to evict, nothing is added.
+    fn insert(&self, key: &K) -> Option<Rc<Entry<K, T, E>>> {
+        if self.0.entries.borrow().len() >= self.0.options.capacity.get() {
+            self.evict()?.dispose();
+            // Disposal runs owner cleanup callbacks, which can dispose this client.
+            if !self.is_alive() {
+                return None;
+            }
+        }
+        let entry = Entry::new(&self.0, key.clone());
+        self.0
+            .entries
+            .borrow_mut()
+            .insert(key.clone(), entry.clone());
+        Some(entry)
+    }
+
+    fn evict(&self) -> Option<Rc<Entry<K, T, E>>> {
+        let mut entries = self.0.entries.borrow_mut();
+        let (_, oldest) = entries
+            .iter()
+            .filter_map(|(key, entry)| Some((entry.idle_since()?, key)))
+            .min_by_key(|(since, _)| *since)?;
+        let oldest = oldest.clone();
+        entries.remove(&oldest)
     }
 }
 
@@ -190,7 +205,7 @@ pub mod browser {
         load: impl Fn(K, CancellationToken) -> F + 'static,
     ) -> QueryClient<K, T, E>
     where
-        K: Clone + Ord + 'static,
+        K: Key,
         T: 'static,
         E: 'static,
         F: Future<Output = Result<T, E>> + 'static,
