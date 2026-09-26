@@ -1,17 +1,18 @@
 //! The narrow Wasm entry and typed control surface. All loading and scheduling
 //! belong to the shared JavaScript registry, not to a second Rust loader.
-use crate::{Entry, Island, RenderMode, UnitWitness};
+use crate::{Entry, Island, RenderMode, UnitWitness, attributes};
 use fusor::{
     OwnerHandle, Registration,
     dom::{Component, Scope, delivery},
 };
+use serde::{Deserialize, de::IntoDeserializer};
 use std::{cell::RefCell, collections::BTreeMap, marker::PhantomData, rc::Rc};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::Element;
 
-mod activation;
-use activation::{Activation, Prepared, Preview};
+mod attempt;
+use attempt::{Attempt, Prepared, Preview};
 
 type Make = dyn Fn(&Element, &str) -> Result<Prepared, JsValue>;
 struct Factory {
@@ -19,12 +20,24 @@ struct Factory {
     make: Box<Make>,
 }
 
+/// Content a replaced preview would lose: form controls and editable text.
+const EDITABLE: &str = "input,textarea,select,[contenteditable]:not([contenteditable=false])";
+
 /// A unit is initialized once, with a separate retained scope for each instance.
 /// Registration installs metadata/factories without constructing application state.
-#[derive(Default)]
 pub struct Unit {
-    entries: BTreeMap<String, Rc<Factory>>,
-    scopes: RefCell<BTreeMap<String, Rc<Activation>>>,
+    entries: BTreeMap<String, Factory>,
+    attempts: RefCell<BTreeMap<String, Rc<Attempt>>>,
+}
+impl Default for Unit {
+    fn default() -> Self {
+        // A delivery unit mounts from its own embedded templates.
+        delivery::enable();
+        Self {
+            entries: BTreeMap::new(),
+            attempts: RefCell::default(),
+        }
+    }
 }
 impl Unit {
     pub fn new() -> Self {
@@ -36,34 +49,13 @@ impl Unit {
     ) -> Self {
         assert!(
             !self.entries.contains_key(D::NAME),
-            "duplicate island entry"
+            "duplicate island entry {}",
+            D::NAME
         );
-        self.entries.insert(D::NAME.into(), Rc::new(Factory {
-            metadata: Entry { unit: D::UNIT.into(), descriptor: D::NAME.into(), props_schema: D::SCHEMA.into(), template_hash: C::TEMPLATE_HASH.into(), mode: D::MODE },
-            make: Box::new(move |host, text| {
-                let props = crate::decode::<D::Props>(text).map_err(|error| JsValue::from_str(&format!("island props: {error}")))?;
-                if host.get_attribute("data-fusor-schema").as_deref() != Some(D::SCHEMA) || host.get_attribute("data-fusor-hash").as_deref() != Some(C::TEMPLATE_HASH) {
-                    return Err(JsValue::from_str("island schema/template mismatch"));
-                }
-                let initial: Vec<Element> = (0..host.child_element_count()).filter_map(|index| host.children().item(index)).filter(|node| !node.has_attribute("data-fusor-props")).collect();
-                if initial.len() != 1 { return Err(JsValue::from_str("an island requires exactly one initial component root")); }
-                match D::MODE {
-                    RenderMode::Attach => delivery::with_root(&initial[0], || C::prepare_component(None, Box::new(|owner| Ok(make(owner, props)))))
-                        .map(|scope| Prepared { scope, preview: None }),
-                    RenderMode::Preview => {
-                        if initial[0].matches("input,textarea,select,[contenteditable]:not([contenteditable=false])")? || initial[0].query_selector("input,textarea,select,[contenteditable]:not([contenteditable=false])")?.is_some() {
-                            return Err(JsValue::from_str("editable island previews cannot be replaced"));
-                        }
-                        let (mut scope, readiness) = delivery::prepare_preview(|| C::prepare_component(None, Box::new(|owner| Ok(make(owner, props)))))?;
-                        // Keep the candidate detached, with ordinary owners still
-                        // prepared, until its initial coherent regions are ready.
-                        let staging = fusor::dom::document()?.create_element("div")?;
-                        scope.attach(&staging)?;
-                        Ok(Prepared {scope, preview: Some(Preview::new(host, initial[0].clone(), readiness, text)?)})
-                    }
-                }
-            }),
-        }));
+        let metadata = Entry::new::<D>(C::TEMPLATE_HASH);
+        let make = Box::new(move |host: &Element, text: &str| prepare::<D, C>(&make, host, text));
+        self.entries
+            .insert(D::NAME.into(), Factory { metadata, make });
         self
     }
     pub fn manifest(&self) -> String {
@@ -84,27 +76,76 @@ impl Unit {
         props: &str,
         token: &str,
     ) -> Result<js_sys::Promise, JsValue> {
-        if let Some(activation) = self.scopes.borrow().get(token) {
-            return Ok(activation.promise());
+        if let Some(attempt) = self.attempts.borrow().get(token) {
+            return Ok(attempt.promise());
         }
         let entry = self
             .entries
             .get(descriptor)
-            .ok_or_else(|| JsValue::from_str("unknown unit entry"))?
-            .clone();
-        delivery::enable();
-        let activation = Activation::new((entry.make)(host, props)?);
-        self.scopes
+            .ok_or_else(|| JsValue::from_str("unknown unit entry"))?;
+        let attempt = Attempt::new((entry.make)(host, props)?);
+        self.attempts
             .borrow_mut()
-            .insert(token.to_owned(), activation.clone());
-        activation.start();
-        Ok(activation.promise())
+            .insert(token.to_owned(), attempt.clone());
+        attempt.start();
+        Ok(attempt.promise())
     }
     pub fn dispose(&self, token: &str) {
-        let activation = self.scopes.borrow_mut().remove(token);
-        if let Some(activation) = activation {
-            activation.dispose();
+        // Release the borrow first: disposal runs owner cleanup callbacks.
+        let attempt = self.attempts.borrow_mut().remove(token);
+        if let Some(attempt) = attempt {
+            attempt.dispose();
         }
+    }
+}
+
+/// Prepare one instance of `C` on `host` from its props text, once the server
+/// is known to have rendered this schema and template.
+fn prepare<D: Island, C: Component>(
+    make: &impl Fn(OwnerHandle, D::Props) -> C,
+    host: &Element,
+    text: &str,
+) -> Result<Prepared, JsValue> {
+    let props = crate::decode::<D::Props>(text)
+        .map_err(|error| JsValue::from_str(&format!("island props: {error}")))?;
+    if host.get_attribute(attributes::SCHEMA).as_deref() != Some(D::SCHEMA)
+        || host.get_attribute(attributes::HASH).as_deref() != Some(C::TEMPLATE_HASH)
+    {
+        return Err(JsValue::from_str("island schema/template mismatch"));
+    }
+    let initial = initial_root(host)?;
+    let prepare = || C::prepare_component(None, Box::new(|owner| Ok(make(owner, props))));
+    match D::MODE {
+        RenderMode::Attach => Ok(Prepared::Attach(delivery::with_root(&initial, prepare)?)),
+        RenderMode::Preview => {
+            if initial.matches(EDITABLE)? || initial.query_selector(EDITABLE)?.is_some() {
+                return Err(JsValue::from_str(
+                    "editable island previews cannot be replaced",
+                ));
+            }
+            let (mut scope, readiness) = delivery::prepare_preview(prepare)?;
+            // Keep the candidate detached, with ordinary owners still
+            // prepared, until its initial coherent regions are ready.
+            let staging = fusor::dom::document()?.create_element("div")?;
+            scope.attach(&staging)?;
+            let preview = Preview::new(host, initial, readiness, text)?;
+            Ok(Prepared::Preview(scope, preview))
+        }
+    }
+}
+
+/// The server-rendered component root: the host's only element besides its
+/// props script.
+fn initial_root(host: &Element) -> Result<Element, JsValue> {
+    let children = host.children();
+    let mut roots = (0..children.length())
+        .filter_map(|index| children.item(index))
+        .filter(|node| !node.has_attribute(attributes::PROPS));
+    match (roots.next(), roots.next()) {
+        (Some(root), None) => Ok(root),
+        _ => Err(JsValue::from_str(
+            "an island requires exactly one initial component root",
+        )),
     }
 }
 
@@ -135,7 +176,8 @@ pub type IslandElement = Element;
 #[doc(hidden)]
 pub type IslandActivation = js_sys::Promise;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum IslandStatus {
     Dormant,
     Requested,
@@ -153,54 +195,69 @@ pub enum IslandError {
     DisposedOwner,
     StaleInstance,
     Cancelled,
+    /// The unit failed to load, or the registry failed in another way.
     LoadFailed(String),
     BindingFailed(String),
 }
 impl std::fmt::Display for IslandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        f.write_str(match self {
+            Self::Unavailable => "the island registry is not available on this page",
+            Self::UnknownInstance => "no island has this ID",
+            Self::DescriptorMismatch => "the island's descriptor or props schema does not match",
+            Self::InactiveOwner => "the requesting owner is not active yet",
+            Self::DisposedOwner => "the requesting owner was disposed",
+            Self::StaleInstance => "the island registration was removed or changed",
+            Self::Cancelled => "the island request was cancelled",
+            Self::LoadFailed(message) => return write!(f, "island failed to load: {message}"),
+            Self::BindingFailed(message) => return write!(f, "island failed to bind: {message}"),
+        })
     }
 }
 impl std::error::Error for IslandError {}
 
-fn call(name: &str, args: &[JsValue]) -> Result<JsValue, IslandError> {
-    let registry = js_sys::Reflect::get(&js_sys::global(), &"__fusor_islands".into())
-        .map_err(|_| IslandError::Unavailable)?;
-    let function = js_sys::Reflect::get(&registry, &name.into())
+/// A typed property of a JavaScript object.
+fn property<T: JsCast>(target: &JsValue, name: &str) -> Option<T> {
+    js_sys::Reflect::get(target, &name.into())
+        .ok()?
+        .dyn_into()
         .ok()
-        .and_then(|value| value.dyn_into::<js_sys::Function>().ok())
+}
+fn text_property(target: &JsValue, name: &str) -> Option<String> {
+    js_sys::Reflect::get(target, &name.into()).ok()?.as_string()
+}
+
+fn call(name: &str, args: &[JsValue]) -> Result<JsValue, IslandError> {
+    let registry = property::<JsValue>(&js_sys::global(), "__fusor_islands")
         .ok_or(IslandError::Unavailable)?;
-    let list = js_sys::Array::new();
-    for arg in args {
-        list.push(arg);
-    }
-    function.apply(&registry, &list).map_err(decode_error)
+    let function = property::<js_sys::Function>(&registry, name).ok_or(IslandError::Unavailable)?;
+    function
+        .apply(&registry, &args.iter().collect())
+        .map_err(decode_error)
 }
 fn decode_error(value: JsValue) -> IslandError {
-    let code = js_sys::Reflect::get(&value, &"code".into())
-        .ok()
-        .and_then(|value| value.as_string())
-        .unwrap_or_default();
-    let message = js_sys::Reflect::get(&value, &"message".into())
-        .ok()
-        .and_then(|value| value.as_string())
-        .unwrap_or_else(|| format!("{value:?}"));
-    match code.as_str() {
-        "unknown-instance" => IslandError::UnknownInstance,
-        "descriptor-mismatch" => IslandError::DescriptorMismatch,
-        "stale-instance" => IslandError::StaleInstance,
-        "cancelled" => IslandError::Cancelled,
-        "binding-failed" => IslandError::BindingFailed(message),
+    let message = text_property(&value, "message").unwrap_or_else(|| format!("{value:?}"));
+    match text_property(&value, "code").as_deref() {
+        Some("unknown-instance") => IslandError::UnknownInstance,
+        Some("descriptor-mismatch") => IslandError::DescriptorMismatch,
+        Some("stale-instance") => IslandError::StaleInstance,
+        Some("cancelled") => IslandError::Cancelled,
+        Some("binding-failed") => IslandError::BindingFailed(message),
         _ => IslandError::LoadFailed(message),
     }
+}
+
+fn live(owner: &OwnerHandle) -> Result<(), IslandError> {
+    if owner.is_disposed() {
+        return Err(IslandError::DisposedOwner);
+    }
+    Ok(())
 }
 
 /// Lookup performs no import, initialization or activation. The instance token
 /// remains tied to this registration even if the DOM ID is later reused.
 pub fn get<D: Island>(owner: &OwnerHandle, id: &str) -> Result<IslandRef<D>, IslandError> {
-    if owner.is_disposed() {
-        return Err(IslandError::DisposedOwner);
-    }
+    live(owner)?;
     let token = call("lookup", &[id.into(), D::NAME.into(), D::SCHEMA.into()])?
         .as_string()
         .ok_or(IslandError::UnknownInstance)?;
@@ -226,21 +283,12 @@ impl<D> Clone for IslandRef<D> {
 }
 impl<D: Island> IslandRef<D> {
     pub fn status(&self) -> Result<IslandStatus, IslandError> {
-        if self.owner.is_disposed() {
-            return Err(IslandError::DisposedOwner);
-        }
-        match call("status", &[self.token.clone().into()])?
+        live(&self.owner)?;
+        let status = call("status", &[self.token.as_str().into()])?
             .as_string()
-            .as_deref()
-        {
-            Some("dormant") => Ok(IslandStatus::Dormant),
-            Some("requested") => Ok(IslandStatus::Requested),
-            Some("binding") => Ok(IslandStatus::Binding),
-            Some("active") => Ok(IslandStatus::Active),
-            Some("failed") => Ok(IslandStatus::Failed),
-            Some("disposed") => Ok(IslandStatus::Disposed),
-            _ => Err(IslandError::StaleInstance),
-        }
+            .ok_or(IslandError::StaleInstance)?;
+        IslandStatus::deserialize(status.into_deserializer())
+            .map_err(|_: serde::de::value::Error| IslandError::StaleInstance)
     }
     pub async fn prefetch(&self) -> Result<(), IslandError> {
         self.request("prefetch").await
@@ -252,36 +300,28 @@ impl<D: Island> IslandRef<D> {
         self.request("retry").await
     }
     async fn request(&self, action: &str) -> Result<(), IslandError> {
-        if self.owner.is_disposed() {
-            return Err(IslandError::DisposedOwner);
-        }
+        live(&self.owner)?;
         if !self.owner.is_active() {
             return Err(IslandError::InactiveOwner);
         }
-        let operation = call("request", &[self.token.clone().into(), action.into()])?;
-        let cancel = js_sys::Reflect::get(&operation, &"cancel".into())
-            .ok()
-            .and_then(|value| value.dyn_into::<js_sys::Function>().ok())
-            .ok_or(IslandError::Unavailable)?;
-        let callback = cancel.clone();
-        let registration = self.owner.on_cleanup(move || {
-            let _ = callback.call0(&JsValue::UNDEFINED);
-        });
-        let mut guard = Waiter {
+        let operation = call("request", &[self.token.as_str().into(), action.into()])?;
+        let cancel =
+            property::<js_sys::Function>(&operation, "cancel").ok_or(IslandError::Unavailable)?;
+        // Cancel the operation if the owner is disposed, or this future is
+        // dropped, before it settles.
+        let on_cleanup = cancel.clone();
+        let mut waiter = Waiter {
             cancel: Some(cancel),
-            _registration: registration,
+            _registration: self.owner.on_cleanup(move || {
+                let _ = on_cleanup.call0(&JsValue::UNDEFINED);
+            }),
         };
-        let promise = js_sys::Reflect::get(&operation, &"promise".into())
-            .ok()
-            .and_then(|value| value.dyn_into::<js_sys::Promise>().ok())
-            .ok_or(IslandError::Unavailable)?;
-        let result = JsFuture::from(promise).await.map_err(decode_error);
-        if self.owner.is_disposed() {
-            return Err(IslandError::DisposedOwner);
-        }
-        result?;
-        guard.cancel.take();
-        Ok(())
+        let promise =
+            property::<js_sys::Promise>(&operation, "promise").ok_or(IslandError::Unavailable)?;
+        let result = JsFuture::from(promise).await;
+        waiter.cancel = None;
+        live(&self.owner)?;
+        result.map(|_| ()).map_err(decode_error)
     }
 }
 struct Waiter {
@@ -294,6 +334,10 @@ impl Drop for Waiter {
             let _ = cancel.call0(&JsValue::UNDEFINED);
         }
     }
+}
+
+fn event_name<D: Island>(event: &str) -> String {
+    format!("fusor:{}:{event}", D::NAME)
 }
 
 /// Namespaced, ephemeral DOM events. The receiving scope guards its lifetime.
@@ -309,10 +353,7 @@ pub fn emit<D: Island, T: serde::Serialize>(
             .map_err(|error| JsValue::from_str(&error.to_string()))?
             .into(),
     );
-    let event = web_sys::CustomEvent::new_with_event_init_dict(
-        &format!("fusor:{}:{event}", D::NAME),
-        &options,
-    )?;
+    let event = web_sys::CustomEvent::new_with_event_init_dict(&event_name::<D>(event), &options)?;
     host.dispatch_event(&event)?;
     Ok(())
 }
@@ -325,17 +366,13 @@ pub fn listen<D: Island, T: serde::de::DeserializeOwned + 'static>(
     event: &str,
     mut receive: impl FnMut(Result<T, String>) + 'static,
 ) -> Result<(), JsValue> {
-    scope.on(
-        target,
-        &format!("fusor:{}:{event}", D::NAME),
-        move |event| {
-            let value = event
-                .dyn_into::<web_sys::CustomEvent>()
-                .ok()
-                .and_then(|event| event.detail().as_string())
-                .ok_or_else(|| "island event requires opaque JSON text".to_owned())
-                .and_then(|text| crate::decode(&text).map_err(|error| error.to_string()));
-            receive(value);
-        },
-    )
+    scope.on(target, &event_name::<D>(event), move |event| {
+        let value = event
+            .dyn_into::<web_sys::CustomEvent>()
+            .ok()
+            .and_then(|event| event.detail().as_string())
+            .ok_or_else(|| "island event requires opaque JSON text".to_owned())
+            .and_then(|text| crate::decode(&text).map_err(|error| error.to_string()));
+        receive(value);
+    })
 }
