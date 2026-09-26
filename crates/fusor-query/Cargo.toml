@@ -14,6 +14,7 @@ default = []
 browser = ["dep:wasm-bindgen-futures", "dep:web-sys"]
 
 [dependencies]
+derive-where.workspace = true
 fusor-core.workspace = true
 fusor-async.workspace = true
 futures-util = { workspace = true, features = ["std"] }

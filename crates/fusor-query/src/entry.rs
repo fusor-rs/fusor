@@ -1,35 +1,41 @@
-use super::*;
-use fusor::{Effect, effect};
+use super::{Clock, Inner, Key};
+use crate::{Freshness, QueryState};
+use fusor::{Effect, Owner, Signal, effect, signal, untrack};
 use fusor_async::{Data, Resource, ResourceState};
-use std::cell::Cell;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    time::Duration,
+};
 
+/// One cached key: its read, the last data it produced, and how many
+/// subscriptions currently use it.
 pub(super) struct Entry<K, T, E> {
     owner: Owner,
     key: K,
+    /// The read's key. `None` while unobserved, which cancels unfinished work.
     request_key: Signal<Option<K>>,
     resource: Resource<K, T, E>,
-    pub state: Signal<QueryState<K, T, E>>,
+    pub(super) state: Signal<QueryState<K, T, E>>,
     cached: RefCell<Option<Data<K, T>>>,
     updated: Cell<Option<Duration>>,
     invalid: Cell<bool>,
-    pub observers: Cell<usize>,
-    pub unused_since: Cell<Duration>,
-    clock: Rc<dyn Fn() -> Duration>,
+    observers: Cell<usize>,
+    unused_since: Cell<Duration>,
+    clock: Rc<Clock>,
     watch: RefCell<Option<Effect>>,
 }
 
-impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Entry<K, T, E> {
-    pub fn new(client: &Inner<K, T, E>, key: K) -> Rc<Self> {
+impl<K: Key, T: 'static, E: 'static> Entry<K, T, E> {
+    pub(super) fn new(client: &Inner<K, T, E>, key: K) -> Rc<Self> {
         let owner = Owner::child(&client.owner.handle());
         let request_key = signal(None);
         let input = request_key.clone();
-        let load = client.load.clone();
-        let spawn = client.spawn.clone();
-        let resource = Resource::new(
+        let resource = Resource::shared(
             &owner.handle(),
             move || input.get(),
-            move |key, cancel| load(key, cancel),
-            move |future| spawn(future),
+            client.load.clone(),
+            client.spawn.clone(),
         );
         let entry = Rc::new(Self {
             owner,
@@ -60,50 +66,44 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Entry<K, T, E> {
     fn publish(&self, state: ResourceState<K, T, E>) {
         let state = match state {
             ResourceState::Ready(data) => {
-                let previous = self.cached.replace(Some(data.clone()));
-                drop(previous);
+                drop(self.cached.replace(Some(data.clone())));
                 self.updated.set(Some((self.clock)()));
                 self.invalid.set(false);
                 QueryState::Ready(data)
             }
             ResourceState::Loading { key, .. } => QueryState::Loading {
                 key,
-                previous: self.cached.borrow().clone(),
+                previous: self.cached(),
             },
             ResourceState::Error { key, error, .. } => {
                 self.invalid.set(true);
                 QueryState::Error {
                     key,
                     error,
-                    previous: self.cached.borrow().clone(),
+                    previous: self.cached(),
                 }
             }
-            ResourceState::Idle => self
-                .cached
-                .borrow()
-                .clone()
-                .map(QueryState::Ready)
-                .unwrap_or(QueryState::Idle),
+            ResourceState::Idle => self.cached().map_or(QueryState::Idle, QueryState::Ready),
             ResourceState::Disposed => {
-                let previous = self.cached.take();
-                drop(previous);
+                drop(self.cached.take());
                 QueryState::Disposed
             }
         };
-        let previous = self
-            .state
-            .update(|current| std::mem::replace(current, state));
-        drop(previous);
+        drop(self.state.replace(state));
     }
 
-    pub fn acquire(&self, freshness: Freshness) {
+    fn cached(&self) -> Option<Data<K, T>> {
+        self.cached.borrow().clone()
+    }
+
+    pub(super) fn acquire(&self, freshness: Freshness) {
         self.observers.set(self.observers.get() + 1);
         let fresh = !self.invalid.get()
-            && self.updated.get().is_some_and(|at| match freshness {
-                Freshness::Forever => true,
-                Freshness::For(duration) => (self.clock)().saturating_sub(at) < duration,
-            });
-        if !fresh && !self.resource.with(|s| s.is_loading()) {
+            && self
+                .updated
+                .get()
+                .is_some_and(|at| freshness.is_fresh((self.clock)().saturating_sub(at)));
+        if !fresh && !self.resource.with(ResourceState::is_loading) {
             self.start();
         }
     }
@@ -116,7 +116,7 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Entry<K, T, E> {
         }
     }
 
-    pub fn release(&self) {
+    pub(super) fn release(&self) {
         let remaining = self
             .observers
             .get()
@@ -131,18 +131,30 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Entry<K, T, E> {
         }
     }
 
-    pub fn invalidate(&self) {
+    pub(super) fn invalidate(&self) {
         self.invalid.set(true);
         if self.observers.get() != 0 {
             self.start();
         }
     }
+}
 
-    pub fn expired(&self, now: Duration, retention: Duration) -> bool {
-        self.observers.get() == 0 && now.saturating_sub(self.unused_since.get()) >= retention
+impl<K, T, E> Entry<K, T, E> {
+    pub(super) fn observers(&self) -> usize {
+        self.observers.get()
     }
 
-    pub fn dispose(&self) {
+    /// When the last subscription left, or `None` while the entry is in use.
+    pub(super) fn idle_since(&self) -> Option<Duration> {
+        (self.observers.get() == 0).then(|| self.unused_since.get())
+    }
+
+    pub(super) fn expired(&self, now: Duration, retention: Duration) -> bool {
+        self.idle_since()
+            .is_some_and(|since| now.saturating_sub(since) >= retention)
+    }
+
+    pub(super) fn dispose(&self) {
         self.owner.dispose();
     }
 }

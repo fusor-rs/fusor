@@ -1,8 +1,12 @@
-use super::*;
-use fusor::{Effect, effect};
-use std::cell::Cell;
+use super::{Entry, Key, QueryClient, QueryState};
+use derive_where::derive_where;
+use fusor::{Effect, OwnerHandle, Registration, Signal, batch, effect, signal, untrack};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
-struct Observer<K: Clone + Ord + 'static, T: 'static, E: 'static> {
+struct Observer<K: Key, T: 'static, E: 'static> {
     client: QueryClient<K, T, E>,
     owner: OwnerHandle,
     disposed: Cell<bool>,
@@ -14,13 +18,74 @@ struct Observer<K: Clone + Ord + 'static, T: 'static, E: 'static> {
     registrations: RefCell<Vec<Registration>>,
 }
 
-impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Observer<K, T, E> {
-    fn release(&self) {
-        let entry = self.entry.take();
-        if let Some(entry) = entry {
+impl<K: Key, T: 'static, E: 'static> Observer<K, T, E> {
+    /// Whether this subscription may hold an entry right now.
+    fn can_observe(&self) -> bool {
+        !self.disposed.get() && self.owner.is_active() && self.client.is_alive()
+    }
+
+    fn wake(&self) {
+        self.wake.update(|_| ());
+    }
+
+    /// Follow the key once: hold its entry and show that entry's state.
+    fn sync(&self, key: &impl Fn() -> Option<K>) {
+        self.wake.get();
+        if !self.client.track_alive() {
+            self.dispose();
+            return;
+        }
+        let next = key();
+        if !self.owner.is_active() {
+            return;
+        }
+        untrack(|| self.select(&next));
+        if !self.client.is_alive() {
+            self.dispose();
+            return;
+        }
+        let state = self.state_for(next);
+        if !self.disposed.get() {
+            untrack(|| drop(self.state.replace(state)));
+        }
+    }
+
+    /// Hold the entry for `next`, unless it is already held.
+    fn select(&self, next: &Option<K>) {
+        if *self.key.borrow() == *next && self.entry.borrow().is_some() {
+            return;
+        }
+        self.release();
+        if !self.can_observe() {
+            return;
+        }
+        *self.key.borrow_mut() = next.clone();
+        let entry = next.as_ref().and_then(|key| self.client.acquire(key));
+        // Acquiring runs owner cleanup for evicted entries, which can dispose
+        // this subscription, its owner or the client.
+        if self.can_observe() {
+            *self.entry.borrow_mut() = entry;
+        } else if let Some(entry) = entry {
             entry.release();
         }
     }
+
+    /// The state to show for `next`: its entry's, or why there is none.
+    fn state_for(&self, next: Option<K>) -> QueryState<K, T, E> {
+        let entry = self.entry.borrow().clone();
+        match (entry, next) {
+            (Some(entry), _) => entry.state.get(),
+            (None, Some(key)) => QueryState::Capacity { key },
+            (None, None) => QueryState::Idle,
+        }
+    }
+
+    fn release(&self) {
+        if let Some(entry) = self.entry.take() {
+            entry.release();
+        }
+    }
+
     fn dispose(&self) {
         if self.disposed.replace(true) {
             return;
@@ -29,15 +94,13 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Observer<K, T, E> {
             batch(|| {
                 self.effect.take();
                 self.release();
-                let previous = self
-                    .state
-                    .update(|state| std::mem::replace(state, QueryState::Disposed));
-                drop(previous);
+                drop(self.state.replace(QueryState::Disposed));
             })
         });
     }
 }
-impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Drop for Observer<K, T, E> {
+
+impl<K: Key, T: 'static, E: 'static> Drop for Observer<K, T, E> {
     fn drop(&mut self) {
         self.dispose();
     }
@@ -45,13 +108,10 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Drop for Observer<K, T, E
 
 /// A read-only handle to one owner-bound subscription. Last-handle drop detaches
 /// it; owner disposal detaches it even if handles remain in application state.
-pub struct Query<K: Clone + Ord + 'static, T: 'static, E: 'static>(Rc<Observer<K, T, E>>);
-impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Clone for Query<K, T, E> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Query<K, T, E> {
+#[derive_where(Clone)]
+pub struct Query<K: Key, T: 'static, E: 'static>(Rc<Observer<K, T, E>>);
+
+impl<K: Key, T: 'static, E: 'static> Query<K, T, E> {
     pub(super) fn new(
         client: QueryClient<K, T, E>,
         owner: &OwnerHandle,
@@ -75,67 +135,17 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Query<K, T, E> {
             }
         });
         inner.registrations.borrow_mut().push(cleanup);
+        // A disposed owner has already run the cleanup.
         if inner.disposed.get() {
             return Self(inner);
         }
         let weak = Rc::downgrade(&inner);
         let watcher = effect(move || {
-            let Some(inner) = weak.upgrade().filter(|i| !i.disposed.get()) else {
-                return;
-            };
-            inner.wake.get();
-            if !inner.client.0.alive.get() {
-                inner.dispose();
-                return;
-            }
-            let next = key();
-            if !inner.owner.is_active() {
-                return;
-            }
-            untrack(|| {
-                if *inner.key.borrow() != next || inner.entry.borrow().is_none() {
-                    inner.release();
-                    if inner.disposed.get()
-                        || !inner.owner.is_active()
-                        || !inner.client.0.alive.get_untracked()
-                    {
-                        return;
-                    }
-                    *inner.key.borrow_mut() = next.clone();
-                    let entry = next.as_ref().and_then(|key| inner.client.acquire(key));
-                    if inner.disposed.get()
-                        || !inner.owner.is_active()
-                        || !inner.client.0.alive.get_untracked()
-                    {
-                        if let Some(entry) = entry {
-                            entry.release();
-                        }
-                    } else {
-                        *inner.entry.borrow_mut() = entry;
-                    }
-                }
-            });
-            if !inner.client.0.alive.get_untracked() {
-                inner.dispose();
-                return;
-            }
-            let entry = inner.entry.borrow().clone();
-            let state = if let Some(entry) = entry {
-                entry.state.get()
-            } else if let Some(key) = next {
-                QueryState::Capacity { key }
-            } else {
-                QueryState::Idle
-            };
-            if !inner.disposed.get() {
-                untrack(|| {
-                    let previous = inner
-                        .state
-                        .update(|current| std::mem::replace(current, state));
-                    drop(previous);
-                });
+            if let Some(inner) = weak.upgrade().filter(|inner| !inner.disposed.get()) {
+                inner.sync(&key);
             }
         });
+        // The first run disposes this subscription if the client is already gone.
         if inner.disposed.get() {
             watcher.dispose();
         } else {
@@ -144,34 +154,38 @@ impl<K: Clone + Ord + 'static, T: 'static, E: 'static> Query<K, T, E> {
         let weak = Rc::downgrade(&inner);
         let activation = owner.on_activate(move || {
             if let Some(inner) = weak.upgrade() {
-                inner.wake.update(|_| ());
+                inner.wake();
             }
         });
         inner.registrations.borrow_mut().push(activation);
         Self(inner)
     }
+
     pub fn get(&self) -> QueryState<K, T, E> {
         self.0.state.get()
     }
+
     pub fn with<R>(&self, read: impl FnOnce(&QueryState<K, T, E>) -> R) -> R {
         self.0.state.with(read)
     }
+
     pub fn dispose(&self) {
         self.0.dispose();
     }
+
     /// Explicitly refresh this key, or retry a capacity-limited subscription.
     pub fn refresh(&self) {
         if self.0.disposed.get() || !self.0.owner.is_active() {
             return;
         }
         untrack(|| {
+            if self.0.entry.borrow().is_none() {
+                self.0.wake();
+                return;
+            }
             let key = self.0.key.borrow().clone();
-            if self.0.entry.borrow().is_some() {
-                if let Some(key) = key {
-                    self.0.client.invalidate(&key);
-                }
-            } else {
-                self.0.wake.update(|_| ());
+            if let Some(key) = key {
+                self.0.client.invalidate(&key);
             }
         });
     }

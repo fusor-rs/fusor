@@ -1,10 +1,19 @@
-use fusor_async::{Data, ResourceState};
+use derive_where::derive_where;
+use fusor_async::Data;
 use std::{num::NonZeroUsize, rc::Rc, time::Duration};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Freshness {
     For(Duration),
     Forever,
+}
+impl Freshness {
+    pub(crate) fn is_fresh(self, age: Duration) -> bool {
+        match self {
+            Self::For(limit) => age < limit,
+            Self::Forever => true,
+        }
+    }
 }
 
 /// Every cache policy is explicit. Capacity bounds entry count (not value bytes).
@@ -24,6 +33,7 @@ pub struct CacheInfo {
 }
 
 #[derive(Debug)]
+#[derive_where(Clone; K)]
 pub enum QueryState<K, T, E> {
     Idle,
     Loading {
@@ -42,57 +52,15 @@ pub enum QueryState<K, T, E> {
     },
     Disposed,
 }
-impl<K: Clone, T, E> Clone for QueryState<K, T, E> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Idle => Self::Idle,
-            Self::Disposed => Self::Disposed,
-            Self::Capacity { key } => Self::Capacity { key: key.clone() },
-            Self::Loading { key, previous } => Self::Loading {
-                key: key.clone(),
-                previous: previous.clone(),
-            },
-            Self::Ready(data) => Self::Ready(data.clone()),
-            Self::Error {
-                key,
-                error,
-                previous,
-            } => Self::Error {
-                key: key.clone(),
-                error: error.clone(),
-                previous: previous.clone(),
-            },
-        }
-    }
-}
 impl<K, T, E> QueryState<K, T, E> {
     pub fn data(&self) -> Option<&Data<K, T>> {
         match self {
             Self::Ready(data) => Some(data),
             Self::Loading { previous, .. } | Self::Error { previous, .. } => previous.as_ref(),
-            _ => None,
+            Self::Idle | Self::Capacity { .. } | Self::Disposed => None,
         }
     }
     pub fn is_loading(&self) -> bool {
         matches!(self, Self::Loading { .. })
-    }
-}
-impl<K, T, E> From<ResourceState<K, T, E>> for QueryState<K, T, E> {
-    fn from(state: ResourceState<K, T, E>) -> Self {
-        match state {
-            ResourceState::Idle => Self::Idle,
-            ResourceState::Disposed => Self::Disposed,
-            ResourceState::Loading { key, previous } => Self::Loading { key, previous },
-            ResourceState::Ready(data) => Self::Ready(data),
-            ResourceState::Error {
-                key,
-                error,
-                previous,
-            } => Self::Error {
-                key,
-                error,
-                previous,
-            },
-        }
     }
 }

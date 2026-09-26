@@ -1,8 +1,8 @@
 //! Explicit writes. Admission, server outcome and local publication are distinct.
 //! Disposing an action suppresses local publication, never promises server rollback.
 use fusor::{OwnerHandle, Registration, Signal, batch, signal, untrack};
-use fusor_async::CancellationSource;
 pub use fusor_async::CancellationToken;
+use fusor_async::{CancellationSource, Loader, Spawner, boxed_loader};
 use futures_util::future::{AbortHandle, Abortable, LocalBoxFuture};
 use std::{
     any::Any,
@@ -124,8 +124,6 @@ impl<C> std::fmt::Display for DispatchError<C> {
 }
 impl<C: std::fmt::Debug> std::error::Error for DispatchError<C> {}
 
-type Loader<C, T, E> = dyn Fn(Rc<C>, CancellationToken) -> LocalBoxFuture<'static, Outcome<T, E>>;
-type Spawner = dyn Fn(LocalBoxFuture<'static, ()>);
 struct Request {
     abort: AbortHandle,
     cancellation: Option<CancellationSource>,
@@ -159,7 +157,7 @@ struct Inner<C, T, E> {
     state: Signal<ActionState<C, T, E>>,
     request: RefCell<Option<Request>>,
     registration: RefCell<Option<Registration>>,
-    load: Rc<Loader<C, T, E>>,
+    load: Rc<Loader<Rc<C>, Outcome<T, E>>>,
     spawn: Rc<Spawner>,
 }
 
@@ -206,7 +204,7 @@ impl<C: 'static, T: 'static, E: 'static> Action<C, T, E> {
             state: signal(ActionState::empty(Status::Idle)),
             request: RefCell::new(None),
             registration: RefCell::new(None),
-            load: Rc::new(move |command, cancel| Box::pin(load(command, cancel))),
+            load: boxed_loader(load),
             spawn: Rc::new(spawn),
         });
         let weak = Rc::downgrade(&inner);
@@ -234,11 +232,7 @@ impl<C: 'static, T: 'static, E: 'static> Action<C, T, E> {
     /// The application must establish the server baseline before calling this.
     pub fn reconcile(&self) -> Result<(), AdmissionError> {
         self.available(true)?;
-        let old = self
-            .0
-            .state
-            .update(|state| std::mem::replace(state, ActionState::empty(Status::Idle)));
-        drop(old);
+        drop(self.0.state.replace(ActionState::empty(Status::Idle)));
         Ok(())
     }
 
@@ -370,8 +364,7 @@ impl<C: 'static, T: 'static, E: 'static> Action<C, T, E> {
             let mut retired: Retired = Vec::new();
             batch(|| {
                 (publication.commit)(&mut retired);
-                let old = inner.state.update(|state| std::mem::replace(state, next));
-                retired.push(Box::new(old));
+                retired.push(Box::new(inner.state.replace(next)));
                 inner.busy.set(false);
             });
             // Cancellation callbacks and user destructors cannot run amid commits.
@@ -409,9 +402,7 @@ fn dispose<C, T, E>(inner: &Inner<C, T, E>) {
     }
     inner.busy.set(false);
     let request = inner.request.take();
-    let old = inner
-        .state
-        .update(|state| std::mem::replace(state, ActionState::empty(Status::Disposed)));
+    let old = inner.state.replace(ActionState::empty(Status::Disposed));
     drop(request);
     drop(old);
 }
