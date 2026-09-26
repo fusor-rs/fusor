@@ -334,7 +334,8 @@ impl Frame<'_> {
         let owner = self.tree.owner.clone();
         let boundary = self.tree.context.boundary.clone();
         let active = move || owner.is_active() && boundary.is_interactive();
-        let listener = Listener::new(node.clone().into(), event, active, handler).map_err(error)?;
+        let listener =
+            Listener::batched(node.clone().into(), event, active, handler).map_err(error)?;
         self.listeners.push(listener);
         Ok(())
     }

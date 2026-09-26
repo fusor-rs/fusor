@@ -1,6 +1,6 @@
 //! URL matching independent of browser history and HTML rendering.
-use crate::{AppUrl, UrlError};
-use std::collections::BTreeMap;
+use crate::UrlError;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Segment {
@@ -8,11 +8,23 @@ enum Segment {
     Parameter(String),
 }
 
+/// How specific one part of a pattern is. Later variants win.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Rank {
+    /// A trailing `/*` that delegates the rest of the path.
+    Rest,
+    Parameter,
+    Literal,
+    /// The end of an exact pattern.
+    End,
+}
+
 /// An exact route pattern, optionally ending in `/*` to delegate a remainder.
 #[derive(Clone, Debug)]
 pub struct Pattern {
     segments: Vec<Segment>,
     delegated: bool,
+    specificity: Vec<Rank>,
 }
 
 /// Decoded captures and the number of path segments consumed by a match.
@@ -43,49 +55,30 @@ impl Pattern {
         if parts.last() == Some(&"") {
             parts.pop();
         }
-        let mut names = std::collections::BTreeSet::new();
-        let segments = parts
+        let mut names = BTreeSet::new();
+        let segments: Vec<_> = parts
             .into_iter()
-            .map(|part| {
-                if let Some(name) = part.strip_prefix(':') {
-                    if name.is_empty()
-                        || !name.bytes().enumerate().all(|(i, c)| {
-                            c == b'_' || c.is_ascii_alphabetic() || (i > 0 && c.is_ascii_digit())
-                        })
-                        || !names.insert(name.to_owned())
-                    {
-                        return Err(UrlError(
-                            "route parameter names must be distinct identifiers",
-                        ));
-                    }
-                    Ok(Segment::Parameter(name.into()))
-                } else {
-                    if part.contains(['*', ':', '%'])
-                        || part == "."
-                        || part == ".."
-                        || part.chars().any(char::is_control)
-                    {
-                        return Err(UrlError(
-                            "use literal segments, :name captures, and an optional trailing /*",
-                        ));
-                    }
-                    Ok(Segment::Literal(part.into()))
-                }
-            })
+            .map(|part| parse_segment(part, &mut names))
             .collect::<Result<_, _>>()?;
+        let specificity = segments
+            .iter()
+            .map(|segment| match segment {
+                Segment::Literal(_) => Rank::Literal,
+                Segment::Parameter(_) => Rank::Parameter,
+            })
+            .chain([if delegated { Rank::Rest } else { Rank::End }])
+            .collect();
         Ok(Self {
             segments,
             delegated,
+            specificity,
         })
     }
     pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.segments.iter().filter_map(|s| match s {
-            Segment::Parameter(n) => Some(n.as_str()),
-            _ => None,
+        self.segments.iter().filter_map(|segment| match segment {
+            Segment::Parameter(name) => Some(name.as_str()),
+            Segment::Literal(_) => None,
         })
-    }
-    pub fn delegated(&self) -> bool {
-        self.delegated
     }
     pub fn matches(&self, segments: &[String], offset: usize) -> Option<Match> {
         let rest = segments.get(offset..)?;
@@ -102,7 +95,7 @@ impl Pattern {
                     params.insert(name.clone(), value.clone());
                 }
                 Segment::Parameter(_) => return None,
-                _ => {}
+                Segment::Literal(_) => {}
             }
         }
         Some(Match {
@@ -111,98 +104,100 @@ impl Pattern {
         })
     }
     /// Higher values win over less-specific patterns, independent of declaration order.
-    pub fn priority(&self) -> Vec<u8> {
-        self.segments
-            .iter()
-            .map(|s| {
-                if matches!(s, Segment::Literal(_)) {
-                    2
-                } else {
-                    1
-                }
-            })
-            .chain([if self.delegated { 0 } else { 3 }])
-            .collect()
+    #[cfg(any(feature = "browser", test))]
+    pub(crate) fn specificity(&self) -> &[Rank] {
+        &self.specificity
     }
-    /// Patterns with identical specificity that can match the same URL are ambiguous.
+    /// Patterns with identical specificity that can match the same URL are
+    /// ambiguous. Equal specificity implies equal length.
     pub fn conflicts(&self, other: &Self) -> bool {
-        self.priority() == other.priority()
+        self.specificity == other.specificity
             && self
                 .segments
                 .iter()
                 .zip(&other.segments)
-                .all(|(a, b)| match (a, b) {
+                .all(|pair| match pair {
                     (Segment::Literal(a), Segment::Literal(b)) => a == b,
                     _ => true,
                 })
     }
 }
 
-/// Path segments for routing. Root and a trailing slash have the same identity.
-pub fn path_segments(url: &AppUrl) -> Result<Vec<String>, UrlError> {
-    let mut segments = url.segments()?;
-    if segments.last().is_some_and(String::is_empty) {
-        segments.pop();
+/// Whether two routes of one router could both claim a URL: conflicting
+/// patterns, or two fallbacks (`None`).
+pub fn ambiguous(a: Option<&Pattern>, b: Option<&Pattern>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => a.conflicts(b),
+        (None, None) => true,
+        _ => false,
     }
-    Ok(segments)
+}
+
+fn parse_segment(part: &str, names: &mut BTreeSet<String>) -> Result<Segment, UrlError> {
+    if let Some(name) = part.strip_prefix(':') {
+        if !is_identifier(name) || !names.insert(name.to_owned()) {
+            return Err(UrlError(
+                "route parameter names must be distinct identifiers",
+            ));
+        }
+        return Ok(Segment::Parameter(name.into()));
+    }
+    if part.contains(['*', ':', '%'])
+        || part == "."
+        || part == ".."
+        || part.chars().any(char::is_control)
+    {
+        return Err(UrlError(
+            "use literal segments, :name captures, and an optional trailing /*",
+        ));
+    }
+    Ok(Segment::Literal(part.into()))
+}
+
+fn is_identifier(name: &str) -> bool {
+    let mut bytes = name.bytes();
+    bytes
+        .next()
+        .is_some_and(|first| first == b'_' || first.is_ascii_alphabetic())
+        && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AppUrl;
+    fn pattern(path: &str) -> Pattern {
+        Pattern::new(path).unwrap()
+    }
+    fn segments(url: &str) -> Vec<String> {
+        AppUrl::parse(url).unwrap().route_segments().unwrap()
+    }
     #[test]
     fn nested_prefix_and_decoded_captures() {
-        let segments =
-            path_segments(&AppUrl::parse("/teams/a%2Fb/settings?tab=x").unwrap()).unwrap();
-        let parent = Pattern::new("/teams/:team/*")
-            .unwrap()
-            .matches(&segments, 0)
-            .unwrap();
+        let segments = segments("/teams/a%2Fb/settings?tab=x");
+        let parent = pattern("/teams/:team/*").matches(&segments, 0).unwrap();
         assert_eq!(parent.params["team"], "a/b");
         assert!(
-            Pattern::new("settings")
-                .unwrap()
+            pattern("settings")
                 .matches(&segments, parent.consumed)
                 .is_some()
         );
-        assert!(
-            Pattern::new("/teams/:team")
-                .unwrap()
-                .matches(&segments, 0)
-                .is_none()
-        );
-        let base = path_segments(&AppUrl::parse("/dashboard").unwrap()).unwrap();
-        let matched = Pattern::new("/dashboard/*")
-            .unwrap()
-            .matches(&base, 0)
-            .unwrap();
-        assert!(
-            Pattern::new("")
-                .unwrap()
-                .matches(&base, matched.consumed)
-                .is_some()
-        );
+        assert!(pattern("/teams/:team").matches(&segments, 0).is_none());
+        let base = self::segments("/dashboard");
+        let matched = pattern("/dashboard/*").matches(&base, 0).unwrap();
+        assert!(pattern("").matches(&base, matched.consumed).is_some());
     }
     #[test]
     fn priority_and_ambiguity() {
-        assert!(
-            Pattern::new("/articles/new").unwrap().priority()
-                > Pattern::new("/articles/:id").unwrap().priority()
-        );
-        assert!(
-            Pattern::new("/articles/:id")
-                .unwrap()
-                .conflicts(&Pattern::new("/articles/:slug").unwrap())
-        );
-        assert!(
-            !Pattern::new("/a/:id")
-                .unwrap()
-                .conflicts(&Pattern::new("/b/:id").unwrap())
-        );
-        for pattern in [
+        assert!(pattern("/articles/new").specificity() > pattern("/articles/:id").specificity());
+        assert!(pattern("/articles/:id").conflicts(&pattern("/articles/:slug")));
+        assert!(!pattern("/a/:id").conflicts(&pattern("/b/:id")));
+        assert!(ambiguous(None, None));
+        assert!(!ambiguous(Some(&pattern("/a")), None));
+        for invalid in [
             "/:id/:id", "/a/*/b", "/:123", "/a?query", "/../a", "//", "//a",
         ] {
-            assert!(Pattern::new(pattern).is_err(), "{pattern}");
+            assert!(Pattern::new(invalid).is_err(), "{invalid}");
         }
     }
 }

@@ -2,7 +2,7 @@ use crate::coherence::{AsyncBoundary, BoundaryStatus};
 use crate::dom::{Listener, Scope, document};
 use crate::effect;
 use std::{cell::RefCell, rc::Rc};
-use wasm_bindgen::{JsCast, JsValue, closure::Closure};
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, Event, HtmlElement};
 
 #[derive(Clone)]
@@ -43,7 +43,7 @@ impl BlockingOverlay {
         for name in ["focusin", "pointerdown"] {
             let captured = overlay.clone();
             let root = root.clone();
-            let callback = Closure::wrap(Box::new(move |event: Event| {
+            let listener = Listener::new(document()?.into(), name, move |event: Event| {
                 let outside = event
                     .target()
                     .and_then(|target| target.dyn_into::<web_sys::Node>().ok())
@@ -51,14 +51,8 @@ impl BlockingOverlay {
                 if outside && captured.borrow().applied {
                     captured.borrow_mut().user_moved = true;
                 }
-            }) as Box<dyn Fn(Event)>);
-            let target: web_sys::EventTarget = document()?.into();
-            target.add_event_listener_with_callback(name, callback.as_ref().unchecked_ref())?;
-            region.listeners.push(Listener {
-                target,
-                event: name.into(),
-                callback,
-            });
+            })?;
+            region.listeners.push(listener);
         }
         let root = root.clone();
         let captured = overlay.clone();

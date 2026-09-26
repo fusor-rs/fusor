@@ -149,7 +149,7 @@ impl<K: Clone + 'static> Structure for ChildPlan<K> {
     fn apply(&self) -> Result<(), String> {
         let next = self.next.as_ref().map(|(_, scope)| scope.root());
         if let Some(next) = next.filter(|next| !self.target.precedes_end(next)) {
-            self.target.append(next).map_err(error)?;
+            self.target.push(next).map_err(error)?;
         }
         if let Some((_, old)) = self.state.current.borrow().as_ref() {
             if next.is_none_or(|next| !next.is_same_node(Some(old.root()))) {

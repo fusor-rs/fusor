@@ -15,7 +15,36 @@ pub struct MountPoint {
     pub(super) end: Node,
 }
 
+/// Owns the anchors of a range from [`MountPoint::append`]. Dropping it removes
+/// them, but not the nodes of views still inside them.
+#[must_use = "dropping the anchors removes the range"]
+pub struct Anchors(MountPoint);
+
+impl Drop for Anchors {
+    fn drop(&mut self) {
+        for node in [&self.0.start, &self.0.end] {
+            if let Some(parent) = node.parent_node() {
+                let _ = parent.remove_child(node);
+            }
+        }
+    }
+}
+
 impl MountPoint {
+    /// Append an empty range to `container`, owned by the returned anchors.
+    pub fn append(container: &Element) -> Result<(Self, Anchors), JsValue> {
+        let document = super::document()?;
+        let start: Node = document.create_comment("fusor:mount").into();
+        let end: Node = document.create_comment("fusor:end").into();
+        container.append_child(&start)?;
+        if let Err(error) = container.append_child(&end) {
+            let _ = container.remove_child(&start);
+            return Err(error);
+        }
+        let point = Self { start, end };
+        Ok((point.clone(), Anchors(point)))
+    }
+
     /// Native container of this range.
     pub fn parent_element(&self) -> Result<Element, JsValue> {
         self.validate()?;
@@ -96,7 +125,7 @@ impl MountPoint {
     }
 
     /// Insert `node` last, without validating the range.
-    pub(super) fn append(&self, node: &Node) -> Result<(), JsValue> {
+    pub(super) fn push(&self, node: &Node) -> Result<(), JsValue> {
         self.end
             .parent_node()
             .ok_or_else(|| JsValue::from_str("detached mount range"))?
@@ -126,26 +155,8 @@ impl Scope {
     /// removes the anchors, but not the nodes of views still inside them:
     /// callers retain and dispose any child views they mount there.
     pub fn mount_point(&mut self, container: &Element) -> Result<MountPoint, JsValue> {
-        let document = super::document()?;
-        let start: Node = document.create_comment("fusor:mount").into();
-        let end: Node = document.create_comment("fusor:end").into();
-        container.append_child(&start)?;
-        if let Err(error) = container.append_child(&end) {
-            let _ = container.remove_child(&start);
-            return Err(error);
-        }
-        let point = MountPoint { start, end };
-        struct Anchors(MountPoint);
-        impl Drop for Anchors {
-            fn drop(&mut self) {
-                for node in [&self.0.start, &self.0.end] {
-                    if let Some(parent) = node.parent_node() {
-                        let _ = parent.remove_child(node);
-                    }
-                }
-            }
-        }
-        self.retain(Anchors(point.clone()));
+        let (point, anchors) = MountPoint::append(container)?;
+        self.retain(anchors);
         Ok(point)
     }
 
