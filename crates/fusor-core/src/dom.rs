@@ -28,7 +28,7 @@ pub use content::Content;
 #[doc(hidden)]
 pub use mount::{NestingGuard, TemplateNodes};
 #[doc(hidden)]
-pub use range::MountPoint;
+pub use range::{Anchors, MountPoint};
 pub use target::{ElementTarget, InputTarget};
 
 use crate::{Effect, Owner, OwnerHandle, batch};
@@ -211,32 +211,45 @@ fn remove_tree(root: &Element) {
     root.remove();
 }
 
-struct Listener {
+/// A DOM event listener, removed when dropped.
+pub struct Listener {
     target: EventTarget,
     event: strings::EventName,
     callback: Closure<dyn Fn(Event)>,
 }
 
 impl Listener {
-    /// Batch the handler's signal writes; skip events while `active` is false.
-    fn new(
+    /// Call `handler` for each `event` on `target`, as dispatched. Unlike
+    /// [`Scope::on`], signal writes are not batched and no owner gates it.
+    pub fn new(
         target: EventTarget,
         event: &str,
-        active: impl Fn() -> bool + 'static,
         handler: impl FnMut(Event) + 'static,
     ) -> Result<Self, JsValue> {
         let handler = RefCell::new(handler);
-        let callback = Closure::wrap(Box::new(move |event| {
-            if active() {
-                batch(|| (handler.borrow_mut())(event));
-            }
-        }) as Box<dyn Fn(Event)>);
+        let callback = Closure::wrap(
+            Box::new(move |event| (handler.borrow_mut())(event)) as Box<dyn Fn(Event)>
+        );
         let event = strings::EventName::from(event);
         strings::add(&target, &event, callback.as_ref())?;
         Ok(Self {
             target,
             event,
             callback,
+        })
+    }
+
+    /// Batch the handler's signal writes; skip events while `active` is false.
+    fn batched(
+        target: EventTarget,
+        event: &str,
+        active: impl Fn() -> bool + 'static,
+        mut handler: impl FnMut(Event) + 'static,
+    ) -> Result<Self, JsValue> {
+        Self::new(target, event, move |event| {
+            if active() {
+                batch(|| handler(event));
+            }
         })
     }
 }

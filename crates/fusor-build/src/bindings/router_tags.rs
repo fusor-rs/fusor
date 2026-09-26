@@ -1,7 +1,7 @@
 //! Validation for structural route declarations. Uses the runtime matcher grammar.
 use super::{ir::RouteBranch, tag_input::TagInput, tokens::Rust};
 use crate::{ExtractError, error};
-use fusor_router::pattern::Pattern;
+use fusor_router::pattern::{Pattern, ambiguous};
 
 pub(super) struct Declaration {
     pub path: Option<String>,
@@ -46,15 +46,11 @@ pub(super) fn validate(
     routes: &[RouteBranch],
     path: Option<&str>,
 ) -> Result<(), ExtractError> {
+    // Declared paths were validated when their tags were parsed.
+    let pattern = |path: &str| Pattern::new(path).expect("validated route path");
+    let this = path.map(pattern);
     for route in routes {
-        let conflict = match (path, route.path.as_deref()) {
-            (Some(a), Some(b)) => Pattern::new(a)
-                .unwrap()
-                .conflicts(&Pattern::new(b).unwrap()),
-            (None, None) => true,
-            _ => false,
-        };
-        if conflict {
+        if ambiguous(this.as_ref(), route.path.as_deref().map(pattern).as_ref()) {
             return Err(error(
                 source,
                 offset,

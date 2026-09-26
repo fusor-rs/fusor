@@ -181,7 +181,7 @@ impl Scope {
     ) -> Result<(), JsValue> {
         let target = target.resolve(self)?.into();
         let owner = self.owner();
-        let listener = Listener::new(target, event, move || owner.is_active(), handler)?;
+        let listener = Listener::batched(target, event, move || owner.is_active(), handler)?;
         self.listeners.push(listener);
         Ok(())
     }
