@@ -124,7 +124,13 @@ fn publish_revision(
     }
     fs::write(
         publication.staging().join("index.html"),
-        html::render(artifact, &publication.url_prefix(), Some(revision), &[])?,
+        html::render(
+            artifact,
+            &publication.url_prefix(),
+            Some(revision),
+            &[],
+            &[],
+        )?,
     )?;
     publication.commit(&output)?;
     let effect = if output.reload_after == Some(revision) {

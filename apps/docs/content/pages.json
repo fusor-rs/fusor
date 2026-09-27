@@ -138,7 +138,7 @@
       {
         "id": "ship",
         "title": "Check and preview a release build",
-        "body": "In another terminal inside `my-app`, run `fusor check`, then build the optimized release with `fusor build`.\n\nThe generated `dist/` directory contains HTML, public assets, JavaScript glue, and Wasm. Use `fusor preview` to preview those files locally. To deploy, publish the contents of `dist/` at your configured base path.",
+        "body": "In another terminal inside `my-app`, run `fusor check`, then build the optimized release with `fusor build`.\n\nThe generated `dist/` directory contains HTML, public assets, JavaScript glue, and Wasm. Its HTML preloads the JavaScript modules and Wasm, so the browser fetches them together. Use `fusor preview` to preview those files locally. To deploy, publish the contents of `dist/` at your configured base path.",
         "code": "# In my-app:\nfusor check\nfusor build --locked\nfusor preview --port 8092",
         "language": "Terminal",
         "note": "Open http://127.0.0.1:8092/ for the release preview. Project creation writes Cargo.lock; `--locked` prevents later builds from changing dependency resolution.",
