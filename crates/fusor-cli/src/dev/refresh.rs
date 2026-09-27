@@ -11,16 +11,15 @@ use fusor_build::app::{self, ArtifactManifest};
 use proc_macro2::{TokenStream, TokenTree};
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 pub(crate) const CLIENT: &str = include_str!("refresh.js");
 
-/// Checked once after a full build, not on the fast path. A file include is
-/// invisible to this comparison; `fusor-build` decides which includes are its
-/// own.
+/// Checked once after a full build, not on the fast path. The compiler owns its
+/// generated includes; other data must be watched and outside refreshable input.
 pub(crate) fn enabled(
     cx: &Context,
     project: &Project,
@@ -29,20 +28,94 @@ pub(crate) fn enabled(
     if !project.config.dev_refresh || !artifact.javascript.is_empty() {
         return Ok(false);
     }
-    let watched = super::sources::snapshot(cx, project)?;
-    let rust_files = watched
+    let watched = super::sources::source_snapshot(cx, project)?;
+    let inputs = RefreshInputs::new(project, &watched)?;
+    for path in watched
         .keys()
-        .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
-        .chain(artifact.sources.iter().map(|source| &source.rust));
-    for path in rust_files {
+        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+    {
         let source = fs::read_to_string(path)?;
         // A source that does not tokenize cannot be cleared.
-        match app::includes_foreign_file(&source) {
-            Some(false) => {}
-            _ => return Ok(false),
+        if app::includes_foreign_file_with(&source, |data| inputs.unchanged_data(path, data))
+            != Some(false)
+        {
+            return Ok(false);
+        }
+    }
+    // Generated include resolution can use an authored source's location. Do
+    // not infer it from the output path; only compiler-owned includes are clear.
+    for source in &artifact.sources {
+        if app::includes_foreign_file(&fs::read_to_string(&source.rust)?) != Some(false) {
+            return Ok(false);
         }
     }
     Ok(true)
+}
+
+struct RefreshInputs {
+    watched: BTreeSet<PathBuf>,
+    html: BTreeSet<PathBuf>,
+    assets: Option<PathBuf>,
+}
+
+impl RefreshInputs {
+    fn new(project: &Project, watched: &super::sources::Snapshot) -> Result<Self> {
+        let assets = match project.config.assets.as_ref() {
+            Some(path) => match project.root.join(path).canonicalize() {
+                Ok(path) => Some(path),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                Err(error) => return Err(error.into()),
+            },
+            None => None,
+        };
+        Ok(Self {
+            watched: watched
+                .keys()
+                .filter_map(|path| path.canonicalize().ok())
+                .collect(),
+            html: project
+                .config
+                .discover_sources(&project.root)?
+                .into_iter()
+                .map(|source| source.canonical)
+                .collect(),
+            assets,
+        })
+    }
+
+    fn unchanged_data(&self, source: &Path, literal: &str) -> bool {
+        let Some(path) = resolve_data(source, literal) else {
+            return false;
+        };
+        self.watched.contains(&path)
+            && !self.html.contains(&path)
+            && !self
+                .assets
+                .as_ref()
+                .is_some_and(|assets| path.starts_with(assets))
+    }
+}
+
+/// Snapshot collection does not follow symlinks. Reject them in include paths
+/// too, so an unwatched link edit cannot redirect a previously cleared include.
+fn resolve_data(source: &Path, literal: &str) -> Option<PathBuf> {
+    let mut path = source.parent()?.canonicalize().ok()?;
+    for component in Path::new(literal).components() {
+        match component {
+            Component::Normal(name) => {
+                path.push(name);
+                if fs::symlink_metadata(&path).ok()?.file_type().is_symlink() {
+                    return None;
+                }
+            }
+            Component::ParentDir => {
+                path.pop();
+            }
+            Component::CurDir => {}
+            Component::Prefix(_) | Component::RootDir => return None,
+        }
+    }
+    fs::symlink_metadata(&path).ok()?.is_file().then_some(path)
 }
 
 /// `false` for any edit that needs a real build.
@@ -234,6 +307,185 @@ fn non_css_assets(root: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct RefreshFixture {
+        project: Project,
+        dependency: PathBuf,
+        artifact: ArtifactManifest,
+        _cleanup: crate::transaction::Staging,
+    }
+
+    impl RefreshFixture {
+        fn new() -> Self {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let root = std::env::temp_dir().join(format!(
+                "fusor-refresh-{}-{}",
+                crate::pipeline::publish::generation(),
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            ));
+            let app = root.join("app");
+            let dependency = root.join("dependency");
+            for path in [
+                "app/web",
+                "app/public",
+                "dependency/src",
+                "dependency/runtime",
+            ] {
+                fs::create_dir_all(root.join(path)).unwrap();
+            }
+            fs::write(app.join("web/index.html"), "<main>hello</main>").unwrap();
+            fs::write(app.join("public/data.bin"), "asset").unwrap();
+            fs::write(
+                dependency.join("runtime/registry.js"),
+                "export const x = 1;",
+            )
+            .unwrap();
+            let project = Project {
+                id: "test".into(),
+                name: "test".into(),
+                manifest: app.join("Cargo.toml"),
+                workspace: root.clone(),
+                target: root.join("target"),
+                watch_roots: vec![app.clone(), dependency.clone()],
+                config: app::AppConfig {
+                    assets: Some("public".into()),
+                    ..Default::default()
+                },
+                root: app,
+            };
+            let artifact = ArtifactManifest {
+                version: app::ARTIFACT_VERSION,
+                html: root.join("target/app.html"),
+                module: root.join("target/module.rs"),
+                loader_offset: 0,
+                managed_entry: false,
+                sources: vec![],
+                javascript: vec![],
+            };
+            Self {
+                project,
+                dependency,
+                artifact,
+                _cleanup: crate::transaction::Staging(root),
+            }
+        }
+
+        fn enabled(&self, source: &str) -> bool {
+            fs::write(self.dependency.join("src/lib.rs"), source).unwrap();
+            enabled(&Context::default(), &self.project, &self.artifact).unwrap()
+        }
+    }
+
+    #[test]
+    fn watched_dependency_data_outside_refreshable_inputs_allows_static_refresh() {
+        let fixture = RefreshFixture::new();
+        for source in [
+            r#"const JS: &str = include_str!("../runtime/registry.js");"#,
+            r#"const JS: &[u8] = include_bytes!("../runtime/registry.js");"#,
+        ] {
+            assert!(fixture.enabled(source), "{source}");
+        }
+        assert!(
+            !try_refresh(
+                &Context::default(),
+                &fixture.project,
+                &[fixture.dependency.join("runtime/registry.js")],
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn embedded_html_assets_and_uncertain_includes_still_disable_refresh() {
+        let fixture = RefreshFixture::new();
+        for source in [
+            r#"const HTML: &str = include_str!("../../app/web/index.html");"#,
+            r#"const DATA: &[u8] = include_bytes!("../../app/public/data.bin");"#,
+            r#"include!("../runtime/registry.js");"#,
+            r#"const JS: &str = include_str!(concat!("../runtime/", "registry.js"));"#,
+            r#"const JS: &str = include_str!("../runtime/missing.js");"#,
+            r#"macro_rules! data { () => { include_str!("../runtime/registry.js") } }"#,
+            r#"opaque!(include_str!("../runtime/registry.js"));"#,
+            "fn broken( {",
+        ] {
+            assert!(!fixture.enabled(source), "{source}");
+        }
+    }
+
+    #[test]
+    fn previous_javascript_inputs_do_not_clear_a_rust_data_include() {
+        let fixture = RefreshFixture::new();
+        let unwatched = fixture.project.workspace.join("unwatched");
+        fs::create_dir(&unwatched).unwrap();
+        let data = unwatched.join("data.txt");
+        fs::write(&data, "previous JavaScript input").unwrap();
+        let output = fixture.project.output(&Context::default());
+        fs::create_dir_all(&output).unwrap();
+        let mut manifest = OutputManifest::new(
+            crate::pipeline::publish::generation(),
+            &fixture.project.config,
+        );
+        manifest.javascript = Some(crate::pipeline::manifest::Javascript {
+            inputs: vec![data.to_string_lossy().into_owned()],
+            styles: vec![],
+        });
+        manifest.write(&output).unwrap();
+        assert!(
+            !fixture.enabled(r#"const DATA: &str = include_str!("../../unwatched/data.txt");"#)
+        );
+    }
+
+    #[test]
+    fn data_outside_the_watcher_cannot_enable_refresh() {
+        let fixture = RefreshFixture::new();
+        let unwatched = fixture.project.workspace.join("unwatched");
+        fs::create_dir(&unwatched).unwrap();
+        fs::write(unwatched.join("data.txt"), "not watched").unwrap();
+        assert!(
+            !fixture.enabled(r#"const DATA: &str = include_str!("../../unwatched/data.txt");"#)
+        );
+    }
+
+    #[test]
+    fn generated_source_include_locations_remain_conservative() {
+        let mut fixture = RefreshFixture::new();
+        fs::create_dir_all(&fixture.project.target).unwrap();
+        let rust = fixture.project.target.join("generated.rs");
+        fs::write(
+            &rust,
+            r#"const JS: &str = include_str!("../dependency/runtime/registry.js");"#,
+        )
+        .unwrap();
+        fixture.artifact.sources.push(app::SourceArtifact {
+            name: "app".into(),
+            source: fixture.project.root.join("web/index.html"),
+            rust: rust.clone(),
+            fingerprint: rust.clone(),
+            map: rust.with_extension("map"),
+            external: None,
+            registration: None,
+        });
+        assert!(!fixture.enabled("fn source() {}"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unwatched_symlink_changes_cannot_redirect_a_cleared_include() {
+        let fixture = RefreshFixture::new();
+        let data = fixture.dependency.join("runtime/registry.js");
+        std::os::unix::fs::symlink(&data, fixture.dependency.join("runtime/link.js")).unwrap();
+        std::os::unix::fs::symlink(
+            fixture.dependency.join("runtime"),
+            fixture.dependency.join("linked"),
+        )
+        .unwrap();
+        for source in [
+            r#"const JS: &str = include_str!("../runtime/link.js");"#,
+            r#"const JS: &str = include_str!("../linked/registry.js");"#,
+        ] {
+            assert!(!fixture.enabled(source), "{source}");
+        }
+    }
 
     fn fingerprint(source: &str) -> Vec<Value> {
         let mut out = Vec::new();
