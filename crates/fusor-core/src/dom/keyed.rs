@@ -182,6 +182,45 @@ fn server_rows<K>(
     keys: &[K],
     encode: &EncodeKey<K>,
 ) -> Result<Vec<Element>, JsValue> {
+    // Compare every row natively in one call. Keys encode in order: a failed
+    // encoding is reported after the rows before it and its own row are
+    // checked, as when comparing one row at a time.
+    let mut encoded = String::new();
+    let mut failure = None;
+    let mut count = 0;
+    for key in keys {
+        match encode(key) {
+            // A separator inside an encoding needs the one-at-a-time path.
+            Ok(value) if value.contains('\n') => {
+                return server_rows_one_by_one(container, keys, encode);
+            }
+            Ok(value) => {
+                if count > 0 {
+                    encoded.push('\n');
+                }
+                encoded.push_str(&value);
+                count += 1;
+            }
+            Err(error) => {
+                failure = Some(error);
+                break;
+            }
+        }
+    }
+    let rows = strings::server_rows(container, &encoded, count as u32, failure.is_none())?;
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    Ok((0..count as u32)
+        .map(|index| rows.get(index).unchecked_into())
+        .collect())
+}
+
+fn server_rows_one_by_one<K>(
+    container: &Element,
+    keys: &[K],
+    encode: &EncodeKey<K>,
+) -> Result<Vec<Element>, JsValue> {
     let mut node = container.first_element_child();
     let mut rows = Vec::with_capacity(keys.len());
     for key in keys {
