@@ -354,6 +354,42 @@ export function bindingIntegerText(nodes, index, number) {
   const text = nodes[index], value = "" + number;
   if (text.data !== value) text.data = value;
 }
+export function hydrateRootOk(plan, root, schema, identity, versionOk) {
+  try {
+    outcome = hydrateRoot(plan, root, schema, identity, versionOk);
+    return true;
+  } catch (error) {
+    outcome = error;
+    return false;
+  }
+}
+export function bindingSetAttributeOk(nodes, index, name, value) {
+  try {
+    nodes[index].setAttribute(name, value);
+    return true;
+  } catch (error) {
+    outcome = error;
+    return false;
+  }
+}
+export function bindingSetIntegerAttributeOk(nodes, index, name, number) {
+  try {
+    nodes[index].setAttribute(name, "" + number);
+    return true;
+  } catch (error) {
+    outcome = error;
+    return false;
+  }
+}
+export function bindingRemoveAttributeOk(nodes, index, name) {
+  try {
+    nodes[index].removeAttribute(name);
+    return true;
+  } catch (error) {
+    outcome = error;
+    return false;
+  }
+}
 export function bindingSetAttribute(nodes, index, name, value) {
   nodes[index].setAttribute(name, value);
 }

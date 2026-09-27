@@ -39,35 +39,29 @@ extern "C" {
     #[wasm_bindgen(js_name = takeOutcome)]
     fn take_outcome() -> JsValue;
     #[cfg(feature = "islands")]
-    #[wasm_bindgen(catch, js_name = hydrateRoot)]
-    fn hydrate_native_root(
+    #[wasm_bindgen(js_name = hydrateRootOk)]
+    fn hydrate_root_ok(
         plan: &JsValue,
         root: &Element,
         schema: &JsValue,
         identity: &JsValue,
         version_ok: bool,
-    ) -> Result<JsValue, JsValue>;
+    ) -> bool;
     #[wasm_bindgen(js_name = bindingText)]
     fn binding_text(nodes: &JsValue, index: u32, value: &str);
     #[wasm_bindgen(js_name = bindingIntegerText)]
     fn binding_integer_text(nodes: &JsValue, index: u32, value: f64);
-    #[wasm_bindgen(catch, js_name = bindingSetAttribute)]
-    fn binding_set_attribute(
-        nodes: &JsValue,
-        index: u32,
-        name: &JsValue,
-        value: &str,
-    ) -> Result<(), JsValue>;
-    #[wasm_bindgen(catch, js_name = bindingSetIntegerAttribute)]
-    fn binding_set_integer_attribute(
+    #[wasm_bindgen(js_name = bindingSetAttributeOk)]
+    fn binding_set_attribute_ok(nodes: &JsValue, index: u32, name: &JsValue, value: &str) -> bool;
+    #[wasm_bindgen(js_name = bindingSetIntegerAttributeOk)]
+    fn binding_set_integer_attribute_ok(
         nodes: &JsValue,
         index: u32,
         name: &JsValue,
         value: f64,
-    ) -> Result<(), JsValue>;
-    #[wasm_bindgen(catch, js_name = bindingRemoveAttribute)]
-    fn binding_remove_attribute(nodes: &JsValue, index: u32, name: &JsValue)
-    -> Result<(), JsValue>;
+    ) -> bool;
+    #[wasm_bindgen(js_name = bindingRemoveAttributeOk)]
+    fn binding_remove_attribute_ok(nodes: &JsValue, index: u32, name: &JsValue) -> bool;
     // All target types were validated before the user factory. Returning the
     // pinned handle must not re-check a prototype changed by that factory.
     #[wasm_bindgen(js_name = bindingElement)]
@@ -122,6 +116,46 @@ pub(super) fn resolve_bundle(
 ) -> Result<JsValue, JsValue> {
     let plan = plan(descriptor);
     resolve_bindings(&plan.native, root, cached)
+}
+
+/// A `*Ok` host call's result: nothing, or what it threw.
+fn outcome(ok: bool) -> Result<(), JsValue> {
+    if ok { Ok(()) } else { Err(take_outcome()) }
+}
+
+#[cfg(feature = "islands")]
+fn hydrate_native_root(
+    plan: &JsValue,
+    root: &Element,
+    schema: &JsValue,
+    identity: &JsValue,
+    version_ok: bool,
+) -> Result<JsValue, JsValue> {
+    let hydrated = hydrate_root_ok(plan, root, schema, identity, version_ok);
+    let nodes = take_outcome();
+    if hydrated { Ok(nodes) } else { Err(nodes) }
+}
+
+fn binding_set_attribute(
+    nodes: &JsValue,
+    index: u32,
+    name: &JsValue,
+    value: &str,
+) -> Result<(), JsValue> {
+    outcome(binding_set_attribute_ok(nodes, index, name, value))
+}
+
+fn binding_set_integer_attribute(
+    nodes: &JsValue,
+    index: u32,
+    name: &JsValue,
+    value: f64,
+) -> Result<(), JsValue> {
+    outcome(binding_set_integer_attribute_ok(nodes, index, name, value))
+}
+
+fn binding_remove_attribute(nodes: &JsValue, index: u32, name: &JsValue) -> Result<(), JsValue> {
+    outcome(binding_remove_attribute_ok(nodes, index, name))
 }
 
 /// Clone and resolve the document's template for a bundled flat descriptor in
