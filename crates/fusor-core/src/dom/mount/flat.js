@@ -277,19 +277,42 @@ export function mountTemplate(plan, selector, schema, identity, versionOk) {
   if (!(template instanceof HTMLTemplateElement)) mismatch('expected an HTML template');
   const content = template.content;
   if (content.childElementCount !== 1) throw 'fusor: a row template needs exactly one root element';
-  const root = content.firstElementChild.cloneNode(true);
+  const source = content.firstElementChild;
   if (!versionOk) mismatch('unsupported descriptor version; rebuild the application');
   const certificate = plan.bindingCache;
-  let nodes;
-  if (certificate && root.isEqualNode(certificate.pristine)) {
-    nodes = certifiedBindings(certificate, root, 1);
-    nodes[nodes.length - 1] = root;
-  } else {
-    nodes = scannedBindings(plan, root, true);
-    nodes.push(root);
+  // A template equal to its certificate clones the certificate's mounted form,
+  // which already holds the created text nodes and the instance mark.
+  if (certificate && source.isEqualNode(certificate.pristine)) {
+    let mounted = certificate.mounted;
+    if (mounted === undefined || mounted.identity !== identity) {
+      mounted = certificate.mounted = mountedForm(certificate, identity);
+    }
+    return mountedBindings(mounted);
   }
+  const root = source.cloneNode(true);
+  const nodes = scannedBindings(plan, root, true);
+  nodes.push(root);
   root.setAttribute('data-fusor-instance', identity);
   return nodes;
+}
+
+// A clone of the mounted form, with its binding targets and then its root.
+function mountedBindings(mounted) {
+  const root = mounted.root.cloneNode(true), paths = mounted.paths, count = paths.length;
+  const nodes = new Array(count + 1);
+  for (let i = 0; i < count; i++) nodes[i] = followPath(root, paths[i]);
+  nodes[count] = root;
+  return nodes;
+}
+
+// The certified template as a certified mount leaves it: an inert copy of the
+// pristine snapshot with its created text nodes and instance mark, and the
+// path of every binding target within it.
+function mountedForm(certificate, identity) {
+  const root = certificate.pristine.cloneNode(true);
+  const targets = certifiedBindings(certificate, root, 0);
+  root.setAttribute('data-fusor-instance', identity);
+  return { identity, root, paths: targets.map((node) => pathFrom(root, node)) };
 }
 
 // A server-rendered root of a flat bundled descriptor in one native call, in
