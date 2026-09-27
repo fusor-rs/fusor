@@ -1,0 +1,478 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "61adf1ec6735b703b7746af38883b9cb1c0012dde1a9f511047095965cd6d980",
+  "cargoReceipt": {
+    "schema": 2,
+    "nativeSsr": {
+      "fusor": "/Users/andrespirela/workspace/rust-front/target/release/ssr",
+      "leptos": "/Users/andrespirela/workspace/rust-front/benchmarks/workloads/leptos/target/release/ssr"
+    },
+    "toolchain": {
+      "fusor": {
+        "version": "0.1.0",
+        "wasmBindgen": "0.2.117",
+        "wasmOpt": {
+          "version": "wasm-opt version 132 (version_132)",
+          "flags": [
+            "-O3",
+            "--enable-bulk-memory",
+            "--enable-reference-types",
+            "--enable-multivalue",
+            "--enable-sign-ext",
+            "--enable-nontrapping-float-to-int"
+          ]
+        },
+        "wasmNameSection": "removed"
+      },
+      "leptos": {
+        "leptos": "0.8.20",
+        "wasmBindgen": "0.2.117",
+        "wasmOpt": {
+          "version": "wasm-opt version 132 (version_132)",
+          "flags": [
+            "-O3",
+            "--enable-bulk-memory",
+            "--enable-reference-types",
+            "--enable-multivalue",
+            "--enable-sign-ext",
+            "--enable-nontrapping-float-to-int"
+          ]
+        },
+        "wasmNameSection": "removed",
+        "profile": "release: opt-level=3, lto=true, codegen-units=1, panic=abort"
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "benchmarks/dist/build.json",
+      "bytes": 1179,
+      "sha256": "f88e2d083717553f654d7e70db60994afe466bf2c744732629d58436be2c3fab"
+    },
+    {
+      "path": "benchmarks/dist/leptos/common.js",
+      "bytes": 484,
+      "sha256": "fc06de4038976fd1ab62b7e06caeb67397dea9cd118b0a6750547a25f52d0a41"
+    },
+    {
+      "path": "benchmarks/dist/leptos/hello/index.html",
+      "bytes": 277,
+      "sha256": "ae7652301e27c6b7a28083ac9926419e2759f213c4fb325c86c2ba277aae3e7f"
+    },
+    {
+      "path": "benchmarks/dist/leptos/hello/pkg/app.d.ts",
+      "bytes": 3735,
+      "sha256": "b62b0897a95e2a990478c6c61b73471c45fb6684c820efd695458f81e3c4371c"
+    },
+    {
+      "path": "benchmarks/dist/leptos/hello/pkg/app.js",
+      "bytes": 21425,
+      "sha256": "b4860962a734effb131b92862aaf86e47ab1ed12799d156e6b38f32816553321"
+    },
+    {
+      "path": "benchmarks/dist/leptos/hello/pkg/app_bg.wasm",
+      "bytes": 55445,
+      "sha256": "0d3e80ea03f93f570a6427f5b4dff9457ee821d1ed5a3241b0ac4c42d99e4ed9"
+    },
+    {
+      "path": "benchmarks/dist/leptos/hello/pkg/app_bg.wasm.d.ts",
+      "bytes": 1785,
+      "sha256": "5ce7321d724354412595f651e70e483349ac631c30c6fb003bc8d21868f6b317"
+    },
+    {
+      "path": "benchmarks/dist/leptos/index.html",
+      "bytes": 651,
+      "sha256": "6d61c2a8322a32959feb0e862123cd6a5a5bea4ddd5450f5f8c79fa4f51b9521"
+    },
+    {
+      "path": "benchmarks/dist/leptos/pkg/app.d.ts",
+      "bytes": 5320,
+      "sha256": "81f078a55db34e3bee95c786ea023d2add17429fc34b60163d61cbc687a1f36f"
+    },
+    {
+      "path": "benchmarks/dist/leptos/pkg/app.js",
+      "bytes": 31137,
+      "sha256": "cb83cae2949ced7d94faf15671aebdfe31e4990e479349dcae229d94436d502d"
+    },
+    {
+      "path": "benchmarks/dist/leptos/pkg/app_bg.wasm",
+      "bytes": 167589,
+      "sha256": "cf9364aa2db88312610175fe1e4f5aa0824a67d3bfae2c605768a9831b2247ad"
+    },
+    {
+      "path": "benchmarks/dist/leptos/pkg/app_bg.wasm.d.ts",
+      "bytes": 2538,
+      "sha256": "5f88270ebd72eb47a9b2af6638adcf6d4201123d701e517c70b816c31c9da2b1"
+    },
+    {
+      "path": "benchmarks/dist/leptos/todo/index.html",
+      "bytes": 275,
+      "sha256": "64398527fd7cb9614537d00ae15d21cb3748cfcead51528177b0417425fc412a"
+    },
+    {
+      "path": "benchmarks/dist/leptos/todo/pkg/app.d.ts",
+      "bytes": 4077,
+      "sha256": "641285e11c8d73344f77bf8df409deb0986dcb03a1391450b357bed18ba18840"
+    },
+    {
+      "path": "benchmarks/dist/leptos/todo/pkg/app.js",
+      "bytes": 28801,
+      "sha256": "43423717a029eabd7c6a549d96ce3f4ba41170ffae533b56799d132133ea6357"
+    },
+    {
+      "path": "benchmarks/dist/leptos/todo/pkg/app_bg.wasm",
+      "bytes": 176882,
+      "sha256": "f7e5930f987ff04c4043402d62809f062e3e83deb5bab9d3dca861d1fe32ae44"
+    },
+    {
+      "path": "benchmarks/dist/leptos/todo/pkg/app_bg.wasm.d.ts",
+      "bytes": 2127,
+      "sha256": "7dfd2b2b733585154c18f77850d4fc8e1e2b0bfb751a2aca67edc74d20ee12f1"
+    },
+    {
+      "path": "benchmarks/dist/preact/assets/index-BR2pIli5.js",
+      "bytes": 21323,
+      "sha256": "340f219c541f49aa20f5aa430435c03fec589a1be10b5cf8f1fc8c3f13c390ae"
+    },
+    {
+      "path": "benchmarks/dist/preact/hello/assets/index-CZNPUv8u.js",
+      "bytes": 11438,
+      "sha256": "5d4f59a7831495a8c6481ffb8d3b0fa0d9b7503e48eab902f7a6244dc811d7a1"
+    },
+    {
+      "path": "benchmarks/dist/preact/hello/index.html",
+      "bytes": 305,
+      "sha256": "c10cdbafbcba8bed9ca200dca99f6cfc54a966f5f778d8ab3610ab52abf2d486"
+    },
+    {
+      "path": "benchmarks/dist/preact/index.html",
+      "bytes": 299,
+      "sha256": "bfc63f933eb606a7b8f0b61597613d75333d99fda647d4db6e1801c04f6d5f90"
+    },
+    {
+      "path": "benchmarks/dist/preact/todo/assets/index-TLPRZ8Up.js",
+      "bytes": 14853,
+      "sha256": "118c893f4271ccde9cc97c8b47f13b17a1ccb62fa3dc26170ee059852c871023"
+    },
+    {
+      "path": "benchmarks/dist/preact/todo/index.html",
+      "bytes": 303,
+      "sha256": "374a8bb0643b8475973c2cd0e64d89170301c68d6219b0f4aa0878de1994081a"
+    },
+    {
+      "path": "benchmarks/dist/react/assets/index-BG2gXAtA.js",
+      "bytes": 222482,
+      "sha256": "16958c3a6be96b0ebc1a3b367eecd2a1ff07662ec5c2f794e2632d98cdf8473a"
+    },
+    {
+      "path": "benchmarks/dist/react/hello/assets/index-Dqcy6bvd.js",
+      "bytes": 219561,
+      "sha256": "e08ba294beab43e8cfa8b8ff0a27213f42e942d2a05886929430e8d20f6e5a3b"
+    },
+    {
+      "path": "benchmarks/dist/react/hello/index.html",
+      "bytes": 303,
+      "sha256": "2c67d0ad0e1afb6c555d7a54d358c21538517a3b5d96eee569c6d3a639299079"
+    },
+    {
+      "path": "benchmarks/dist/react/index.html",
+      "bytes": 297,
+      "sha256": "8c9f4a03675af3d28692e24a053018314acd3831d1ed47ace52e7e13ceb89a53"
+    },
+    {
+      "path": "benchmarks/dist/react/todo/assets/index-C5RF3EzQ.js",
+      "bytes": 221245,
+      "sha256": "1da334087554e0be443e5584a519a8e302c16d7df80b6871b97e38aceaf20e7d"
+    },
+    {
+      "path": "benchmarks/dist/react/todo/index.html",
+      "bytes": 301,
+      "sha256": "68fe9e8eb7032d2eebd8b092b0f6a5638bf618dc382e5eddf39d40f07e0953f6"
+    },
+    {
+      "path": "benchmarks/dist/server/preact/render.js",
+      "bytes": 1853,
+      "sha256": "70b0df9e2094986cc9f19b7fb77108fd368ca153cecac930bdfaf2c2b9c8f634"
+    },
+    {
+      "path": "benchmarks/dist/server/react/render.js",
+      "bytes": 1919,
+      "sha256": "b23eb655d167962839c15be4526b5928ab6e67326e0eb0ab90c38358640fa34b"
+    },
+    {
+      "path": "benchmarks/dist/server/solid/render.js",
+      "bytes": 1673,
+      "sha256": "d895de694f3fece57ff95ee53a947cc050266ccccdbda4409d2934dfc43f5211"
+    },
+    {
+      "path": "benchmarks/dist/server/svelte/render.js",
+      "bytes": 14103,
+      "sha256": "847e291e9a5b7bfbd6b4c7a5b64af34a4747bdfe03c94d80d658348dfc6914d0"
+    },
+    {
+      "path": "benchmarks/dist/server/vue/render.js",
+      "bytes": 1584,
+      "sha256": "68b2f045fb39daa32fb18b615cea8a1c3961217f7a3cda5b4e3763553529c623"
+    },
+    {
+      "path": "benchmarks/dist/solid/assets/index-C733GOVx.js",
+      "bytes": 14861,
+      "sha256": "84906bbd8ae7df7131a4f67f106c1412c2e9c6f72e6e72d420caf5a47c240de2"
+    },
+    {
+      "path": "benchmarks/dist/solid/hello/assets/index-BwACtK4S.js",
+      "bytes": 9768,
+      "sha256": "4239a71544cd12df95df11cadf371123be492da324fb70be6b3ee486715c33f6"
+    },
+    {
+      "path": "benchmarks/dist/solid/hello/index.html",
+      "bytes": 303,
+      "sha256": "9163926c1ea3c98f63b49a8a047e0a37b28fb2cfed4ed970c7cc6c55bea5b315"
+    },
+    {
+      "path": "benchmarks/dist/solid/index.html",
+      "bytes": 297,
+      "sha256": "aae04851e872f4a79a6229106ed4b2fd5b583cc1cf4809d5c6656e3ffdfac8fc"
+    },
+    {
+      "path": "benchmarks/dist/solid/todo/assets/index-CfL7crEc.js",
+      "bytes": 17125,
+      "sha256": "887c25cfc5ccae968b4e2f99410df8652a6561dc1f3ff18ad7bed18770ca648e"
+    },
+    {
+      "path": "benchmarks/dist/solid/todo/index.html",
+      "bytes": 301,
+      "sha256": "a2a25455430977e6b742e7241fcfe1c30b33d104a6c3fdb7e1f59cb2f7a6194f"
+    },
+    {
+      "path": "benchmarks/dist/svelte/assets/index-CVq1nB45.js",
+      "bytes": 37697,
+      "sha256": "cb263cbed34ad7d7b3ed58c233907bde24c64a265e34649b4425e7b1adb2e1c4"
+    },
+    {
+      "path": "benchmarks/dist/svelte/hello/assets/index-CMmBY3cH.js",
+      "bytes": 22790,
+      "sha256": "1e6a6c96d9d28edea4f353cbae88bd675e0ceb45ab6fb0d99d82ebab2426cabd"
+    },
+    {
+      "path": "benchmarks/dist/svelte/hello/index.html",
+      "bytes": 305,
+      "sha256": "ed9f33c9684c5107a711272f9310896d74996c440e3e8c8356819461c9bce4e4"
+    },
+    {
+      "path": "benchmarks/dist/svelte/index.html",
+      "bytes": 299,
+      "sha256": "5caad0804c71b5ad65739a9beae7d5da758b11fc35610a857287611326684305"
+    },
+    {
+      "path": "benchmarks/dist/svelte/todo/assets/index-oOzPs_8y.js",
+      "bytes": 35728,
+      "sha256": "5694dccbf9d85011b3a3429fdd8bfa668a5ddd6138280604a86a1d427a865127"
+    },
+    {
+      "path": "benchmarks/dist/svelte/todo/index.html",
+      "bytes": 303,
+      "sha256": "ade94bc4b691ed155a1ec0533da4d79bb84f8e69daa3bade42a12d2aa736db8d"
+    },
+    {
+      "path": "benchmarks/dist/vue/assets/index-BXoGpxqa.js",
+      "bytes": 68384,
+      "sha256": "b6f381783ae3d6210b66f982c1a1e9446718955c3c3e7f4fe8717e9e03e715f6"
+    },
+    {
+      "path": "benchmarks/dist/vue/hello/assets/index-DcGJai30.js",
+      "bytes": 60434,
+      "sha256": "ab21e02284006dd980e31bc4b8bd5217c98fd08114a15687dc1e2b59fd648a9b"
+    },
+    {
+      "path": "benchmarks/dist/vue/hello/index.html",
+      "bytes": 299,
+      "sha256": "2b34b0659d9c1b539ca98fd031ff26d7f35e259da2952d78713539ecaca8bfae"
+    },
+    {
+      "path": "benchmarks/dist/vue/index.html",
+      "bytes": 293,
+      "sha256": "ee2d04ce138f838c784e5607c02d3c6dea61d41f1c8edba3539eaaf7293e8812"
+    },
+    {
+      "path": "benchmarks/dist/vue/todo/assets/index-BvbBfT1n.js",
+      "bytes": 65668,
+      "sha256": "b9717948cabc83065965011c8f1225104979242b24a95e6bc29fd5b5ce267e43"
+    },
+    {
+      "path": "benchmarks/dist/vue/todo/index.html",
+      "bytes": 297,
+      "sha256": "dce74a317c4df34023524f5d97c9e4e9539fe2f9503cb65c63280af9385eb6c1"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/.fusor-output.json",
+      "bytes": 133,
+      "sha256": "27a3c0df0fc7e619a74ec6d6e36004ac01f6bfa6124544aae1487d8eea29289c"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790541259322746000-52088/boot.js",
+      "bytes": 437,
+      "sha256": "e8110f73a474cba22778ddd8927a4c5d507a3fa379be7f0bc4b16b62afcf7caa"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790541259322746000-52088/pkg/app.d.ts",
+      "bytes": 1509,
+      "sha256": "74448e3e88af5f8f6f5b9df2315dc228c1c75ee3c942baad301a51a209d29d10"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790541259322746000-52088/pkg/app.js",
+      "bytes": 19629,
+      "sha256": "20c2c6493ee0d13f60c73d3cc6098981fe8d517b687619c4ad2ffddae902d60f"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790541259322746000-52088/pkg/app_bg.wasm",
+      "bytes": 125893,
+      "sha256": "290f672fb56815c16f24608b690401ac093b2a1681356cebdbd8da28b55f5bee"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790541259322746000-52088/pkg/app_bg.wasm.d.ts",
+      "bytes": 484,
+      "sha256": "6bc68c44a426a993d33cb4f604db464e986835e5b8f4e2202d9529613934ffc5"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790541259322746000-52088/pkg/snippets/fusor-core-a3434bdc242d5153/inline0.js",
+      "bytes": 2146,
+      "sha256": "2e7aba46850be312d081689a69074f0978e7e0646b8cafecd55af095cdd0b97b"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790541259322746000-52088/pkg/snippets/fusor-core-a3434bdc242d5153/inline1.js",
+      "bytes": 2333,
+      "sha256": "ce7e9129649e73b61648e4211caa35fb53b94991bf884d4c3cc6b6f72f28b446"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/__fusor/g-1790541259322746000-52088/pkg/snippets/fusor-core-a3434bdc242d5153/src/dom/mount/flat.js",
+      "bytes": 16236,
+      "sha256": "9730ca3be173acdac3704472c5057476b91a9c3739b684c3eb31ad80329d2caa"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-hello/dist/index.html",
+      "bytes": 983,
+      "sha256": "e8617d15e66501202a6dcb23273c3244ae0449b9c7b712e3d2562a41d1e49bc8"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/.fusor-output.json",
+      "bytes": 132,
+      "sha256": "72ffddcfa2107db7c8ff4393f49b61126b9eae8405ef84b1ad667604a89b2d69"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790541301883152000-52159/boot.js",
+      "bytes": 437,
+      "sha256": "e8110f73a474cba22778ddd8927a4c5d507a3fa379be7f0bc4b16b62afcf7caa"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790541301883152000-52159/pkg/app.d.ts",
+      "bytes": 1720,
+      "sha256": "4bbaee83ef16c455f56b9be13e61a77338b5b5fe8a013b804cc14b5cbdee05bd"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790541301883152000-52159/pkg/app.js",
+      "bytes": 30391,
+      "sha256": "9f0a2e8c4b634729b12f0df783cd86812b473b08e5b558f4ae83a0c438bf87ab"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790541301883152000-52159/pkg/app_bg.wasm",
+      "bytes": 277261,
+      "sha256": "5320ad4205e9209d2dc12874403a3c48dacfb0e01dafa183a6018a90ebef57df"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790541301883152000-52159/pkg/app_bg.wasm.d.ts",
+      "bytes": 695,
+      "sha256": "a04252f301c722b573516584cfffb2d69605bdba38a91fd6356b3a1c0c0f4460"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790541301883152000-52159/pkg/snippets/fusor-core-a3434bdc242d5153/inline0.js",
+      "bytes": 2146,
+      "sha256": "2e7aba46850be312d081689a69074f0978e7e0646b8cafecd55af095cdd0b97b"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790541301883152000-52159/pkg/snippets/fusor-core-a3434bdc242d5153/inline1.js",
+      "bytes": 2333,
+      "sha256": "ce7e9129649e73b61648e4211caa35fb53b94991bf884d4c3cc6b6f72f28b446"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/__fusor/g-1790541301883152000-52159/pkg/snippets/fusor-core-a3434bdc242d5153/src/dom/mount/flat.js",
+      "bytes": 16236,
+      "sha256": "9730ca3be173acdac3704472c5057476b91a9c3739b684c3eb31ad80329d2caa"
+    },
+    {
+      "path": "benchmarks/workloads/fusor-todo/dist/index.html",
+      "bytes": 1727,
+      "sha256": "725b464fb5a380e0dd933ab230d539c8376360b2bec5d2da8c4867edf80f30b1"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/.fusor-output.json",
+      "bytes": 127,
+      "sha256": "75f3cbdac365916e8daec2c240c69b18d6d20ad7c74b1a224b3dbcf97793dbc9"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790541250980828000-52041/boot.js",
+      "bytes": 232,
+      "sha256": "916076e105bf1033a23e67aa6279d4769e06dd44a4ecde3de63bd136b2f3b654"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790541250980828000-52041/pkg/app.d.ts",
+      "bytes": 2832,
+      "sha256": "d284411216187febca6373f7eb0ed91b3d2e897492d45417f0e94ed4bac71fe7"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790541250980828000-52041/pkg/app.js",
+      "bytes": 32614,
+      "sha256": "83048699cf15e505dc1107ba9ea3dd2bd39b5242854c52a868cf18a1da38203a"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790541250980828000-52041/pkg/app_bg.wasm",
+      "bytes": 275348,
+      "sha256": "3e32c2b8448abb3fcfeeb384dc699e9523bb751b86514ad9158052237ed50800"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790541250980828000-52041/pkg/app_bg.wasm.d.ts",
+      "bytes": 1285,
+      "sha256": "52b4dd0b7a41a086f73ce6b8abf7aafff433a2d12c5727da47c19d86908b31bf"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790541250980828000-52041/pkg/snippets/fusor-core-a3434bdc242d5153/inline0.js",
+      "bytes": 2146,
+      "sha256": "2e7aba46850be312d081689a69074f0978e7e0646b8cafecd55af095cdd0b97b"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790541250980828000-52041/pkg/snippets/fusor-core-a3434bdc242d5153/inline1.js",
+      "bytes": 93,
+      "sha256": "6b44c02c1fe4fe3a4b6aab985fb0450aa6e1ad36feb7e6054686919c800b36eb"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790541250980828000-52041/pkg/snippets/fusor-core-a3434bdc242d5153/inline2.js",
+      "bytes": 2333,
+      "sha256": "ce7e9129649e73b61648e4211caa35fb53b94991bf884d4c3cc6b6f72f28b446"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/__fusor/g-1790541250980828000-52041/pkg/snippets/fusor-core-a3434bdc242d5153/src/dom/mount/flat.js",
+      "bytes": 16236,
+      "sha256": "9730ca3be173acdac3704472c5057476b91a9c3739b684c3eb31ad80329d2caa"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/harness.js",
+      "bytes": 948,
+      "sha256": "ad5eaba0dca741334e5302f9dbcdadfed70aaac0552d59900682990a25ab3e83"
+    },
+    {
+      "path": "benchmarks/workloads/fusor/dist/index.html",
+      "bytes": 1601,
+      "sha256": "c824d39b4f796327e82b7e7ccc73536b1409026adad4ef3a9d3fde7619fd9eee"
+    },
+    {
+      "path": "benchmarks/workloads/leptos/target/release/ssr",
+      "bytes": 572576,
+      "sha256": "c7b59ced2729878bcfd792e218ffb133c1eda88187775b32e91104e4aea61c99"
+    },
+    {
+      "path": "target/release/ssr",
+      "bytes": 453792,
+      "sha256": "a00bf65927fe797351ea43f6369db732bab202cd286cf3bf4e358a8433ba4adf"
+    }
+  ]
+}

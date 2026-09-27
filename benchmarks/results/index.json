@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "published": {
-    "experiment": "20260927-runtime-optimizations",
+    "experiment": "20260927-runtime-optimizations-3",
     "evidence": "data/full.json",
-    "sha256": "78fa6cfaec9567d3bc947f9ea0a75efdf04f87c01b256934b9c76fce1728433a"
+    "sha256": "be33b27c92fadd9c0ec028d847395ccbd8cebe8865f3afb8c9f79924faf0c38c"
   },
   "experiments": [
     {
@@ -20,6 +20,16 @@
       "id": "20260927-runtime-optimizations",
       "title": "Runtime optimizations",
       "path": "history/20260927-runtime-optimizations/record.json"
+    },
+    {
+      "id": "20260927-runtime-optimizations-2",
+      "title": "Runtime optimizations, second pass",
+      "path": "history/20260927-runtime-optimizations-2/record.json"
+    },
+    {
+      "id": "20260927-runtime-optimizations-3",
+      "title": "Runtime optimizations, third pass",
+      "path": "history/20260927-runtime-optimizations-3/record.json"
     }
   ]
 }

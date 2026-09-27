@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "id": "20260927-runtime-optimizations-3",
+  "title": "Runtime optimizations, third pass",
+  "createdAt": "2026-09-27T22:25:47.346Z",
+  "status": "complete",
+  "selection": {
+    "name": "full",
+    "reason": "Single full run selected before measurement; publication is a separate explicit command.",
+    "selectedAt": "2026-09-27T22:25:47.348Z"
+  },
+  "notes": [
+    {
+      "kind": "decision",
+      "title": "Publish the third runtime optimization pass",
+      "body": "This run updates the benchmark pages to fusor **af57da5**, following **b6e93a3** measured by `20260927-runtime-optimizations-2`. It records the same final source and production Wasm used by the completed engineering validation; only benchmark records were uncommitted during measurement.\n\nBuild settings: the production release profile, Binaryen 132 `-O3`, wasm-bindgen 0.2.117, stripped Wasm names, installed Chrome 153.0.8010.53, and seed 20261004. All seven frameworks completed the full protocol: 133 timing results, all memory/bundle checks, zero errors, with unchanged source/artifact receipts before and after the run.\n\n## Recorded results\n\nRecorded 2026-09-27T22:25:49.445Z on Apple M4 Pro, darwin 24.5.0, browser 153.0.8010.53, 15 samples after 3 warmups.\n\nMedian milliseconds:\n\n| Metric | fusor | react | svelte | solid | vue | preact | leptos |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n| ssr-1000 | 0.21 | 0.82 | 0.30 | 0.26 | 1.03 | 1.47 | 0.45 |\n| ssr-10000 | 2.31 | 13.40 | 4.57 | 2.58 | 9.06 | 15.47 | 5.00 |\n| initial-1000 | 1.90 | 1.90 | 4.20 | 1.20 | 3.40 | 2.80 | 3.50 |\n| initial-10000 | 18.90 | 17.90 | 135.40 | 11.60 | 36.60 | 30.90 | 31.70 |\n| single | <0.10 | 0.80 | 0.60 | <0.10 | 0.10 | <0.10 | <0.10 |\n| bulk-1000 | 0.40 | 1.80 | 1.30 | 0.40 | 1.90 | 1.60 | 0.60 |\n| bulk-10000 | 2.80 | 9.50 | 7.70 | 4.10 | 18.60 | 16.70 | 4.70 |\n| insert | 0.20 | 2.10 | 11.70 | 0.30 | 7.90 | 2.10 | 0.50 |\n| delete | 0.20 | 2.30 | 10.30 | 0.30 | 7.50 | 2.00 | 0.50 |\n| swap | 0.20 | 107.50 | 11.00 | 0.90 | 5.20 | 2.00 | 0.30 |\n| computed | <0.10 | 0.90 | 0.70 | <0.10 | <0.10 | <0.10 | <0.10 |\n| fanout-1000 | 0.20 | 1.00 | 0.30 | 0.20 | 2.30 | 1.20 | 2.40 |\n| fanout-10000 | 2.40 | 9.00 | 3.80 | 2.80 | 24.60 | 17.20 | 213.90 |\n| fanin | 0.30 | 0.10 | 5.10 | 0.50 | 4.00 | 0.10 | 0.90 |\n| unmount | 4.40 | 6.20 | 2.90 | 1.20 | 6.30 | 2.10 | 7.50 |\n| events | 14.70 | 45.70 | 29.50 | 21.00 | 31.90 | 31.80 | 15.80 |\n| hydration-1000 | 7.90 | 6.40 | 10.40 | 4.20 | 9.40 | 7.00 | 5.80 |\n| hydration-10000 | 33.00 | 112.50 | 127.30 | 23.00 | 42.50 | 87.00 | 28.60 |\n| startup | 18.30 | 22.70 | 19.20 | 9.80 | 18.10 | 12.90 | 18.70 |\n\nGzip KiB per fixture:\n\n| Fixture | fusor | react | svelte | solid | vue | preact | leptos |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n| benchmark workload | 113.2 | 67.4 | 14.5 | 6.1 | 26.3 | 8.5 | 68.8 |\n| hello | 56.9 | 66.3 | 9.2 | 4.0 | 23.2 | 4.9 | 25.5 |\n| todo | 111.4 | 67.1 | 13.9 | 6.8 | 25.2 | 6.3 | 63.3 |\n\n## Comparison with the previous published record\n\nThe comparison tool reports no environment-field differences. The previous `-2` note disclosed substantial concurrent machine load, so these larger median movements are descriptive cross-session observations, not estimates of the code changes' effect. Smaller clock-sized movements are not highlighted.\n\n| Metric | Previous median, ms | New median, ms | Change |\n| --- | ---: | ---: | ---: |\n| ssr-10000 | 3.00 | 2.31 | -23.1% |\n| fanout-10000 | 3.10 | 2.40 | -22.6% |\n| unmount | 5.90 | 4.40 | -25.4% |\n| events | 15.70 | 14.70 | -6.4% |\n| hydration-10000 | 34.20 | 33.00 | -3.5% |\n| startup | 17.80 | 18.30 | +2.8% |\n\nStartup's historical increase is shown alongside decreases; the same-session engineering pair found startup within noise. No overall framework ranking or statistical-significance claim follows from this run.\n\n## Changes measured\n\n- **e35baaf — Preserve key lifetimes while removing keyed rows.** Keep the map-owned key alive until its DOM row is detached. A new template-cache regression test failed before the correction and passed afterward. This restores the observable destruction order of the earlier reconciliation path; it is not a claimed speedup.\n- **6020185 — Store mount readiness in the existing owner.** Remove one allocation per Scope and the duplicate weak readiness token in queued setup. Readiness remains separate from activation and commit, with stale setup canceled on replacement or disposal. Paired tests repeatedly improved hydration of 10,000 rows without establishing an initial-render or unmount gain from this change alone.\n- **73bc079 — Allocate memo graph nodes on the first read.** Defer Source and Observer allocations for unread memos. Reserve observer identity at construction to preserve notification order, initialize the graph before calling user code, and preserve panic recovery, cleanup, equality, and version capture. Paired evidence supports lower unmount, native SSR, and large-hydration times, with costs in some read-heavy and cold cases.\n- **af57da5 — Return the memo source during invalidation.** Combine two consecutive indirect calls in the notification walk. This improves fanin while preserving propagation through already-stale memos, breadth-first order, and wave deduplication.\n\n\nBenchmark workloads, inputs, iteration counts, timing logic, and existing correctness assertions are unchanged. This pass reduces workload Wasm from 275,348 to 274,872 bytes (476 bytes); complete bundle sizes are in the tables above.\n\n## Correctness validation\n\n`just check` passed fully on af57da5: formatting, workspace tests, Clippy with warnings denied, feature isolation, external consumers, and rustdoc. The complete diff since dd377eb was reviewed without an unresolved issue or MSRV hazard.\n\nThe browser gate is **not completely green**. After rebuilding the playground, the original three-engine Playwright run passed 115/116: Chromium desktop/mobile 58/58, Firefox 29/29, WebKit 28/29. WebKit's “a module load failure is reported in the page” failed because the error panel remained hidden at `tests/browser/playground.spec.js:30`. The exact unchanged test reproduced against an isolated source build of b6e93a3, so that failure predates these four commits.\n\nEvery remaining original gate job was continued sequentially with all three engines enabled. Template-cache, router, navigation, composition, editor, framework-fixtures, benchmark-runtime, template-resolution, direct-text, component-hydration, bundle-bindings, coherent, islands, delivery, and islands-consumer passed. The previously identified dev/standalone failures reproduced at `tests/tooling/dev.mjs:83` and `tests/tooling/standalone.mjs:94`, respectively. Those suites remain failures.\n\nFocused tests cover key destruction after DOM detachment; queued setup cancellation, replacement, capture release, and sibling disposal; and memo construction order, unread capture release, first-read panic/cycle recovery, and published-version capture. The five new memo cases passed against the eager implementation before the optimization and remain part of the passing 20-test memo suite.\n\n## Limitations and paired evidence\n\nSame-session alternating A/B measurements support the accepted changes. A residual regression remains: the final code versus the **first** published comparator, fdbac71 (`20260927-runtime-optimizations`), measured hydration of 1,000 rows **1.50% slower** (+0.11125 ms; 95% pooled-sample interval +0.93% to +2.09%; slower in all eight rounds). That comparator is not b6e93a3, and the figure must not be presented as the new publication's median change versus `-2`. The memo and notification changes also showed small hydration-1000 costs against their immediate predecessors. Do not describe this work as improving every metric.\n\nThe paired tool bootstraps pooled samples rather than whole paired rounds, so repeat direction, round wins, and medians matter alongside its intervals. Native SSR controls used alternating processes and did not compute confidence intervals; the final SSR-1000 change was small and mixed, while SSR-10000 improved in every process pair. The standard browser clock cannot resolve single/computed updates; their isolated higher-resolution comparisons remained within noise.\n\nThese are local Apple M4 Pro measurements without CPU/network throttling or thermal controls; timing results use Chromium. Startup uses fresh browser contexts with a reused browser process. The full protocol takes 15 samples, making its p95 the maximum sample. Memory snapshots separate JS heap, Wasm capacity, and DOM counters; historical memory differences do not prove a causal reduction in live Rust allocation or process RAM. Wasm capacity is a retained high-water mark, and ten cleanup cycles cannot prove leak freedom. Report complete raw/gzip bundle totals, including any growth, from this new run's artifacts.\n\nThe attached paired-browser, paired-isolated and paired-native diagnostic JSON files preserve the earlier engineering comparisons against fdbac71; they are separate from this preselected full report. The validation attachment records code checks, including the failures described above. All previous records remain intact.\n",
+      "format": "markdown",
+      "recordedAt": "2026-09-27T22:31:36.342Z"
+    }
+  ],
+  "events": [],
+  "evidence": [
+    {
+      "name": "full",
+      "kind": "measurement",
+      "protocol": "full",
+      "path": "data/full.json",
+      "bytes": 153029,
+      "sha256": "be33b27c92fadd9c0ec028d847395ccbd8cebe8865f3afb8c9f79924faf0c38c",
+      "sourceSha256": "2e58e82669cb77d69efc21174b46864ff7092a91bb042bed1970d237b9b7fa93",
+      "recordedAt": "2026-09-27T22:30:42.615Z"
+    },
+    {
+      "name": "receipt",
+      "kind": "receipt",
+      "path": "data/receipt.json",
+      "bytes": 18089,
+      "sha256": "b385c2a8e2b865ce50468be0966ed778418e079fa32d894a2c0a4f50e3895c5a"
+    },
+    {
+      "name": "comparison",
+      "kind": "diagnostic",
+      "path": "data/comparison.json",
+      "bytes": 35152,
+      "sha256": "813cd47ed1eb3a356f953ebb52cb184ace7e8b7ee7c46af9fbb054bc48610b3b"
+    },
+    {
+      "name": "paired-browser",
+      "kind": "diagnostic",
+      "path": "data/paired-browser.json",
+      "bytes": 65302,
+      "sha256": "761d92f3e0059f39faeea81ec2f6dfd4fe510d20a58a043df8b814d25c657f14"
+    },
+    {
+      "name": "paired-isolated",
+      "kind": "diagnostic",
+      "path": "data/paired-isolated.json",
+      "bytes": 36433,
+      "sha256": "2edce6365b54f574fecce86ddf43769ba8aeb4abe04fb233ea75e7ea0e4a181f"
+    },
+    {
+      "name": "paired-native",
+      "kind": "diagnostic",
+      "path": "data/paired-native.json",
+      "bytes": 17642,
+      "sha256": "a87613c9a9996f3660ff913c3d356a57f6318d285da7f30c1e4e31f0d708362f"
+    },
+    {
+      "name": "correctness",
+      "kind": "validation",
+      "path": "data/correctness.json",
+      "bytes": 4324,
+      "sha256": "214954fb9a5cfc044f06f5c9674d1027a49de2c0901587001405d03477dc83de"
+    }
+  ],
+  "completedAt": "2026-09-27T22:31:36.378Z"
+}
