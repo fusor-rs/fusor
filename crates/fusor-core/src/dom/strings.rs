@@ -8,7 +8,7 @@ use web_sys::{Document, Element, EventTarget, NodeList};
 // Compare against the live DOM in JavaScript. Returning its old string to Rust
 // only to compare it allocates and transcodes a value that no caller needs.
 #[wasm_bindgen(
-    inline_js = "export function setTextIfChanged(node, value) { if (node.data !== value) node.data = value; } export function setIntegerTextIfChanged(node, number) { const value = '' + number; if (node.data !== value) node.data = value; } export function setIntegerAttribute(node, name, number) { node.setAttribute(name, '' + number); }"
+    inline_js = "export function setTextIfChanged(node, value) { if (node.data !== value) node.data = value; } export function setIntegerTextIfChanged(node, number) { const value = '' + number; if (node.data !== value) node.data = value; } export function setIntegerAttribute(node, name, number) { node.setAttribute(name, '' + number); } export function listen(target, name, dispatch, slot, generation) { const listener = event => dispatch(slot, generation, event); target.addEventListener(name, listener); return listener; }"
 )]
 extern "C" {
     #[wasm_bindgen(js_name = setTextIfChanged)]
@@ -21,6 +21,14 @@ extern "C" {
         name: &str,
         value: f64,
     ) -> Result<(), JsValue>;
+    #[wasm_bindgen(catch, js_name = listen)]
+    fn listen_native(
+        target: &EventTarget,
+        name: &JsValue,
+        dispatch: &JsValue,
+        slot: u32,
+        generation: u32,
+    ) -> Result<JsValue, JsValue>;
 }
 
 #[wasm_bindgen]
@@ -45,8 +53,6 @@ extern "C" {
 
     #[wasm_bindgen(extends = EventTarget, js_name = EventTarget)]
     type StringTarget;
-    #[wasm_bindgen(method, structural, catch, js_name = addEventListener)]
-    fn add(this: &StringTarget, name: &JsValue, callback: &JsValue) -> Result<(), JsValue>;
     #[wasm_bindgen(method, structural, catch, js_name = removeEventListener)]
     fn remove(this: &StringTarget, name: &JsValue, callback: &JsValue) -> Result<(), JsValue>;
 }
@@ -112,12 +118,16 @@ impl EventName {
     }
 }
 
-pub(super) fn add(
+/// Add a native listener that forwards its events to `dispatch` with the
+/// handler's slot, returning the listener for removal.
+pub(super) fn listen(
     target: &EventTarget,
     name: &EventName,
-    callback: &JsValue,
-) -> Result<(), JsValue> {
-    name.with(|name| target.unchecked_ref::<StringTarget>().add(name, callback))
+    dispatch: &JsValue,
+    slot: u32,
+    generation: u32,
+) -> Result<JsValue, JsValue> {
+    name.with(|name| listen_native(target, name, dispatch, slot, generation))
 }
 
 pub(super) fn remove(
