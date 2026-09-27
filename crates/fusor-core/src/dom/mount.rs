@@ -264,6 +264,14 @@ impl TemplateDescriptor {
         #[cfg(feature = "islands")]
         {
             if let Some(root) = super::hydration::take_root() {
+                if mode.bundled() && mounts.is_empty() && self.is_flat() {
+                    // The same identity checks and resolution as below, in one
+                    // native call.
+                    let binding_bundle = flat::hydrate_root(self, &root)?;
+                    let mut scope = mode.scope(root);
+                    scope.hydrating = true;
+                    return Ok((scope, TemplateNodes::bundle(binding_bundle)));
+                }
                 let metadata = strings::descriptor(self.component, self.version);
                 if !metadata.version_matches(&root) || !metadata.component_matches(&root) {
                     return Err(invalid(

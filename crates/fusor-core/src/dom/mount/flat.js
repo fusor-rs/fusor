@@ -26,7 +26,6 @@ export function resolveFlat(plan, root) {
   // One descriptor-sized output array also holds validation state. It is local
   // to this call; no application nodes enter the cached immutable plan.
   const elements = new Array(hostOffset + plan.textElements.length / 3 * 2);
-  const walker = root.ownerDocument.createTreeWalker(root);
   let node = root;
   do {
     if (node.nodeType === 1) {
@@ -67,8 +66,21 @@ export function resolveFlat(plan, root) {
       if (elements[slot]) mismatch(`duplicate text ${end ? 'end' : 'start'} ${id}`);
       elements[slot] = node;
     }
-  } while ((node = walker.nextNode()));
+  } while ((node = following(node, root)));
   return validateSlots(plan, elements);
+}
+
+// The next node of a SHOW_ALL TreeWalker's pre-order walk confined to `root`,
+// without allocating a walker for every scan.
+function following(node, root) {
+  const child = node.firstChild;
+  if (child) return child;
+  while (node !== root) {
+    const sibling = node.nextSibling;
+    if (sibling) return sibling;
+    node = node.parentNode;
+  }
+  return null;
 }
 
 function validateSlots(plan, elements) {
@@ -244,6 +256,19 @@ export function mountTemplate(plan, selector, schema, identity, versionOk) {
   const nodes = resolveBindings(plan, root, true);
   root.setAttribute('data-fusor-instance', identity);
   nodes.push(root);
+  return nodes;
+}
+
+// A server-rendered root of a flat bundled descriptor in one native call, in
+// the typed Rust order: server identity, descriptor version, the complete
+// protocol scan, then instance marking.
+export function hydrateRoot(plan, root, schema, identity, versionOk) {
+  if (root.getAttribute('data-fusor-version') !== schema || root.getAttribute('data-fusor-component') !== identity) {
+    mismatch('server root identity differs from the browser template');
+  }
+  if (!versionOk) mismatch('unsupported descriptor version; rebuild the application');
+  const nodes = resolveBindings(plan, root, false);
+  root.setAttribute('data-fusor-instance', identity);
   return nodes;
 }
 

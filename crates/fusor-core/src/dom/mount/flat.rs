@@ -35,6 +35,15 @@ extern "C" {
         identity: &JsValue,
         version_ok: bool,
     ) -> Result<JsValue, JsValue>;
+    #[cfg(feature = "islands")]
+    #[wasm_bindgen(catch, js_name = hydrateRoot)]
+    fn hydrate_native_root(
+        plan: &JsValue,
+        root: &Element,
+        schema: &JsValue,
+        identity: &JsValue,
+        version_ok: bool,
+    ) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(js_name = bindingText)]
     fn binding_text(nodes: &JsValue, index: u32, value: &str);
     #[wasm_bindgen(js_name = bindingIntegerText)]
@@ -126,6 +135,20 @@ pub(super) fn mount_document_template(
         descriptor.elements.len() + descriptor.texts.len() + descriptor.text_elements.len();
     let root = binding_element(&nodes, targets as u32);
     Ok((root, nodes))
+}
+
+/// Adopt a server-rendered root of a bundled flat descriptor in one native
+/// call: identity, descriptor version, complete validation, then marking.
+#[cfg(feature = "islands")]
+pub(super) fn hydrate_root(
+    descriptor: &TemplateDescriptor,
+    root: &Element,
+) -> Result<JsValue, JsValue> {
+    let plan = plan(descriptor);
+    let metadata = strings::descriptor(descriptor.component, descriptor.version);
+    let (_, schema, identity) = metadata.native();
+    let version_ok = descriptor.version == crate::template::VERSION;
+    hydrate_native_root(&plan.native, root, schema, identity, version_ok)
 }
 
 #[cfg(feature = "islands")]
