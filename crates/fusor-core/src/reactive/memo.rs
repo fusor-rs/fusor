@@ -104,8 +104,8 @@ impl<T: 'static> MemoNode for MemoInner<T> {
         // Until publication succeeds, partial dependencies cannot validate the
         // previous cache. In particular, retry after a caught native panic.
         self.needs_compute.set(true);
-        self.observer.unsubscribe();
         let next = {
+            let _run = self.observer.begin();
             let _tracking = TrackingGuard::replace(Some(Rc::downgrade(&self.observer)));
             (self.compute)()
         };

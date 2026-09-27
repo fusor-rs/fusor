@@ -467,3 +467,132 @@ fn replacement_and_equal_input_destructors_read_published_state() {
     value.set(Value(2, Some(on_drop())));
     assert_eq!(drops.get(), 2);
 }
+
+#[test]
+fn reruns_that_repeat_their_reads_keep_every_dependency_live() {
+    use std::{cell::Cell, rc::Rc};
+    let (a, b) = (fusor::signal(0), fusor::signal(0));
+    let calls = Rc::new(Cell::new(0));
+    let _effect = fusor::effect({
+        let (a, b, calls) = (a.clone(), b.clone(), calls.clone());
+        move || {
+            calls.set(calls.get() + 1);
+            // The duplicate read is one dependency, in the same place each run.
+            a.get();
+            a.get();
+            b.get();
+        }
+    });
+    for round in 1..=3 {
+        a.set(round);
+        assert_eq!(calls.get(), round * 2);
+        b.set(round);
+        assert_eq!(calls.get(), round * 2 + 1);
+    }
+}
+
+#[test]
+fn reads_that_change_order_or_stop_rebuild_dependencies_exactly() {
+    use std::{cell::Cell, rc::Rc};
+    let mode = fusor::signal(0);
+    let (a, b, c) = (fusor::signal(0), fusor::signal(0), fusor::signal(0));
+    let calls = Rc::new(Cell::new(0));
+    let _effect = fusor::effect({
+        let (mode, a, b, c, calls) = (mode.clone(), a.clone(), b.clone(), c.clone(), calls.clone());
+        move || {
+            calls.set(calls.get() + 1);
+            match mode.get() {
+                0 => {
+                    a.get();
+                    b.get();
+                    c.get();
+                }
+                1 => {
+                    // Same prefix, then a different order with a repeat.
+                    c.get();
+                    a.get();
+                    c.get();
+                }
+                _ => {}
+            }
+        }
+    });
+    assert_eq!(calls.get(), 1);
+    mode.set(1);
+    assert_eq!(calls.get(), 2);
+    b.set(1);
+    assert_eq!(calls.get(), 2, "b was not read again");
+    for (signal, expected) in [(&a, 3), (&c, 4)] {
+        signal.update(|value| *value += 1);
+        assert_eq!(calls.get(), expected);
+    }
+    mode.set(2);
+    assert_eq!(calls.get(), 5);
+    for signal in [&a, &b, &c] {
+        signal.update(|value| *value += 1);
+    }
+    assert_eq!(
+        calls.get(),
+        5,
+        "a run that reads nothing else keeps only mode"
+    );
+    mode.set(0);
+    assert_eq!(calls.get(), 6);
+    b.set(10);
+    assert_eq!(calls.get(), 7);
+}
+
+#[test]
+fn a_panic_while_repeating_reads_releases_the_unread_rest() {
+    use std::{
+        cell::Cell,
+        panic::{AssertUnwindSafe, catch_unwind},
+        rc::Rc,
+    };
+    let (a, b, c) = (fusor::signal(0), fusor::signal(0), fusor::signal(0));
+    let fail = Rc::new(Cell::new(false));
+    let calls = Rc::new(Cell::new(0));
+    let _effect = fusor::effect({
+        let (a, b, c, fail, calls) = (a.clone(), b.clone(), c.clone(), fail.clone(), calls.clone());
+        move || {
+            calls.set(calls.get() + 1);
+            a.get();
+            assert!(!fail.replace(false), "intentional partial collection");
+            b.get();
+            c.get();
+        }
+    });
+    fail.set(true);
+    assert!(catch_unwind(AssertUnwindSafe(|| a.set(1))).is_err());
+    assert_eq!(calls.get(), 2);
+    b.set(1);
+    c.set(1);
+    assert_eq!(calls.get(), 2, "sources after the panic were released");
+    a.set(2);
+    assert_eq!(calls.get(), 3);
+    b.set(2);
+    assert_eq!(calls.get(), 4);
+}
+
+#[test]
+fn a_wide_memo_that_rereads_its_inputs_in_order_stays_exact() {
+    let inputs: Vec<_> = (0..1000u64).map(fusor::signal).collect();
+    let sum = fusor::memo({
+        let inputs = inputs.clone();
+        move || inputs.iter().map(|input| input.get()).sum::<u64>()
+    });
+    let mut expected: u64 = (0..1000).sum();
+    assert_eq!(sum.get(), expected);
+    for round in 0..3 {
+        fusor::batch(|| {
+            for input in inputs.iter().skip(round).step_by(7) {
+                input.update(|value| *value += 2);
+                expected += 2;
+            }
+        });
+        assert_eq!(sum.get(), expected);
+    }
+    inputs[999].set(0);
+    expected -= 999 + 2 * (0..3).filter(|round| (999 - round) % 7 == 0).count() as u64;
+    assert_eq!(sum.get(), expected);
+}

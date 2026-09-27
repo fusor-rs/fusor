@@ -190,7 +190,37 @@ impl Dependencies {
             Self::Many(dependencies) => dependencies,
         }
     }
+
+    fn get_mut(&mut self, index: usize) -> Option<&mut Dependency> {
+        match self {
+            Self::None => None,
+            Self::One(dependency) => (index == 0).then_some(dependency),
+            Self::Two(dependencies) => dependencies.get_mut(index),
+            Self::Many(dependencies) => dependencies.get_mut(index),
+        }
+    }
+
+    /// Keep the first `length` dependencies and return the rest.
+    fn split_off(&mut self, length: usize) -> Vec<Dependency> {
+        if length >= self.as_slice().len() {
+            return Vec::new();
+        }
+        let mut all = match std::mem::take(self) {
+            Self::None => Vec::new(),
+            Self::One(dependency) => vec![dependency],
+            Self::Two(dependencies) => Vec::from(dependencies),
+            Self::Many(dependencies) => dependencies,
+        };
+        let rest = all.split_off(length);
+        for dependency in all {
+            self.push(dependency);
+        }
+        rest
+    }
 }
+
+/// `Observer::reuse` outside a run, or after a run stopped matching.
+const NO_REUSE: usize = usize::MAX;
 
 pub(super) enum ObserverKind {
     Effect(Weak<EffectInner>),
@@ -202,6 +232,9 @@ pub(super) struct Observer {
     kind: ObserverKind,
     wave: Cell<u64>,
     dependencies: RefCell<Dependencies>,
+    /// While a run reads its previous sources again in the same order, the
+    /// index of the next one. Those keep their subscriptions.
+    reuse: Cell<usize>,
 }
 
 impl Observer {
@@ -219,11 +252,29 @@ impl Observer {
             kind,
             wave: Cell::new(0),
             dependencies: RefCell::new(Dependencies::None),
+            reuse: Cell::new(NO_REUSE),
         })
     }
 
     pub fn unsubscribe(&self) {
+        self.reuse.set(NO_REUSE);
         for dependency in self.dependencies.take().as_slice() {
+            dependency.source.subscribers.borrow_mut().remove(&self.id);
+        }
+    }
+
+    /// Recollect dependencies for one run, so conditional reads shed stale
+    /// ones. Until the run ends, previous sources stay subscribed while the run
+    /// reads them again in order; the rest are released when it stops matching
+    /// or when the returned guard drops, including on unwind.
+    pub fn begin(&self) -> Run<'_> {
+        self.reuse.set(0);
+        Run(self)
+    }
+
+    fn release_from(&self, length: usize) {
+        let released = self.dependencies.borrow_mut().split_off(length);
+        for dependency in &released {
             dependency.source.subscribers.borrow_mut().remove(&self.id);
         }
     }
@@ -245,6 +296,17 @@ impl Drop for Observer {
     }
 }
 
+pub(super) struct Run<'a>(&'a Observer);
+
+impl Drop for Run<'_> {
+    fn drop(&mut self) {
+        let next = self.0.reuse.replace(NO_REUSE);
+        if next != NO_REUSE {
+            self.0.release_from(next);
+        }
+    }
+}
+
 pub(super) fn track(source: &Rc<Source>) {
     super::versions::record(source);
     let current = CURRENT.with(|current| current.borrow().as_ref().and_then(Weak::upgrade));
@@ -252,6 +314,20 @@ pub(super) fn track(source: &Rc<Source>) {
         if matches!(&current.kind, ObserverKind::Effect(e) if e.upgrade().is_none_or(|e| !e.active.get()))
         {
             return;
+        }
+        let next = current.reuse.get();
+        if next != NO_REUSE {
+            if let Some(dependency) = current.dependencies.borrow_mut().get_mut(next) {
+                if Rc::ptr_eq(&dependency.source, source) {
+                    dependency.version = source.version.get();
+                    current.reuse.set(next + 1);
+                    return;
+                }
+            }
+            // The run no longer follows the previous order: release the rest
+            // of those sources and subscribe from here as before.
+            current.reuse.set(NO_REUSE);
+            current.release_from(next);
         }
         if source
             .subscribers
