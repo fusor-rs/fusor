@@ -2,14 +2,10 @@
 //! before activating resources. Child commits join their prepared ancestor.
 use super::{JsValue, Scope};
 use crate::{ContextKey, OwnerHandle};
-use std::{
-    cell::{Cell, RefCell},
-    rc::{Rc, Weak},
-};
+use std::cell::RefCell;
 
 struct Action {
     owner: OwnerHandle,
-    ready: Weak<Cell<bool>>,
     setup: Box<dyn FnOnce() -> Result<(), JsValue>>,
 }
 
@@ -64,7 +60,6 @@ impl Scope {
         let queue = self.mount_queue.as_ref().expect("prepared component queue");
         queue.0.borrow_mut().push(Action {
             owner: self.owner(),
-            ready: Rc::downgrade(&self.mount_ready),
             setup: Box::new(setup),
         });
         Ok(())
@@ -77,7 +72,7 @@ impl Scope {
         if self.owner.is_disposed() {
             return Err(JsValue::from_str("cannot commit a disposed component"));
         }
-        self.mount_ready.set(true);
+        self.owner.mark_mount_ready();
         if self
             .mount_parent
             .as_ref()
@@ -95,16 +90,15 @@ impl Scope {
         if self.owner.is_disposed() {
             return Err(JsValue::from_str("cannot prepare a disposed subtree"));
         }
-        self.mount_ready.set(true);
+        self.owner.mark_mount_ready();
         if let Some(queue) = &self.mount_queue {
             let pending = queue.0.take();
             let owner = self.owner();
             let (ready, waiting): (Vec<_>, Vec<_>) = pending
                 .into_iter()
-                .filter(|action| !action.owner.is_disposed() && action.ready.strong_count() > 0)
+                .filter(|action| !action.owner.is_disposed())
                 .partition(|action| {
-                    action.owner.is_within(&owner)
-                        && action.ready.upgrade().is_some_and(|ready| ready.get())
+                    action.owner.is_within(&owner) && action.owner.is_mount_ready()
                 });
             queue.0.borrow_mut().extend(waiting);
             for action in ready {

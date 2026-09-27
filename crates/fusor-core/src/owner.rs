@@ -20,6 +20,9 @@ struct Inner {
     committed: Cell<bool>,
     // Monotone lifecycle history; disposal must not erase adopted-DOM ownership.
     activated: Cell<bool>,
+    // Fallible DOM setup can finish while this owner still awaits activation.
+    #[cfg(feature = "dom")]
+    mount_ready: Cell<bool>,
     parent: Option<Weak<Inner>>,
     children: RefCell<Vec<Weak<Inner>>>,
     dead_children: Cell<usize>,
@@ -126,6 +129,8 @@ impl Owner {
             status: Cell::new(Status::Prepared),
             committed: Cell::new(false),
             activated: Cell::new(false),
+            #[cfg(feature = "dom")]
+            mount_ready: Cell::new(false),
             parent,
             children: RefCell::new(Vec::new()),
             dead_children: Cell::new(0),
@@ -176,6 +181,11 @@ impl Owner {
     #[cfg(feature = "dom")]
     pub(crate) fn is_disposed(&self) -> bool {
         self.0.status.get() == Status::Disposed
+    }
+
+    #[cfg(feature = "dom")]
+    pub(crate) fn mark_mount_ready(&self) {
+        self.0.mount_ready.set(true);
     }
 
     #[cfg(any(feature = "dom", test))]
@@ -340,6 +350,10 @@ impl OwnerHandle {
         self.0
             .upgrade()
             .is_none_or(|p| p.status.get() == Status::Disposed)
+    }
+    #[cfg(feature = "dom")]
+    pub(crate) fn is_mount_ready(&self) -> bool {
+        self.0.upgrade().is_some_and(|p| p.mount_ready.get())
     }
     /// Run on activation (immediately if active). Does not run after disposal.
     pub fn on_activate(&self, callback: impl FnOnce() + 'static) -> Registration {

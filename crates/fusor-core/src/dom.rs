@@ -34,12 +34,7 @@ pub use range::{Anchors, MountPoint};
 pub use target::{ElementTarget, InputTarget};
 
 use crate::{Effect, Owner, OwnerHandle, batch};
-use std::{
-    cell::{Cell, RefCell},
-    collections::VecDeque,
-    rc::Rc,
-    thread::LocalKey,
-};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc, thread::LocalKey};
 pub use wasm_bindgen::JsValue;
 use wasm_bindgen::{JsCast, closure::Closure};
 use web_sys::{Document, Element, Event, EventTarget, HtmlTemplateElement};
@@ -89,7 +84,6 @@ pub trait Component: Sized + 'static {
             scope.hydration_ownership = HydrationOwnership::Preserved(owned);
         }
         scope.owner = owner;
-        scope.mount_ready = Rc::new(Cell::new(false));
         scope.prepare_queue(parent);
         Ok(scope)
     }
@@ -366,7 +360,6 @@ pub struct Scope {
     retained: Vec<Box<dyn std::any::Any>>,
     mount_queue: Option<Rc<commit::CommitQueue>>,
     mount_parent: Option<OwnerHandle>,
-    mount_ready: Rc<Cell<bool>>,
     remove_on_drop: bool,
     render_tree: Option<Rc<coherent::Tree>>,
     hydrating: bool,
@@ -437,7 +430,6 @@ impl Scope {
             retained: Vec::new(),
             mount_queue: None,
             mount_parent: None,
-            mount_ready: Rc::new(Cell::new(false)),
             remove_on_drop: false,
             render_tree: None,
             hydrating: false,
@@ -522,9 +514,8 @@ impl Scope {
 
     #[doc(hidden)]
     pub fn prepare_owner(&mut self, parent: Option<&OwnerHandle>) {
+        // A fresh owner resets readiness and invalidates any previous queued setup.
         self.owner = parent.map(Owner::child).unwrap_or_default();
-        // Repreparing a legacy scope must expire its previous readiness token.
-        self.mount_ready = Rc::new(Cell::new(false));
         self.finish_owner_preparation(parent);
     }
 
