@@ -184,30 +184,50 @@ function rememberBundle(plan, root, nodes) {
   const wrapper = root.ownerDocument.createElement('template');
   const inert = wrapper.content.ownerDocument;
   const pristine = inert.importNode(root, true);
-  const paths = nodes.map((node, index) => {
-    const existingText = index >= hostOffset
-      ? (index - hostOffset) % 2 === 1
-      : index >= textOffset && (index - textOffset) % 3 === 2;
-    return existingText ? null : pathFrom(root, node);
-  });
-  plan.bindingCache = { pristine, paths };
+  // One step per bundle target, in bundle order: the node at a path, or a new
+  // empty Text before an end anchor (1) or inside a text host (2).
+  const paths = [], creates = [];
+  for (let i = 0; i < textOffset; i++) {
+    paths.push(pathFrom(root, nodes[i]));
+    creates.push(0);
+  }
+  for (let i = 0; i < plan.textIds.length; i++) {
+    const slot = textOffset + i * 3, text = nodes[slot + 2];
+    paths.push(pathFrom(root, text ?? nodes[slot + 1]));
+    creates.push(text ? 0 : 1);
+  }
+  for (let i = 0; i < plan.textElements.length / 3; i++) {
+    const slot = hostOffset + i * 2, text = nodes[slot + 1];
+    paths.push(pathFrom(root, text ?? nodes[slot]));
+    creates.push(text ? 0 : 2);
+  }
+  plan.bindingCache = { pristine, paths, creates };
 }
 
-export function resolveBindings(plan, root, cached) {
-  let nodes;
-  const certificate = cached && plan.bindingCache;
-  const cacheHit = certificate && root.isEqualNode(certificate.pristine);
-  if (cacheHit) {
-    // Resolve every location before insertion can shift a later native path.
-    nodes = certificate.paths.map(path => path === null ? null : followPath(root, path));
-    validateSlots(plan, nodes);
-    // An equal clone of the validated inert certificate has the same node
-    // interfaces at every path: inert template documents never upgrade.
-  } else {
-    nodes = resolveFlat(plan, root);
-    validateBundleTypes(plan, nodes);
+// An equal clone of the validated inert certificate has the same slots and
+// node interfaces at every path: inert template documents never upgrade.
+// `extra` trailing entries are left for the caller.
+function certifiedBindings(certificate, root, extra) {
+  const { paths, creates } = certificate, count = paths.length;
+  const nodes = new Array(count + extra);
+  // Resolve every location before insertion can shift a later native path.
+  for (let i = 0; i < count; i++) nodes[i] = followPath(root, paths[i]);
+  // Match finish_resolution's global document rather than root.ownerDocument.
+  for (let i = 0; i < count; i++) {
+    const create = creates[i];
+    if (create === 0) continue;
+    const text = document.createTextNode(''), target = nodes[i];
+    if (create === 1) target.parentNode.insertBefore(text, target);
+    else target.appendChild(text);
+    nodes[i] = text;
   }
-  if (cached && !cacheHit) {
+  return nodes;
+}
+
+function scannedBindings(plan, root, cached) {
+  const nodes = resolveFlat(plan, root);
+  validateBundleTypes(plan, nodes);
+  if (cached) {
     // Optional cache construction must not make a validated mount fail.
     try { rememberBundle(plan, root, nodes); } catch (_) {}
   }
@@ -238,6 +258,12 @@ export function resolveBindings(plan, root, cached) {
   return nodes;
 }
 
+export function resolveBindings(plan, root, cached) {
+  const certificate = cached && plan.bindingCache;
+  if (certificate && root.isEqualNode(certificate.pristine)) return certifiedBindings(certificate, root, 0);
+  return scannedBindings(plan, root, cached);
+}
+
 // The document-template mount of a flat bundled descriptor in one native call.
 // Same checks, clone source, errors and order as the typed Rust sequence:
 // unique root, schema, template kind, one root element, descriptor version,
@@ -253,9 +279,16 @@ export function mountTemplate(plan, selector, schema, identity, versionOk) {
   if (content.childElementCount !== 1) throw 'fusor: a row template needs exactly one root element';
   const root = content.firstElementChild.cloneNode(true);
   if (!versionOk) mismatch('unsupported descriptor version; rebuild the application');
-  const nodes = resolveBindings(plan, root, true);
+  const certificate = plan.bindingCache;
+  let nodes;
+  if (certificate && root.isEqualNode(certificate.pristine)) {
+    nodes = certifiedBindings(certificate, root, 1);
+    nodes[nodes.length - 1] = root;
+  } else {
+    nodes = scannedBindings(plan, root, true);
+    nodes.push(root);
+  }
   root.setAttribute('data-fusor-instance', identity);
-  nodes.push(root);
   return nodes;
 }
 
