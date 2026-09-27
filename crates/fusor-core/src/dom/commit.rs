@@ -16,6 +16,13 @@ struct Action {
 #[derive(Default)]
 pub(super) struct CommitQueue(RefCell<Vec<Action>>);
 
+impl CommitQueue {
+    /// No scope sharing this queue has setup left to finish.
+    pub(super) fn is_idle(&self) -> bool {
+        self.0.borrow().is_empty()
+    }
+}
+
 struct MountContext;
 impl ContextKey for MountContext {
     type Value = CommitQueue;

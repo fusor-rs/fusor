@@ -79,6 +79,9 @@ impl Scope {
         let mut order: Vec<K> = Vec::new();
         let mut states: Vec<Signal<T>> = Vec::new();
         let mut initialized = false;
+        // Every row in `rows` was committed by a reconcile that completed.
+        let mut settled = false;
+        let queue = self.mount_queue.clone();
         self.bind(move || {
             let items = items();
             untrack(|| {
@@ -177,6 +180,12 @@ impl Scope {
                         }
                     }
                 }
+                // Committing a settled row again only finishes setup that a
+                // descendant queued, so without pending setup only new rows
+                // need committing.
+                let fresh_keys: Option<Vec<K>> =
+                    settled.then(|| staged.keys().cloned().collect());
+                settled = false;
                 if rows.is_empty() {
                     rows = staged;
                 } else if staged.len() <= rows.len() / (rows.len().ilog2() as usize + 1) {
@@ -199,9 +208,20 @@ impl Scope {
                         container.insert_before(&rows[&order[index]].scope.root, anchor)?;
                     }
                 }
-                for row in rows.values() {
-                    row.scope.commit();
+                let idle = queue.as_ref().is_none_or(|queue| queue.is_idle());
+                match fresh_keys.filter(|_| idle) {
+                    Some(keys) => {
+                        for key in &keys {
+                            rows[key].scope.commit();
+                        }
+                    }
+                    None => {
+                        for row in rows.values() {
+                            row.scope.commit();
+                        }
+                    }
                 }
+                settled = true;
                 restore_focus(&document, &container, focused)
             })
         })
