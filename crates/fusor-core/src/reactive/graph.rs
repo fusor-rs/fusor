@@ -260,14 +260,22 @@ pub(super) struct Observer {
 
 impl Observer {
     pub fn new(kind: ObserverKind) -> Rc<Self> {
-        let id = NEXT_ID.with(|next| {
+        Self::with_id(Self::reserve_id(), kind)
+    }
+
+    /// Lazy memos reserve identity at construction to preserve notification order.
+    pub fn reserve_id() -> u64 {
+        NEXT_ID.with(|next| {
             let id = next
                 .get()
                 .checked_add(1)
                 .expect("reactive observer ID exhausted");
             next.set(id);
             id
-        });
+        })
+    }
+
+    pub fn with_id(id: u64, kind: ObserverKind) -> Rc<Self> {
         Rc::new(Self {
             id,
             kind,
