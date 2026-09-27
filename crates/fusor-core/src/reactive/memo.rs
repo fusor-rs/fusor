@@ -66,7 +66,9 @@ impl<T> Drop for MemoInner<T> {
         self.observer.unsubscribe();
         // Releasing the last handle may happen inside another computation.
         // A cached value's destructor is not a dependency of that caller.
-        untrack(|| drop(self.value.get_mut().take()));
+        if let Some(value) = self.value.get_mut().take() {
+            untrack(|| drop(value));
+        }
     }
 }
 

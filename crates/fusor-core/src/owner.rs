@@ -230,24 +230,29 @@ fn invalidate(inner: &Rc<Inner>, callbacks: &mut Vec<Callback>) {
     if inner.status.replace(Status::Disposed) == Status::Disposed {
         return;
     }
+    // Most owners register nothing; skip their empty registries.
     // Hold discarded activation callbacks until the entire tree is invalid.
-    let activations = inner.activate.take();
-    if !activations.is_empty() {
+    if !inner.activate.borrow().is_empty() {
+        let activations = inner.activate.take();
         callbacks.push(Box::new(move || drop(activations)));
     }
-    callbacks.extend(inner.cleanup.take().into_values());
-    for child in inner
-        .children
-        .take()
-        .into_iter()
-        .filter_map(|c| c.upgrade())
-    {
-        invalidate(&child, callbacks);
+    if !inner.cleanup.borrow().is_empty() {
+        callbacks.extend(inner.cleanup.take().into_values());
+    }
+    if !inner.children.borrow().is_empty() {
+        for child in inner
+            .children
+            .take()
+            .into_iter()
+            .filter_map(|c| c.upgrade())
+        {
+            invalidate(&child, callbacks);
+        }
     }
     // Defer destructors until the whole tree is invalid. Release a provider
     // after its children's cleanup callbacks have run.
-    let contexts = inner.contexts.take();
-    if !contexts.is_empty() {
+    if !inner.contexts.borrow().is_empty() {
+        let contexts = inner.contexts.take();
         callbacks.push(Box::new(move || drop(contexts)));
     }
 }
