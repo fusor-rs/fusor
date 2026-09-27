@@ -96,8 +96,7 @@ impl Scope {
                             (positions, Removal::Direct(removed))
                         }
                         None => {
-                            let unique =
-                                reconcile::SortedKeys::new(&keys).ok_or_else(duplicate)?;
+                            let unique = reconcile::SortedKeys::new(&keys).ok_or_else(duplicate)?;
                             let positions = reconcile::previous_positions(&order, &unique);
                             (positions, Removal::Sorted(unique))
                         }
@@ -183,8 +182,7 @@ impl Scope {
                 // Committing a settled row again only finishes setup that a
                 // descendant queued, so without pending setup only new rows
                 // need committing.
-                let fresh_keys: Option<Vec<K>> =
-                    settled.then(|| staged.keys().cloned().collect());
+                let fresh_keys: Option<Vec<K>> = settled.then(|| staged.keys().cloned().collect());
                 settled = false;
                 if rows.is_empty() {
                     rows = staged;

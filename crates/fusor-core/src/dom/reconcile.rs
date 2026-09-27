@@ -154,7 +154,10 @@ pub(super) fn small_edit<K: Ord>(
     // Matched keys are distinct: each has its own previous index. Unmatched
     // keys must be distinct among themselves...
     sort_few(&mut unmatched, next);
-    if unmatched.windows(2).any(|pair| next[pair[0]] == next[pair[1]]) {
+    if unmatched
+        .windows(2)
+        .any(|pair| next[pair[0]] == next[pair[1]])
+    {
         return Some(Err(()));
     }
     let mut claimed = vec![false; unmatched.len()];
@@ -433,7 +436,11 @@ mod tests {
                     Some(Err(())) => assert!(!distinct(next), "{previous:?} -> {next:?}"),
                     Some(Ok((positions, mut removed))) => {
                         assert!(distinct(next), "{previous:?} -> {next:?}");
-                        assert_eq!(positions, oracle(previous, next), "{previous:?} -> {next:?}");
+                        assert_eq!(
+                            positions,
+                            oracle(previous, next),
+                            "{previous:?} -> {next:?}"
+                        );
                         removed.sort();
                         let gone: Vec<usize> = (0..previous.len())
                             .filter(|&index| !next.contains(&previous[index]))
@@ -463,7 +470,10 @@ mod tests {
             assert_eq!(positions, expected);
             assert_eq!(removed, gone);
         }
-        assert_eq!(small_edit(&long, &repeated, |key| long.contains(key)), Some(Err(())));
+        assert_eq!(
+            small_edit(&long, &repeated, |key| long.contains(key)),
+            Some(Err(()))
+        );
         let reversed: Vec<u16> = long.iter().rev().copied().collect();
         assert_eq!(small_edit(&long, &reversed, |key| long.contains(key)), None);
     }
