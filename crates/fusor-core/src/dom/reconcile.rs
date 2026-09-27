@@ -28,7 +28,14 @@ pub(super) fn stationary(positions: &[usize]) -> Vec<bool> {
         if !existing(position) {
             continue;
         }
-        let length = tails.partition_point(|&tail| positions[tail] < *position);
+        // Rows mostly keep their relative order: extending the longest run
+        // needs no search, which keeps a few moves among many rows linear.
+        let extends = tails.last().is_none_or(|&tail| positions[tail] < *position);
+        let length = if extends {
+            tails.len()
+        } else {
+            tails.partition_point(|&tail| positions[tail] < *position)
+        };
         predecessor[row] = length.checked_sub(1).map(|shorter| tails[shorter]);
         if length == tails.len() {
             tails.push(row);
