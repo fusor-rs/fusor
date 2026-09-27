@@ -41,7 +41,7 @@ impl Example {
                 "The buttons call methods on the Rust struct. The output reads the count, so only its text updates."
             }
             Self::Search => {
-                "bind:value keeps the input in a Rust String. A Rust method filters the guides as you type."
+                "bind keeps the input in a Rust String. A Rust method filters the guides as you type."
             }
             Self::KeyedList => {
                 "<ForEach> repeats the row HTML for each id in a Rust Vec. Keys keep each row’s DOM, and its note, when the order changes."

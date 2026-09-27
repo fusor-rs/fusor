@@ -37,7 +37,7 @@ Note: the crate `fusor-core` has library name `fusor` (the crates.io name was
 taken), so code says `use fusor::prelude::*`.
 
 Template syntax at a glance: `{{ expr }}`, `on:event`, `class:name`,
-`bind:value` / `bind:checked` / `bind:field`, `prop:name`, `rust:if`,
+`bind`, `prop:name`, `rust:if`,
 `rust:key`, `rust:render`, `hydrate*`, plus the built-in tags `App`, `If`/`Else`,
 `Match`/`Case`, `ForEach`, `Children`, `Async`, `Await`, `Router`/`Route`. The
 full reference is `apps/docs/content/pages.json` (slugs

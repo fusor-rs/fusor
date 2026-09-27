@@ -146,6 +146,31 @@ pub enum RootKind {
     Template,
 }
 
+/// How `bind` treats an `<input>` by its `type`. The compiler rejects the
+/// kinds it cannot bind; the runtime checks that a mounted input still matches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputKind {
+    /// Text-like, numeric, date and color inputs, whose `value` the user edits.
+    Text,
+    Checkbox,
+    Radio,
+    File,
+    /// Hidden and button-like inputs, whose `value` the user cannot edit.
+    Uneditable,
+}
+
+impl InputKind {
+    pub fn of(kind: &str) -> Self {
+        match kind.to_ascii_lowercase().as_str() {
+            "checkbox" => Self::Checkbox,
+            "radio" => Self::Radio,
+            "file" => Self::File,
+            "hidden" | "button" | "submit" | "reset" | "image" => Self::Uneditable,
+            _ => Self::Text,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ElementDescriptor {
     pub id: ElementId,

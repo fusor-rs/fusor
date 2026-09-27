@@ -115,16 +115,18 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
         depth: 0,
         raw: false,
         first: true,
+        select: None,
     };
     if component.fragment() {
         render.body.literal("<!--fusor:fragment-->");
     }
-    for token in crate::html::tokens(&component.html) {
+    let tokens: Vec<_> = crate::html::tokens(&component.html).collect();
+    for (index, token) in tokens.iter().enumerate() {
         match token {
-            Token::StartTag(tag) => render.start_tag(&tag),
-            Token::EndTag(tag) => render.end_tag(&tag),
-            Token::String(value) => render.text(&value),
-            Token::Comment(comment) => render.comment(&comment),
+            Token::StartTag(tag) => render.start_tag(tag, &tokens[index + 1..]),
+            Token::EndTag(tag) => render.end_tag(tag),
+            Token::String(value) => render.text(value),
+            Token::Comment(comment) => render.comment(comment),
             _ => {}
         }
     }
@@ -182,10 +184,13 @@ struct ServerRender<'a> {
     raw: bool,
     /// The next start tag is the component's root.
     first: bool,
+    /// The bound select whose options are being written.
+    select: Option<super::bind::Select<'a>>,
 }
 
-impl ServerRender<'_> {
-    fn start_tag(&mut self, tag: &StartTag<usize>) {
+impl<'a> ServerRender<'a> {
+    /// `following` holds the tokens after this tag, where an option finds its text.
+    fn start_tag(&mut self, tag: &StartTag<usize>, following: &[Token<usize>]) {
         let component = self.component;
         let name = String::from_utf8_lossy(&tag.name).into_owned();
         if name == "template" && self.depth == 0 && component.kind() == RootKind::Template {
@@ -196,7 +201,7 @@ impl ServerRender<'_> {
             .attributes
             .get(template::ELEMENT_ATTRIBUTE.as_bytes())
             .and_then(|id| String::from_utf8_lossy(id).parse::<ElementId>().ok());
-        let bindings: Vec<&Binding> = component
+        let bindings: Vec<&'a Binding> = component
             .bindings
             .iter()
             .filter(|binding| id.is_some_and(|id| binding.anchor() == Anchor::Element(id)))
@@ -235,6 +240,14 @@ impl ServerRender<'_> {
             .any(|binding| matches!(binding, Binding::Class { .. }))
         {
             self.body.push(classes(tag, &bindings));
+        }
+        if name == "option" {
+            if let Some(select) = &self.select {
+                self.body.push(select.option(tag, &bindings, following));
+            }
+        }
+        if let Some(select) = super::bind::Select::open(&bindings) {
+            self.select = Some(select);
         }
         self.body.literal(">");
         self.body.push(quote! { #(#content)* });
@@ -311,27 +324,8 @@ impl ServerRender<'_> {
                 let value = super::emit::format_args(value);
                 quote_spanned! {span=> __fusor_writer.attr("value", #value); }
             }
-            Binding::Input {
-                kind: InputKind::Value,
-                value,
-                ..
-            } if !sensitive => {
-                quote_spanned! {span=> __fusor_writer.attr("value", (#value).get()); }
-            }
-            Binding::Input {
-                kind: InputKind::Checked,
-                value,
-                ..
-            } => {
-                quote_spanned! {span=> __fusor_writer.boolean("checked", (#value).get()); }
-            }
-            Binding::Field { value, .. } if !sensitive => {
-                if element == "textarea" {
-                    content.push(quote_spanned! {span=> __fusor_writer.text((#value).raw()); });
-                    quote! {}
-                } else {
-                    quote_spanned! {span=> __fusor_writer.attr("value", (#value).raw()); }
-                }
+            Binding::Bind { control, value, .. } => {
+                super::bind::server(element, sensitive, control, value, content)
             }
             Binding::ForEach {
                 items,
@@ -371,7 +365,6 @@ impl ServerRender<'_> {
             }
             // Guarded values omit sensitive inputs and island-owned IDs.
             Binding::Attribute { .. } | Binding::Value { .. }
-            | Binding::Input { kind: InputKind::Value, .. } | Binding::Field { .. }
             // Text, classes and structural anchors are emitted separately.
             | Binding::Text { .. } | Binding::Class { .. } | Binding::Branch { .. }
             | Binding::Children { .. } | Binding::Invocation { .. }
@@ -402,6 +395,9 @@ impl ServerRender<'_> {
         }
         self.body.literal(&format!("</{name}>"));
         self.raw = false;
+        if name == "select" {
+            self.select = None;
+        }
     }
 
     fn text(&mut self, value: &Spanned<HtmlString, usize>) {

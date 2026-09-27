@@ -141,9 +141,64 @@ pub(super) enum StringPart {
 
 pub(super) struct InterpolatedString(pub Vec<StringPart>);
 
-pub(super) enum InputKind {
-    Value,
-    Checked,
+impl InterpolatedString {
+    pub fn literal(text: &str) -> Self {
+        Self(vec![StringPart::Literal(text.to_owned())])
+    }
+
+    /// The text, when no part is an expression.
+    pub fn as_literal(&self) -> Option<String> {
+        self.0
+            .iter()
+            .map(|part| match part {
+                StringPart::Literal(text) => Some(text.as_str()),
+                StringPart::Expression(_) => None,
+            })
+            .collect()
+    }
+
+    pub fn expressions(&self) -> impl Iterator<Item = &Rust> {
+        self.0.iter().filter_map(|part| match part {
+            StringPart::Expression(expression) => Some(expression),
+            StringPart::Literal(_) => None,
+        })
+    }
+
+    pub fn expressions_mut(&mut self) -> impl Iterator<Item = &mut Rust> {
+        self.0.iter_mut().filter_map(|part| match part {
+            StringPart::Expression(expression) => Some(expression),
+            StringPart::Literal(_) => None,
+        })
+    }
+}
+
+/// What a `bind` attribute edits, chosen from the element's markup.
+pub(super) enum Control {
+    /// A text-like or numeric input, or a textarea: its `value` property.
+    Text,
+    Select,
+    SelectMultiple,
+    /// A checkbox and its `value`, which a list of values collects.
+    Checkbox(InterpolatedString),
+    /// A radio button and the `value` it chooses.
+    Radio(InterpolatedString),
+}
+
+impl Control {
+    /// The `value` a checkbox or radio compares with the bound value.
+    pub fn choice(&self) -> Option<&InterpolatedString> {
+        match self {
+            Self::Checkbox(choice) | Self::Radio(choice) => Some(choice),
+            _ => None,
+        }
+    }
+
+    pub fn choice_mut(&mut self) -> Option<&mut InterpolatedString> {
+        match self {
+            Self::Checkbox(choice) | Self::Radio(choice) => Some(choice),
+            _ => None,
+        }
+    }
 }
 
 pub(super) struct Input {
@@ -281,13 +336,9 @@ pub(super) enum Binding {
         name: String,
         handler: Rust,
     },
-    Input {
+    Bind {
         node: ElementId,
-        kind: InputKind,
-        value: Rust,
-    },
-    Field {
-        node: ElementId,
+        control: Control,
         value: Rust,
     },
     Slot {
@@ -324,8 +375,7 @@ impl Binding {
             | Self::Checked { node, .. }
             | Self::Class { node, .. }
             | Self::Event { node, .. }
-            | Self::Input { node, .. }
-            | Self::Field { node, .. }
+            | Self::Bind { node, .. }
             | Self::Slot { node, .. } => Anchor::Element(*node),
         }
     }
@@ -341,8 +391,7 @@ impl Binding {
             | Self::Boolean { value, .. }
             | Self::Checked { value, .. }
             | Self::Class { value, .. }
-            | Self::Input { value, .. }
-            | Self::Field { value, .. } => value,
+            | Self::Bind { value, .. } => value,
             Self::Children { origin, .. } | Self::Router { origin, .. } => origin,
             Self::ForEach { items, .. } => items,
             Self::Invocation { ty, .. } => ty,
@@ -350,12 +399,8 @@ impl Binding {
             Self::Event { handler, .. } => handler,
             Self::Slot { content, .. } => content,
             Self::Attribute { value, .. } | Self::Value { value, .. } => value
-                .0
-                .iter()
-                .find_map(|part| match part {
-                    StringPart::Expression(expression) => Some(expression),
-                    StringPart::Literal(_) => None,
-                })
+                .expressions()
+                .next()
                 .expect("an interpolated attribute has an expression"),
         }
     }
@@ -451,9 +496,15 @@ impl Binding {
             Self::Text { value, .. }
             | Self::Boolean { value, .. }
             | Self::Checked { value, .. }
-            | Self::Class { value, .. }
-            | Self::Field { value, .. }
-            | Self::Input { value, .. } => vec![value],
+            | Self::Class { value, .. } => vec![value],
+            Self::Bind { value, control, .. } => std::iter::once(value)
+                .chain(
+                    control
+                        .choice()
+                        .into_iter()
+                        .flat_map(InterpolatedString::expressions),
+                )
+                .collect(),
             Self::Event { handler, .. } => vec![handler],
             Self::Slot {
                 content: constructor,
@@ -465,14 +516,9 @@ impl Binding {
                 .chain(key)
                 .collect(),
             Self::Property { value, .. } => vec![value],
-            Self::Attribute { value, .. } | Self::Value { value, .. } => value
-                .0
-                .iter()
-                .filter_map(|part| match part {
-                    StringPart::Expression(expression) => Some(expression),
-                    _ => None,
-                })
-                .collect(),
+            Self::Attribute { value, .. } | Self::Value { value, .. } => {
+                value.expressions().collect()
+            }
         }
     }
 }

@@ -6,8 +6,7 @@ pub use field::{FieldStamp, Fields, TextField};
 mod submission;
 #[cfg(feature = "actions")]
 pub use submission::{Acknowledgment, Rejection, SubmitError};
-#[cfg(feature = "browser")]
-pub mod browser;
+
 use fusor::{OwnerHandle, Registration, Signal, batch, signal, untrack};
 use std::{
     cell::{Cell, RefCell},

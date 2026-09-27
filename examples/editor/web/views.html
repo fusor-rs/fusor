@@ -17,12 +17,12 @@
   <form novalidate on:submit="{ event.prevent_default(); state.session.submit(state.store.projects.clone()); }">
     <h3>{{ state.name }}</h3>
     <label for="{{ &state.title_id }}">Project title</label>
-    <input class="title" id="{{ &state.title_id }}" type="text" bind:field="state.session.title" aria-invalid="{{ state.session.title.invalid() }}" aria-describedby="{{ &state.title_error }}">
+    <input class="title" id="{{ &state.title_id }}" type="text" bind="state.session.title" aria-invalid="{{ state.session.title.invalid() }}" aria-describedby="{{ &state.title_error }}">
     <p class="error title-error" id="{{ &state.title_error }}">{{ state.session.title.message() }}</p>
     <label for="{{ &state.body_id }}">Notes</label>
-    <textarea class="body" id="{{ &state.body_id }}" bind:field="state.session.body"></textarea>
+    <textarea class="body" id="{{ &state.body_id }}" bind="state.session.body"></textarea>
     <label for="{{ &state.seats_id }}">Seats</label>
-    <input class="seats" id="{{ &state.seats_id }}" type="text" inputmode="numeric" bind:field="state.session.seats" aria-invalid="{{ state.session.seats.invalid() }}" aria-describedby="{{ &state.seats_error }}">
+    <input class="seats" id="{{ &state.seats_id }}" type="text" inputmode="numeric" bind="state.session.seats" aria-invalid="{{ state.session.seats.invalid() }}" aria-describedby="{{ &state.seats_error }}">
     <p class="error seats-error" id="{{ &state.seats_error }}">{{ state.session.seats.message() }}</p>
     <p class="error">{{ state.session.form.validation_message() }}</p>
     <p>Confirmed: <span class="baseline">{{ state.session.title.baseline() }}</span>, version <span class="version">{{ state.session.version.get() }}</span></p>

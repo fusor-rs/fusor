@@ -36,7 +36,7 @@ pub(super) fn components(
                 return Err(error(
                     source,
                     binding.origin().offset,
-                    "shared templates require bind:value, bind:checked or bind:field for editable controls so activation can adopt native edits",
+                    "shared templates require bind for editable controls so activation can adopt native edits",
                 ));
             }
             if component.render == RenderTarget::Browser

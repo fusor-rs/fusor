@@ -100,6 +100,9 @@ pub(super) fn braced(value: &InputValue) -> TokenStream {
 
 /// An interpolated attribute value as an owned `String`.
 pub(super) fn string(value: &InterpolatedString) -> TokenStream {
+    if let Some(text) = value.as_literal() {
+        return quote! { ::std::string::String::from(#text) };
+    }
     let (format, expressions) = format_parts(value);
     if let ("{}", [expression]) = (format.as_str(), expressions.as_slice()) {
         quote! { ::std::string::ToString::to_string(&(#expression)) }

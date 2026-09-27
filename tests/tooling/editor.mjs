@@ -24,10 +24,10 @@ try {
   await cli(["check","--offline","--features","browser-tests"]);
   const viewsPath = join(scratch,"web/views.html"), views = await readFile(viewsPath,"utf8");
   for (const [before, after, expected] of [
-    ['bind:field="state.session.title"','bind:field="state.session.version"',/TextField|mismatched types/],
-    ['type="text" bind:field','type="number" bind:field',/bind:field requires a text input/],
-    ['bind:field="state.session.title"','bind:field="state.session.title" value="{{ 42 }}"',/bind:field owns the control value/],
-    ['bind:field="state.session.body"></textarea>','bind:field="state.session.body">initial</textarea>',/leave its contents empty/],
+    ['bind="state.session.title"','bind="state.name"',/cannot be edited as text/],
+    ['type="text" bind=','type="file" bind=',/bind cannot set a file input/],
+    ['bind="state.session.title"','bind="state.session.title" value="{{ 42 }}"',/bind owns this control's value/],
+    ['bind="state.session.body"></textarea>','bind="state.session.body">initial</textarea>',/leave its contents empty/],
   ]) {
     assert(views.includes(before)); const broken = views.replace(before,after);
     const line = broken.slice(0,broken.indexOf(after)).split("\n").length;
@@ -37,29 +37,15 @@ try {
     });
     await writeFile(viewsPath,views);
   }
-  // Inline Rust uses exactly the same typed lowering and optional helper path.
+  // Inline Rust uses exactly the same typed lowering.
   const originalLib = await readFile(join(scratch,"src/lib.rs"),"utf8");
   const fixtureManifest = manifest.replace('entry = "web/index.html"','entry = "web/fixture.html"').replace('views = "web/views.html"',"");
-  const fixture = (field, init) => `<script type="text/rust">\nuse fusor::prelude::*;\nstruct Demo { title: ${field} }\n</script>\n<App state="{{ Demo { title: ${init} } }}"><main>\n<input bind:field="state.title"><textarea bind:field="state.title"></textarea>\n</main></App>`;
   await writeFile(join(scratch,"Cargo.toml"), fixtureManifest);
   await writeFile(join(scratch,"src/lib.rs"),'include!(env!("FUSOR_MODULE"));\n');
-  await writeFile(join(scratch,"web/fixture.html"),fixture('fusor_std::forms::TextField<String>','fusor_std::forms::TextField::new(String::new())'));
+  await writeFile(join(scratch,"web/fixture.html"),`<script type="text/rust">\nuse fusor::prelude::*;\nstruct Demo { title: fusor_std::forms::TextField<String> }\n</script>\n<App state="{{ Demo { title: fusor_std::forms::TextField::new(String::new()) } }}"><main>\n<input bind="state.title"><textarea bind="state.title"></textarea>\n</main></App>`);
   await cli(["check","--offline","--locked"]);
-  for (const missing of ["dependency","browser feature"]) {
-    await writeFile(join(scratch,"web/fixture.html"),fixture('Signal<String>','signal(String::new())'));
-    let broken = fixtureManifest;
-    if (missing === "dependency") broken = broken.replace(/^fusor-std = .*\n/m,"");
-    else broken = broken.replace(/^(fusor-std = .*), "browser"/m,'$1');
-    await writeFile(join(scratch,"Cargo.toml"),broken);
-    await exec("cargo", ["generate-lockfile", "--offline"], { cwd: scratch, env });
-    await assert.rejects(cli(["check","--offline"]), error => {
-      assert.match(error.stderr,/fusor_std|could not find `browser`/);
-      assert(error.stderr.replaceAll("\\","/").includes("web/fixture.html:6:"),error.stderr); return true;
-    });
-  }
   await writeFile(join(scratch,"Cargo.toml"),manifest); await writeFile(join(scratch,"src/lib.rs"),originalLib);
-  await exec("cargo", ["generate-lockfile", "--offline"], { cwd: scratch, env });
-  console.log("PASS: external/inline consumers; wrong field/control, conflicting values, missing dependency/feature and HTML source locations");
+  console.log("PASS: external/inline consumers; wrong value/control, conflicting values and HTML source locations");
   await cli(["build","--offline","--features","browser-tests"]);
   const port = await reservePort();
   server = startProcess(executable,["preview","--port",String(port),"--offline","--locked"],{cwd:scratch,env});
@@ -179,7 +165,7 @@ try {
     });
     backend.releaseRead(backend.reads[0]); backend.holdReads = false;
     await expect.poll(() => mountErrors.length).toBe(2);
-    assert(mountErrors.every(message => message.includes("bind:field requires a text input")));
+    assert(mountErrors.every(message => message.includes("bind cannot edit an input of type checkbox")));
     await expect(invalid.locator(".title")).toHaveCount(0); assert.equal(backend.writes.length,0);
     await invalid.evaluate(() => {
       for (const template of document.querySelectorAll("template")) {

@@ -16,7 +16,7 @@ actions = ["dep:futures-util", "dep:fusor-async"]
 resources = ["dep:fusor-async"]
 query = ["dep:fusor-query", "resources"]
 routing = ["dep:fusor-router"]
-browser = ["fusor-core/dom", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys", "fusor-async?/browser", "fusor-query?/browser", "fusor-router?/browser"]
+browser = ["fusor-core/dom", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "fusor-async?/browser", "fusor-query?/browser", "fusor-router?/browser"]
 
 [dependencies]
 fusor-core.workspace = true
@@ -26,7 +26,6 @@ fusor-router = { workspace = true, optional = true }
 futures-util = { workspace = true, features = ["std"], optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
-web-sys = { workspace = true, optional = true, features = ["Element", "HtmlInputElement", "HtmlTextAreaElement", "Event", "CompositionEvent"] }
 
 [dev-dependencies]
 fusor-test.workspace = true

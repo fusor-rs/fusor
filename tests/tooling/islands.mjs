@@ -130,6 +130,11 @@ try {
       globalThis.nativeInlineRow = document.querySelector("#cart-one .inline-lines > li");
     });
     await page.locator("#cart-one input[type=checkbox]").check();
+    // The server writes the bound select and radio state before any code loads.
+    assert.equal(await page.locator("#cart-one select[name=size]").inputValue(), "medium");
+    assert(await page.locator("#cart-one input[name=wrap][value=plain]").isChecked());
+    await page.locator("#cart-one select[name=size]").selectOption("large");
+    await page.locator("#cart-one input[name=wrap][value=paper]").check();
     await page.evaluate(
       () => globalThis.__fusor_islands.prefetch("cart-one").promise,
     );
@@ -196,7 +201,15 @@ try {
     );
     assert.equal(
       await page.locator("#cart-one .draft").textContent(),
-      "7あ · Edited before activation · true",
+      "7あ · Edited before activation · true · large · paper",
+    );
+    assert.equal(await page.locator("#cart-one select[name=size]").inputValue(), "large");
+    assert(!(await page.locator("#cart-one input[name=wrap][value=plain]").isChecked()));
+    await page.locator("#cart-one select[name=size]").selectOption("small");
+    await page.locator("#cart-one input[name=wrap][value=plain]").check();
+    assert.equal(
+      await page.locator("#cart-one .draft").textContent(),
+      "7あ · Edited before activation · true · small · plain",
     );
     assert.equal(
       await page.locator("#cart-one .product-id").textContent(),
@@ -208,6 +221,12 @@ try {
       "1",
     );
     assert.equal(buys, beforeBuy + 1);
+    // A server value that matches no option leaves the first one showing,
+    // which activation must not adopt as an edit.
+    await page.evaluate(() => {
+      for (const option of document.querySelectorAll("#cart-two select[name=size] option"))
+        option.removeAttribute("selected");
+    });
     await page.evaluate(
       () => globalThis.__fusor_islands.activate("cart-two").promise,
     );
@@ -215,6 +234,7 @@ try {
       await page.locator("#cart-two input[name=quantity]").inputValue(),
       "2",
     );
+    assert.equal(await page.locator("#cart-two select[name=size]").inputValue(), "medium");
     assert.equal(
       await page.locator("#cart-two .submissions").textContent(),
       "0",

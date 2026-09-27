@@ -1,5 +1,4 @@
 use fusor::{JsInputs, Signal, signal};
-use wasm_bindgen::JsCast;
 
 #[derive(JsInputs)]
 pub struct ThreeJs {
@@ -22,18 +21,6 @@ impl ThreeJs {
             paused: signal(false),
             selected: signal(0),
             status: signal("Preparing your garden…".into()),
-        }
-    }
-
-    fn bloom_changed(&self, event: web_sys::Event) {
-        if let Some(input) = event
-            .target()
-            .and_then(|target| target.dyn_into::<web_sys::HtmlInputElement>().ok())
-        {
-            let value = input.value_as_number();
-            if value.is_finite() {
-                self.bloom.set(value.clamp(20.0, 100.0));
-            }
         }
     }
 

@@ -302,10 +302,34 @@
       {
         "id": "binding-forms",
         "title": "Read and write at the element",
-        "body": "Use `{{ expression }}` to display escaped text or update an ordinary HTML attribute. A binding subscribes to the signals it reads, so `{{ state.count.get() }}` updates when the count changes.\n\nUse `on:click` to run Rust when a click occurs. Use `bind:value` to synchronize a text input with a `Signal<String>` in both directions; pass `state.name`, the signal handle, without `.get()`.\n\nBoolean attributes follow browser semantics: `disabled=\"{{ false }}\"` removes the attribute rather than writing the text “false”.",
+        "body": "Use `{{ expression }}` to display escaped text or update an ordinary HTML attribute. A binding subscribes to the signals it reads, so `{{ state.count.get() }}` updates when the count changes.\n\nUse `on:click` to run Rust when a click occurs. Use `bind` to synchronize a form control with a signal in both directions; pass `state.name`, the signal handle, without `.get()`.\n\nBoolean attributes follow browser semantics: `disabled=\"{{ false }}\"` removes the attribute rather than writing the text “false”.",
         "code": "",
         "language": "Rust",
         "note": "Reading a signal with `get()` inside a text or attribute binding subscribes that binding. A plain Rust field is ordinary state; changing it alone does not notify the DOM."
+      },
+      {
+        "id": "form-state",
+        "title": "Choose a Rust type for each form control",
+        "body": "Give each control a signal of the type it should edit. Here `seats` is a `Signal<u32>` for a number input, `volume` a `Signal<f64>` for a range, and `toppings` a `Signal<Vec<String>>` that collects the checked values. The `bind` reference lists every control and the types it accepts.",
+        "code": "",
+        "language": "src/app.rs · a form's state",
+        "note": "",
+        "source": "tutorial/lessons/forms/app.rs",
+        "links": [
+          {
+            "href": "/docs/html-and-rust/attributes#bindings",
+            "label": "bind reference"
+          }
+        ]
+      },
+      {
+        "id": "form-controls",
+        "title": "Bind each form control",
+        "body": "Every control takes the signal handle, such as `bind=\"state.seats\"`, and each `<output>` shows the value its control edits. Typing half a number leaves `seats` unchanged, and the input keeps what you typed. Radios bound to `state.size` act as one group.",
+        "code": "",
+        "language": "web/index.html",
+        "note": "",
+        "source": "tutorial/lessons/forms/index.html"
       },
       {
         "id": "closures",
@@ -668,25 +692,17 @@
       },
       {
         "id": "bindings",
-        "title": "bind:value and bind:checked — connect an input",
-        "body": "`bind:value` connects an `<input>` to a compatible string signal through input events. `bind:checked` connects its checked property to a boolean signal through change events. Supply the signal handle, not `signal.get()`. For typed editable text fields and textarea, use `bind:field`.",
-        "code": "<input type=\"text\" bind:value=\"state.name\">\n<input type=\"checkbox\" bind:checked=\"state.enabled\">",
+        "title": "bind — connect a form control",
+        "body": "`bind` keeps a form control and a Rust value in sync in both directions. Supply the signal handle, not `signal.get()`. The markup decides what the control edits and the Rust type decides what the edit means, so `rustc` checks the pairing at this attribute.\n\nText-like inputs, `<textarea>`, `number`, `range`, date and color inputs, and a single `<select>` edit their value as text. Bind a `Signal<T>` where `T: FromStr + Display + PartialEq`, such as `Signal<String>`, `Signal<u32>` or `Signal<f64>`. Text that does not parse, such as a half-typed number, leaves the signal unchanged. A `fusor-std` `TextField` also works; it keeps invalid drafts and validates them.\n\nA checkbox follows a `Signal<bool>`, or adds and removes its `value` in a `Signal<Vec<T>>`. A radio button needs a `value`: radios bound to the same signal act as a group, and the signal holds the checked radio's value. A `<select multiple>` binds a `Signal<Vec<T>>` of the selected options' values.",
+        "code": "<input type=\"text\" bind=\"state.name\">\n<input type=\"number\" min=\"1\" bind=\"state.seats\">\n<input type=\"checkbox\" bind=\"state.enabled\">\n<label><input type=\"radio\" value=\"small\" bind=\"state.size\"> Small</label>\n<label><input type=\"radio\" value=\"large\" bind=\"state.size\"> Large</label>\n<select bind=\"state.size\">\n  <option value=\"small\">Small</option>\n  <option value=\"large\">Large</option>\n</select>\n<textarea bind=\"state.notes\"></textarea>",
         "language": "HTML",
-        "note": "",
+        "note": "`bind` owns the control's value, so leave out `value` and `checked` attributes, `selected` options and textarea contents; a checkbox or radio keeps its `value`, which may be interpolated. The input `type` must be static. File inputs are unsupported; read their files in an `on:change` handler.",
         "links": [
           {
             "href": "/docs/html-and-rust",
             "label": "Input binding examples"
           }
         ]
-      },
-      {
-        "id": "field",
-        "title": "bind:field — connect a typed text field",
-        "body": "Connect a `fusor-std` `Field` to a text input or an empty `<textarea>`. Add `fusor-std` with its `forms` and `browser` features.\n\nSupported static input types are `text`, `search`, `email`, `url`, `tel`, and `password`. The `Field` owns draft text, editing state, and the value binding; initialize it in Rust.",
-        "code": "<input type=\"text\" bind:field=\"state.title\">\n<textarea bind:field=\"state.body\"></textarea>",
-        "language": "HTML",
-        "note": "Do not combine with a value attribute, `bind:value`, `bind:checked`, or child-content directives. Select, checkbox, number, file, date, and dynamic input types are unsupported. The `examples/editor` app demonstrates complete Field construction and validation."
       },
       {
         "id": "interpolation",
@@ -950,7 +966,7 @@
         "body": "Every `on:` handler receives a `web_sys::Event`. Its methods include `type_()`, `target()`, `current_target()`, `prevent_default()`, and `stop_propagation()`.\n\nThe target is where the event was dispatched. The current target is the element whose listener is running. Clicking the inner `<span>` in this example can make that span the target, while the `<button>` is the current target.",
         "code": "",
         "language": "",
-        "note": "For keyboard-specific fields such as `key()`, check for `web_sys::KeyboardEvent` with `JsCast`, as below. For input text, `bind:value` is usually simpler than reading the event target yourself.",
+        "note": "For keyboard-specific fields such as `key()`, check for `web_sys::KeyboardEvent` with `JsCast`, as below. For input text, `bind` is usually simpler than reading the event target yourself.",
         "links": [
           {
             "href": "/docs/html-and-rust/attributes#bindings",
@@ -2707,7 +2723,7 @@
         "id": "reactivity",
         "title": "Does an island have normal reactivity?",
         "body": "Yes. Once hydrated, its browser component tree uses the same signals, computed values, event handlers, reactive lists, and owned cleanup as other fusor components. It can also load data asynchronously and use coherent async rendering.\n\nBefore hydration, there is no running browser Rust state for this island: its text is readable and native links and forms can work, but Rust handlers and reactive updates have not started.",
-        "code": "<input name=\"quantity\" bind:value=\"state.quantity\">\n<p>{{ state.quantity.get() }}</p>",
+        "code": "<input name=\"quantity\" bind=\"state.quantity\">\n<p>{{ state.quantity.get() }}</p>",
         "language": "HTML · excerpt from the cart’s shared view",
         "note": "In the example, `state.quantity` is a `Signal<String>` created by `CartView::new`. Before hydration, typing edits the native input but does not update the paragraph. Hydration adopts the edited value; later edits update the signal and paragraph normally. Shared HTML needs resolved initial data; browser-only async startup uses the preview path described below.",
         "links": [
@@ -3045,9 +3061,9 @@
         "id": "complete-app",
         "title": "HTML: place the module at its component boundary",
         "body": "The script is a direct child of `App`, next to its one native root, main. Its `src` is relative to this HTML file.\n\nIn a reusable component, put the script directly inside `<template rust:component=\"YourType\">` in the same way.\n\nfusor extracts the script and calls its lifecycle export; it does not leave an inert script inside each cloned template.",
-        "code": "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>Rust and a JavaScript library</title>\n  <link rel=\"icon\" href=\"data:,\">\n</head>\n<body>\n  <App state=\"{{ App::new() }}\">\n    <script type=\"module\" src=\"./app.js\"></script>\n    <main on:library-result=\"state.accept_result(event)\">\n      <label>Text <input bind:value=\"state.text\"></label>\n      <p>All lowercase: <output>{{ state.is_lowercase.get() }}</output></p>\n    </main>\n  </App>\n</body>\n</html>\n",
+        "code": "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>Rust and a JavaScript library</title>\n  <link rel=\"icon\" href=\"data:,\">\n</head>\n<body>\n  <App state=\"{{ App::new() }}\">\n    <script type=\"module\" src=\"./app.js\"></script>\n    <main on:library-result=\"state.accept_result(event)\">\n      <label>Text <input bind=\"state.text\"></label>\n      <p>All lowercase: <output>{{ state.is_lowercase.get() }}</output></p>\n    </main>\n  </App>\n</body>\n</html>\n",
         "language": "HTML · web/index.html",
-        "note": "`App::new()` constructs the Rust value, and state means that value inside this HTML. `bind:value` keeps the input and `state.text` in sync. `on:library-result` calls the Rust method when main receives an event named `library-result`; event is supplied by the framework. JavaScript root is this same main element."
+        "note": "`App::new()` constructs the Rust value, and state means that value inside this HTML. `bind` keeps the input and `state.text` in sync. `on:library-result` calls the Rust method when main receives an event named `library-result`; event is supplied by the framework. JavaScript root is this same main element."
       },
       {
         "id": "javascript",

@@ -251,6 +251,22 @@ impl<T: 'static> TextField<T> {
     }
 }
 
+/// `bind` edits the raw text; parsing and validation stay with the field.
+impl<T: 'static> fusor::bind::TextValue for TextField<T> {
+    fn text(&self) -> String {
+        self.raw()
+    }
+    fn shows(&self, text: &str) -> bool {
+        self.0.core.state.with(|state| state.raw == text)
+    }
+    fn edit(&self, text: String) {
+        TextField::edit(self, text);
+    }
+    fn touch(&self) {
+        TextField::touch(self);
+    }
+}
+
 mod sealed {
     pub trait Sealed {}
 }

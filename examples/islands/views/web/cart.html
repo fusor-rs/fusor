@@ -4,22 +4,24 @@
     <h2>{{ state.title }}</h2>
     <p class="product-id">Product {{ state.product_id }}</p>
     <label for="{{ state.input_id }}">Quantity</label>
-    <input id="{{ state.input_id }}" name="quantity" bind:value="state.quantity">
-    <label><input type="checkbox" name="accepted" bind:checked="state.accepted"> Include a gift receipt</label>
-    <label>Order note <textarea name="note" bind:field="state.note"></textarea></label>
+    <input id="{{ state.input_id }}" name="quantity" bind="state.quantity">
+    <label><input type="checkbox" name="accepted" bind="state.accepted"> Include a gift receipt</label>
+    <label>Order note <textarea name="note" bind="state.note"></textarea></label>
+    <label>Size <select name="size" bind="state.size"><option>small</option><option value="medium">Medium</option><option value="large">Large</option></select></label>
+    <fieldset class="wrap"><label><input type="radio" name="wrap" value="plain" bind="state.wrap"> Plain</label><label><input type="radio" name="wrap" value="paper" bind="state.wrap"> Gift paper</label></fieldset>
     <div class="nested"><Note></Note></div>
     <ul class="lines"><ForEach items="{{ state.lines.get() }}" key="{{ |item| *item }}">
 <Line item="{{ item.clone() }}"></Line>
 </ForEach></ul>
     <ol class="inline-lines"><ForEach items="{{ state.lines.get() }}" key="{{ |item| *item }}"><li data-id="{{ item.get() }}">{{ index.get() }}:{{ item.get() }}</li></ForEach></ol>
-    <p class="draft">{{ state.quantity.get() }} · {{ state.note.raw() }} · {{ state.accepted.get() }}</p>
+    <p class="draft">{{ state.quantity.get() }} · {{ state.note.raw() }} · {{ state.accepted.get() }} · {{ state.size.get() }} · {{ state.wrap.get() }}</p>
     <button type="submit">Add to cart</button>
     <output class="submissions">{{ state.submissions.get() }}</output>
   </form>
 </template>
 
-<template rust:component="Note" rust:render="shared"><label><NoteContainer><NoteLabel text="Nested note"></NoteLabel><NoteLabel text="Hidden label" rust:if="false"></NoteLabel><input class="nested-input" bind:value="state.value"></NoteContainer><NoteContainer></NoteContainer></label></template>
-<template rust:component="Line" rust:render="shared"><li data-id="{{ state.item.get() }}"><input class="line-input" bind:value="state.draft"><span class="line-value">{{ state.draft.get() }}</span></li></template>
+<template rust:component="Note" rust:render="shared"><label><NoteContainer><NoteLabel text="Nested note"></NoteLabel><NoteLabel text="Hidden label" rust:if="false"></NoteLabel><input class="nested-input" bind="state.value"></NoteContainer><NoteContainer></NoteContainer></label></template>
+<template rust:component="Line" rust:render="shared"><li data-id="{{ state.item.get() }}"><input class="line-input" bind="state.draft"><span class="line-value">{{ state.draft.get() }}</span></li></template>
 
 <template rust:component="NoteLabel" rust:render="shared"><span class="note-label">{{ state.text }}</span></template>
 

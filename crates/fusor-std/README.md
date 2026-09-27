@@ -2,7 +2,7 @@
 
 Typed forms and save actions for fusor.
 
-With `forms`, fields such as `TextField<T>` bind to inputs with `bind:field` and
+With `forms`, fields such as `TextField<T>` bind to form controls with `bind` and
 validate into typed values. With `actions`, saves run through an explicit policy
 and keep newer edits made while a save is in flight. The `resources`, `query`
 and `routing` features re-export `fusor-async`, `fusor-query` and

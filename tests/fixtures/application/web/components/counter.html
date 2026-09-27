@@ -33,7 +33,7 @@ impl fusor::dom::FromInputs for Counter {
 </script>
 <template rust:component="Counter">
   <section class="counter">
-    <input aria-label="Local draft" bind:value="state.name">
+    <input aria-label="Local draft" bind="state.name">
     <button class="increment" on:click="{ state.count.update(|n| *n += 1); state.clicks.update(|n| *n += 1); }">Increment</button>
     <output class="clicks">{{ state.clicks.get() }}</output>
     <output class="shared">{{ state.count.get() }}</output>

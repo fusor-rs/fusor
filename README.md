@@ -125,7 +125,7 @@ fusor is v0.1 and experimental. It targets the browser only: there is no desktop
 
 - SVG, MathML, `<select>` and table parsing contexts inside `<ForEach>`, `<If>` and `<Match>`. Tables work with an explicit `<tbody>` around `<ForEach>`.
 - Match guards and `ref`/`mut` captures in `<Case>` patterns.
-- `bind:field` on anything but text-like inputs: no checkbox, number, file, date or `<select>`.
+- `bind` on file inputs. Read their files in an `on:change` handler.
 - Nested `<Async>` boundaries, editable controls and router outlets inside coherent async views.
 - Nested islands and streamed server rendering. Server rendering is synchronous, and your application resolves its data first.
 - A built-in backend or server functions. fusor renders HTML; you bring your own HTTP server and data layer.

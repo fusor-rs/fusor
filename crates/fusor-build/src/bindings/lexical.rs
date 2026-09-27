@@ -59,9 +59,13 @@ pub(super) fn rewrite(component: &mut Component) {
         | Binding::Boolean { value, .. }
         | Binding::Checked { value, .. }
         | Binding::Class { value, .. }
-        | Binding::Input { value, .. }
-        | Binding::Field { value, .. }
         | Binding::Event { handler: value, .. } => wrap(value),
+        Binding::Bind { value, control, .. } => {
+            wrap(value);
+            if let Some(choice) = control.choice_mut() {
+                choice.expressions_mut().for_each(wrap_text);
+            }
+        }
         Binding::ForEach { items, key, .. } => {
             wrap(items);
             wrap(key);
@@ -87,11 +91,7 @@ pub(super) fn rewrite(component: &mut Component) {
         Binding::Island { inputs, .. } => expressions(inputs).for_each(&wrap),
         Binding::Text { value, .. } => wrap_text(value),
         Binding::Attribute { value, .. } | Binding::Value { value, .. } => {
-            for part in &mut value.0 {
-                if let StringPart::Expression(value) = part {
-                    wrap_text(value)
-                }
-            }
+            value.expressions_mut().for_each(wrap_text)
         }
     };
     Binding::visit_mut(&mut component.bindings, &mut visit);

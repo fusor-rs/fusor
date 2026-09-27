@@ -64,7 +64,7 @@ try {
     ['key="{{ |item| item.id }}"', 'key="{{ |item| item.missing_id }}"', "E0609"],
     ['<Row item="{{ item.clone() }}">', '<Row nonexistent="{{ item.clone() }}">', "E0560"],
     ['{{ selected.get().name }}', '{{ selected.get().missing_name }}', "E0609"],
-    ['bind:value="state.name"', 'bind:value="state.count"', "E0308"],
+    ['<input bind="state.name">', '<input bind="state.items">', "E0277"],
     ['disabled="{{ state.count.get() == 0 }}"', 'disabled="{{ state.count.get() }}"', "E0308"],
   ]) {
     assert.ok(good.includes(before));
@@ -86,7 +86,7 @@ try {
   }
 
   const nativeMismatch = good.replace('scope.on(&element, "click", |_| {})?;',
-    'scope.input(&element, signal(String::new()))?;');
+    'scope.checked(&element, || true)?;');
   assert.notEqual(nativeMismatch, good);
   await writeFile(htmlPath, nativeMismatch);
   const result = await compile();

@@ -1,5 +1,6 @@
 //! Lower HTML bindings to a typed plan, then emit ordinary Rust.
 mod async_tags;
+mod bind;
 mod codegen;
 mod control;
 mod emit;

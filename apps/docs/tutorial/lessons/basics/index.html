@@ -10,7 +10,7 @@
   <App state="{{ App::new() }}">
     <main>
       <h1>Hello, {{ state.name.get() }}</h1>
-      <label>Your name <input bind:value="state.name"></label>
+      <label>Your name <input bind="state.name"></label>
       <button on:click="state.count.update(|n| *n += 1)">Increase</button>
       <button disabled="{{ state.count.get() == 0 }}"
               on:click="state.count.update(|n| *n -= 1)">Decrease</button>

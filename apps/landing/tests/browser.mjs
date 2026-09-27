@@ -105,7 +105,7 @@ try {
     "rust:component",
     "{{ … }}",
     "on:click",
-    "bind:value",
+    "bind",
     "template!(…)",
   ]);
   assert.equal(

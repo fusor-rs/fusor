@@ -1,5 +1,8 @@
 //! Find HTML interpolation boundaries without defining a Rust expression grammar.
-use super::tokens::Rust;
+use super::{
+    ir::{InterpolatedString, StringPart},
+    tokens::Rust,
+};
 use crate::{ExtractError, error};
 use html5gum::{Token, Tokenizer};
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
@@ -87,4 +90,32 @@ pub(super) fn exact_expression(
     }
     let part = parts.remove(0);
     Rust::new(source, part.tokens, offset + part.range.start)
+}
+
+/// An attribute value split into its literal text and `{{ }}` expressions.
+pub(super) fn string(value: &str, parts: Vec<Interpolation>, offset: usize) -> InterpolatedString {
+    let mut result = Vec::new();
+    let mut cursor = 0;
+    for part in parts {
+        result.push(StringPart::Literal(
+            value[cursor..part.range.start].to_owned(),
+        ));
+        result.push(StringPart::Expression(Rust::authored(
+            part.tokens,
+            offset + part.range.start,
+        )));
+        cursor = part.range.end;
+    }
+    result.push(StringPart::Literal(value[cursor..].to_owned()));
+    InterpolatedString(result)
+}
+
+/// Parse an attribute value's interpolations.
+pub(super) fn attribute(
+    source: &str,
+    value: &str,
+    offset: usize,
+) -> Result<InterpolatedString, ExtractError> {
+    let parts = interpolations(source, value, offset, false)?;
+    Ok(string(value, parts, offset))
 }
