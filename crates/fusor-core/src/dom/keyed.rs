@@ -8,6 +8,14 @@ use web_sys::{Document, Element, HtmlElement, HtmlInputElement};
 
 type EncodeKey<K> = dyn Fn(&K) -> Result<String, JsValue>;
 
+/// How a reconcile finds the previous rows whose keys are gone.
+enum Removal<'a, K> {
+    /// Merge every key against the ordered map.
+    Sorted(reconcile::SortedKeys<'a, K>),
+    /// The previous indices of the few removed keys.
+    Direct(Vec<usize>),
+}
+
 struct Row<T> {
     // Held until the row drops, like the row's scope, even when the scope does
     // not retain its item.
@@ -75,8 +83,22 @@ impl Scope {
             let items = items();
             untrack(|| {
                 let keys: Vec<K> = items.iter().map(&key).collect();
-                let mut unique = reconcile::SortedKeys::new(&keys)
-                    .ok_or_else(|| JsValue::from_str("fusor: duplicate key in list"))?;
+                let duplicate = || JsValue::from_str("fusor: duplicate key in list");
+                // A small edit resolves its few changed keys directly. Any other
+                // change validates and merges through every key in order.
+                let (retained, mut removal) =
+                    match reconcile::small_edit(&order, &keys, |key| rows.contains_key(key)) {
+                        Some(plan) => {
+                            let (positions, removed) = plan.map_err(|()| duplicate())?;
+                            (positions, Removal::Direct(removed))
+                        }
+                        None => {
+                            let unique =
+                                reconcile::SortedKeys::new(&keys).ok_or_else(duplicate)?;
+                            let positions = reconcile::previous_positions(&order, &unique);
+                            (positions, Removal::Sorted(unique))
+                        }
+                    };
                 let native_rows = if hydrating && !initialized {
                     let encode = encode.as_ref().ok_or_else(|| {
                         JsValue::from_str("hydrated lists require generated key metadata")
@@ -87,7 +109,6 @@ impl Scope {
                 };
                 let document = document()?;
                 let focused = focused(&document, &container);
-                let retained = reconcile::previous_positions(&order, &unique);
                 // Stage new scopes before touching the visible list. A failing
                 // render drops all staged listeners and leaves old rows intact.
                 let mut staged = BTreeMap::new();
@@ -138,13 +159,24 @@ impl Scope {
                     })
                     .collect();
                 drop(previous);
-                rows.retain(|key, row| {
-                    let keep = unique.contains_next(key);
-                    if !keep {
-                        remove_tree(&row.scope.root);
+                match &mut removal {
+                    Removal::Sorted(unique) => rows.retain(|key, row| {
+                        let keep = unique.contains_next(key);
+                        if !keep {
+                            remove_tree(&row.scope.root);
+                        }
+                        keep
+                    }),
+                    Removal::Direct(removed) => {
+                        // In ascending key order, as `retain` visits the map.
+                        reconcile::sort_few(removed, &order);
+                        for &index in removed.iter() {
+                            if let Some(row) = rows.remove(&order[index]) {
+                                remove_tree(&row.scope.root);
+                            }
+                        }
                     }
-                    keep
-                });
+                }
                 if rows.is_empty() {
                     rows = staged;
                 } else if staged.len() <= rows.len() / (rows.len().ilog2() as usize + 1) {
