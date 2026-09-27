@@ -86,7 +86,7 @@ struct Example {value:Signal<u32>,text:Signal<String>}
  let descriptor=TemplateDescriptor{version:VERSION,component:ComponentId::new(id),kind:RootKind::Template,elements:if bad{BAD}else{GOOD},texts:&[],text_elements:&[]};
  let _=descriptor.mount()?;Ok(())}
 </script>
-<template id="fixture" rust:component="Example"><section id="card">prefix {{ state.value.get() }} middle {{ state.value.get()+1 }} <button id="increment" on:click="state.value.update(|v|*v+=1)">next</button><input id="edit" bind="state.text"><output id="echo">{{ state.text.get() }}</output><div><article><strong id="nested-a">{{ state.value.get()+10 }}</strong><span id="nested-b">{{ state.value.get()+20 }}</span><em><output id="nested-c">{{ state.value.get()+30 }}</output></em></article></div><cache-probe></cache-probe></section></template>
+<template id="fixture" rust:component="Example"><section id="card" data-value="{{ state.value.get() }}">prefix {{ state.value.get() }} middle {{ state.value.get()+1 }} <button id="increment" on:click="state.value.update(|v|*v+=1)">next</button><input id="edit" bind="state.text"><output id="echo">{{ state.text.get() }}</output><div><article><strong id="nested-a">{{ state.value.get()+10 }}</strong><span id="nested-b">{{ state.value.get()+20 }}</span><em><output id="nested-c">{{ state.value.get()+30 }}</output></em></article></div><cache-probe></cache-probe></section></template>
 </body></html>`,
   );
   await exec(
@@ -163,9 +163,13 @@ struct Example {value:Signal<u32>,text:Signal<String>}
         const card = document.querySelector("#card");
         if (!card.textContent.startsWith("prefix 0 middle 1"))
           throw Error("multiple text paths");
+        if (card.getAttribute("data-value") !== "0")
+          throw Error("typed integer attribute");
         card.querySelector("#increment").click();
         if (!card.textContent.startsWith("prefix 1 middle 2"))
           throw Error("later bound button path");
+        if (card.getAttribute("data-value") !== "1")
+          throw Error("typed integer attribute update");
         if (
           ["a", "b", "c"].some(
             (suffix, i) =>

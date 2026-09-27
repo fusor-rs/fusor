@@ -8,13 +8,19 @@ use web_sys::{Document, Element, EventTarget, NodeList};
 // Compare against the live DOM in JavaScript. Returning its old string to Rust
 // only to compare it allocates and transcodes a value that no caller needs.
 #[wasm_bindgen(
-    inline_js = "export function setTextIfChanged(node, value) { if (node.data !== value) node.data = value; } export function setIntegerTextIfChanged(node, number) { const value = '' + number; if (node.data !== value) node.data = value; }"
+    inline_js = "export function setTextIfChanged(node, value) { if (node.data !== value) node.data = value; } export function setIntegerTextIfChanged(node, number) { const value = '' + number; if (node.data !== value) node.data = value; } export function setIntegerAttribute(node, name, number) { node.setAttribute(name, '' + number); }"
 )]
 extern "C" {
     #[wasm_bindgen(js_name = setTextIfChanged)]
     pub(super) fn set_text_if_changed(node: &web_sys::Text, value: &str);
     #[wasm_bindgen(js_name = setIntegerTextIfChanged)]
     pub(super) fn set_integer_text_if_changed(node: &web_sys::Text, value: f64);
+    #[wasm_bindgen(catch, js_name = setIntegerAttribute)]
+    pub(super) fn set_integer_attribute(
+        node: &Element,
+        name: &str,
+        value: f64,
+    ) -> Result<(), JsValue>;
 }
 
 #[wasm_bindgen]

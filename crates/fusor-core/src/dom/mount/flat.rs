@@ -46,6 +46,13 @@ extern "C" {
         name: &JsValue,
         value: &str,
     ) -> Result<(), JsValue>;
+    #[wasm_bindgen(catch, js_name = bindingSetIntegerAttribute)]
+    fn binding_set_integer_attribute(
+        nodes: &JsValue,
+        index: u32,
+        name: &JsValue,
+        value: f64,
+    ) -> Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = bindingRemoveAttribute)]
     fn binding_remove_attribute(nodes: &JsValue, index: u32, name: &JsValue)
     -> Result<(), JsValue>;
@@ -210,6 +217,24 @@ impl Scope {
         self.bind_dom(move || match read() {
             Some(value) => binding_set_attribute(&nodes, index, &name, &value),
             None => binding_remove_attribute(&nodes, index, &name),
+        })
+    }
+
+    /// An attribute that is always present, with the text path's conversion.
+    #[doc(hidden)]
+    pub fn bundle_attr_value(
+        &mut self,
+        nodes: &Rc<JsValue>,
+        index: u32,
+        name: &'static str,
+        read: impl Fn() -> crate::dom::text_value::Output + 'static,
+    ) -> Result<(), JsValue> {
+        use crate::dom::text_value::Output;
+        let nodes = Rc::clone(nodes);
+        let name = strings::static_attribute(name);
+        self.bind_dom(move || match read() {
+            Output::String(value) => binding_set_attribute(&nodes, index, &name, &value),
+            Output::Integer(value) => binding_set_integer_attribute(&nodes, index, &name, value),
         })
     }
 

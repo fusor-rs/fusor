@@ -258,6 +258,9 @@ export function bindingIntegerText(nodes, index, number) {
 export function bindingSetAttribute(nodes, index, name, value) {
   nodes[index].setAttribute(name, value);
 }
+export function bindingSetIntegerAttribute(nodes, index, name, number) {
+  nodes[index].setAttribute(name, "" + number);
+}
 export function bindingRemoveAttribute(nodes, index, name) {
   nodes[index].removeAttribute(name);
 }

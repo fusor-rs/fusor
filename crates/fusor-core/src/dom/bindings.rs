@@ -157,6 +157,25 @@ impl Scope {
         })
     }
 
+    /// Compiler entry point for an always-present attribute, with the text
+    /// path's exact-integer conversion.
+    #[doc(hidden)]
+    pub fn attr_value(
+        &mut self,
+        target: impl ElementTarget,
+        name: &str,
+        read: impl Fn() -> text_value::Output + 'static,
+    ) -> Result<(), JsValue> {
+        let node = target.resolve(self)?;
+        let name = name.to_owned();
+        self.bind_dom(move || match read() {
+            text_value::Output::String(value) => node.set_attribute(&name, &value),
+            text_value::Output::Integer(value) => {
+                strings::set_integer_attribute(&node, &name, value)
+            }
+        })
+    }
+
     pub fn class(
         &mut self,
         target: impl ElementTarget,

@@ -625,13 +625,23 @@ fn scoped(binding: &Binding, bundle: Option<&Bundle>) -> Option<TokenStream> {
             "text_node_string",
             quote_spanned! {span=> move || ::std::string::ToString::to_string(&(#value)) },
         ),
-        Binding::Attribute { name, value, .. } => {
-            let value = string(value);
-            (
-                "attr",
-                quote_spanned! {span=> #name, move || ::std::option::Option::Some(#value) },
-            )
-        }
+        // A lone interpolation shares the text path's exact-integer conversion.
+        Binding::Attribute { name, value, .. } => match value.as_expression() {
+            Some(expression) if typed_text_eligible(expression) => (
+                "attr_value",
+                quote_spanned! {span=> #name, move || {
+                    use ::fusor::dom::text_value::Convert as _;
+                    (&::fusor::dom::text_value::Value(&(#expression))).__fusor_into_text()
+                }},
+            ),
+            _ => {
+                let value = string(value);
+                (
+                    "attr",
+                    quote_spanned! {span=> #name, move || ::std::option::Option::Some(#value) },
+                )
+            }
+        },
         Binding::Event { name, handler, .. } => (
             "on",
             quote_spanned! {span=> #name, move |event| { #handler } },
