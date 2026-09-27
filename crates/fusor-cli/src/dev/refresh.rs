@@ -253,9 +253,9 @@ mod tests {
     }
 
     #[test]
-    fn field_binding_changes_participate_in_native_refresh_compatibility() {
+    fn bind_changes_participate_in_native_refresh_compatibility() {
         let html = r#"<script type="text/rust">struct Editor;</script>
-<main rust:component="Editor"><input bind:field="state.title" placeholder="First"></main>"#;
+<main rust:component="Editor"><input bind="state.title" placeholder="First"></main>"#;
         let source = |html: &str| fusor_build::extract(html).unwrap().fingerprint;
         let before = fingerprint(&source(html));
         assert_eq!(

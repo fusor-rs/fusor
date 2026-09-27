@@ -1,5 +1,5 @@
 use super::{ElementTarget, InputTarget, JsValue, Listener, Scope, strings, text_value};
-use crate::{Effect, Signal, effect};
+use crate::{Effect, effect};
 use std::{cell::RefCell, rc::Rc};
 use web_sys::{Event, Text};
 
@@ -186,19 +186,6 @@ impl Scope {
         Ok(())
     }
 
-    /// Two-way text input binding. Unchanged values preserve the user's cursor.
-    pub fn input(
-        &mut self,
-        target: impl InputTarget,
-        value: Signal<String>,
-    ) -> Result<(), JsValue> {
-        let input = target.resolve_input(self)?;
-        let source = value.clone();
-        let target = input.clone();
-        self.on(&input, "input", move |_| source.set(target.value()))?;
-        self.value(&input, move || value.get())
-    }
-
     pub fn checked(
         &mut self,
         target: impl InputTarget,
@@ -225,18 +212,5 @@ impl Scope {
             }
             Ok(())
         })
-    }
-
-    /// Two-way checkbox binding backed by `Signal<bool>`.
-    pub fn checkbox(
-        &mut self,
-        target: impl InputTarget,
-        value: Signal<bool>,
-    ) -> Result<(), JsValue> {
-        let input = target.resolve_input(self)?;
-        let source = value.clone();
-        let captured = input.clone();
-        self.on(&input, "change", move |_| source.set(captured.checked()))?;
-        self.checked(&input, move || value.get())
     }
 }

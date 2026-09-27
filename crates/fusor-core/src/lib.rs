@@ -12,6 +12,7 @@
 
 #[doc(hidden)]
 pub mod authoring;
+pub mod bind;
 mod cleanup;
 pub mod coherence;
 mod owner;

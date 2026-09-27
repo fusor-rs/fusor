@@ -136,7 +136,7 @@ try {
     await frameworkCli(["build", "--manifest-path", join(app, "Cargo.toml")]);
     console.log(`PASS build: copied ${lesson} guide in a standalone application`);
   }
-  for (const lesson of ["basics", "routing", "context", "mounting", "foreach", "app", "control-flow"]) {
+  for (const lesson of ["basics", "forms", "routing", "context", "mounting", "foreach", "app", "control-flow"]) {
     const app = join(scratch, lesson);
     await frameworkCli(["new", app, "--framework-path", root, "--skip-install"]);
     const files =
@@ -173,6 +173,12 @@ try {
         .sections.find((section) => section.id === "batch").code;
       const html = join(app, "web/index.html");
       await writeFile(html, (await readFile(html, "utf8")).replace("</main>", reset + "\n</main>"));
+    }
+    if (lesson === "forms") {
+      // A bound checkbox whose own change removes it.
+      const html = join(app, "web/index.html");
+      await writeFile(html, (await readFile(html, "utf8")).replace("</main>",
+        '<If condition="{{ !state.newsletter.get() }}"><label><input type="checkbox" bind="state.newsletter"> Hide after subscribing</label></If>\n</main>'));
     }
     if (lesson === "routing") {
       const manifest = join(app, "Cargo.toml");
@@ -285,6 +291,43 @@ try {
     await page.getByRole("button", { name: "Reset", exact: true }).click();
     await expect(page.getByLabel("Your name")).toHaveValue("Ada");
     await expect(page.locator("output")).toHaveText("0");
+
+    activeDist = join(scratch, "forms/dist");
+    await page.goto(origin);
+    const shown = (id) => page.locator(`output[for~="${id}"]`);
+    await page.getByLabel("Hide after subscribing").click();
+    await expect(page.getByLabel("Hide after subscribing")).toHaveCount(0);
+    await expect(page.getByLabel("Newsletter")).toBeChecked();
+    await expect(shown("newsletter")).toHaveText("true");
+    await page.getByLabel("Name").fill("Lin");
+    await expect(shown("name")).toHaveText("Lin");
+    // Text that does not parse keeps the last number and is never rewritten.
+    const seats = page.getByLabel("Seats");
+    await seats.fill("");
+    await expect(seats).toHaveValue("");
+    await expect(shown("seats")).toHaveText("2");
+    await seats.pressSequentially("12");
+    await expect(shown("seats")).toHaveText("12");
+    await page.getByRole("button", { name: "Book four seats" }).click();
+    await expect(seats).toHaveValue("4");
+    await page.getByLabel("Volume").fill("0.3");
+    await expect(shown("volume")).toHaveText("0.3");
+    await page.getByLabel("Olives").check();
+    await page.getByLabel("Cheese").check();
+    await expect(shown("cheese")).toHaveText("olives, cheese");
+    await page.getByLabel("Olives").uncheck();
+    await expect(shown("cheese")).toHaveText("cheese");
+    await page.getByLabel("Large").check();
+    await expect(shown("large")).toHaveText("large");
+    await page.getByLabel("Delivery").selectOption("express");
+    await expect(shown("delivery")).toHaveText("express");
+    await expect(page.getByLabel("Days")).toHaveValues(["Tue"]);
+    await page.getByLabel("Days").selectOption(["Mon", "Wed"]);
+    await expect(shown("days")).toHaveText("Mon, Wed");
+    await page.getByLabel("Notes").fill("Window seat");
+    await expect(shown("notes")).toHaveText("11 characters");
+    assert.deepEqual(errors, []);
+    console.log(`PASS ${name}: every documented form control binds both ways`);
 
     activeDist = join(scratch, "routing/dist");
     await page.goto(origin);

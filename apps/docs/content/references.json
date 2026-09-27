@@ -65,19 +65,9 @@
     "label": "hydrate:target · activation button"
   },
   {
-    "token": "bind:value",
+    "token": "bind=",
     "href": "/docs/html-and-rust/attributes#bindings",
-    "label": "bind:value / bind:checked · input signals"
-  },
-  {
-    "token": "bind:checked",
-    "href": "/docs/html-and-rust/attributes#bindings",
-    "label": "bind:value / bind:checked · input signals"
-  },
-  {
-    "token": "bind:field",
-    "href": "/docs/html-and-rust/attributes#field",
-    "label": "bind:field · typed editable text"
+    "label": "bind · form controls and signals"
   },
   {
     "token": "{{",

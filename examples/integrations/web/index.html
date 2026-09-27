@@ -34,7 +34,7 @@ pub fn unmount() { VIEW.with(|view| { view.borrow_mut().take(); }); }
 <main rust:component="App">
   <h1>Owned integrations</h1>
   <p id="intro">Two views share one request and Rust state.</p>
-  <input id="draft" aria-label="Draft" bind:value="state.text">
+  <input id="draft" aria-label="Draft" bind="state.text">
   <output id="count">{{ state.count.get() }}</output>
   <button id="increment" on:click="state.count.update(|n| *n += 1)">Increment</button>
   <button id="toggle-first" on:click="state.first.update(|show| *show = !*show)">Toggle first view</button>

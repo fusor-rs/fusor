@@ -186,8 +186,7 @@ struct Counter {
                   type="range"
                   min="1"
                   max="10"
-                  value="1"
-                  bind:value="state.step"
+                  bind="state.step"
                 /><button id="reset" class="text-button" disabled="{{ state.count.get() == 0 }}" on:click="state.count.set(0)">
                   Reset <span aria-hidden="true">↺</span>
                 </button>
@@ -201,14 +200,14 @@ struct Counter {
     <script type="text/rust" id="counter-rust">
 struct Counter {
     count: Signal<i32>,
-    step: Signal<String>,
+    step: Signal<i32>,
     doubled: Derived<i32>,
 }
 
 impl Counter {
     fn new() -> Self {
         let count = signal(0_i32);
-        let step = signal("1".to_owned());
+        let step = signal(1_i32);
         let doubled = derived({
             let count = count.clone();
             move || count.get() * 2
@@ -217,7 +216,7 @@ impl Counter {
     }
 
     fn change(&self, direction: i32) {
-        let amount = self.step.get().parse::<i32>().unwrap_or(1).clamp(1, 10);
+        let amount = self.step.get().clamp(1, 10);
         self.count.update(|count| *count = (*count + direction * amount).clamp(-9999, 9999));
     }
 }
@@ -242,7 +241,7 @@ impl Counter {
                   type="text"
                   placeholder="What will you build?"
                   maxlength="200"
-                  bind:value="state.draft"
+                  bind="state.draft"
                 /><button
                   id="add-task"
                   type="submit"
@@ -426,8 +425,8 @@ impl fusor::dom::FromInputs for TaskRow {
         </div>
         <div class="greeting-control">
           <label for="greeting-input">MAKE IT YOURS</label>
-          <input id="greeting-input" type="text" maxlength="80" spellcheck="false" bind:value="state.name">
-          <label class="greeting-toggle"><input id="greeting-default" type="checkbox" bind:checked="state.use_default"> Use the default greeting</label>
+          <input id="greeting-input" type="text" maxlength="80" spellcheck="false" bind="state.name">
+          <label class="greeting-toggle"><input id="greeting-default" type="checkbox" bind="state.use_default"> Use the default greeting</label>
           <span><code>Signal&lt;String&gt;</code><span aria-hidden="true">↔</span><code>&lt;input&gt;</code></span>
         </div>
       </article>

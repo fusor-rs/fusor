@@ -4,8 +4,16 @@
   <body>
     <main rust:component="Application">
       <h1 title="Count {{ state.count.get() }}: {{ state.name.get() }}">{{ state.name.get() }}</h1>
-      <input bind:value="state.name">
-      <input type="checkbox" bind:checked="state.enabled">
+      <input bind="state.name">
+      <input type="checkbox" bind="state.enabled">
+      <input type="number" bind="state.count">
+      <input type="range" min="0" max="1" step="0.1" bind="state.ratio">
+      <textarea bind="state.name"></textarea>
+      <input type="radio" name="size" value="small" bind="state.size">
+      <input type="radio" name="size" value="size-{{ state.count.get() }}" bind="state.size">
+      <select bind="state.size"><option value="small">Small</option><option>large</option></select>
+      <select multiple bind="state.sizes"><option>small</option><option value="large">Large</option></select>
+      <input type="checkbox" value="gift" bind="state.sizes">
       <input value="{{ state.count.get() }}" checked="{{ state.enabled.get() }}">
       <button disabled="{{ state.count.get() == 0 }}"
               on:click="{ state.count.set(0); state.name.set(String::new()); }">Reset</button>
@@ -47,6 +55,9 @@ struct Application {
     count: Signal<i32>,
     name: Signal<String>,
     enabled: Signal<bool>,
+    ratio: Signal<f64>,
+    size: Signal<String>,
+    sizes: Signal<Vec<String>>,
     items: Signal<Vec<Item>>,
 }
 
@@ -66,6 +77,7 @@ thread_local! {
 pub fn start() -> Result<(), JsValue> {
     let component = Application {
         count: signal(0), name: signal("Ready".into()), enabled: signal(true),
+        ratio: signal(0.5), size: signal("small".into()), sizes: signal(Vec::new()),
         items: signal(vec![Item { id: 1, name: "External application".into() }]),
     }.mount()?;
     APP.with(|app| *app.borrow_mut() = Some(component));

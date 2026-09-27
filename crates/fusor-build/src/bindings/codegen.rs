@@ -479,21 +479,11 @@ fn binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream {
             let node = element(*node);
             quote_spanned! {span=> __fusor_scope.class(&#node, #name, move || { #value })?; }
         }
-        Binding::Field { node, value } => {
-            let node = element(*node);
-            quote_spanned! {span=> ::fusor_std::forms::browser::bind(&mut __fusor_scope, &#node, (#value).clone())?; }
-        }
-        Binding::Input { node, kind, value } => {
-            let node = element(*node);
-            match kind {
-                InputKind::Value => {
-                    quote_spanned! {span=> __fusor_scope.input(&#node, (#value).clone())?; }
-                }
-                InputKind::Checked => {
-                    quote_spanned! {span=> __fusor_scope.checkbox(&#node, (#value).clone())?; }
-                }
-            }
-        }
+        Binding::Bind {
+            node,
+            control,
+            value,
+        } => super::bind::browser(*node, control, value),
         Binding::Slot {
             node,
             content,
@@ -789,28 +779,35 @@ fn install(
     ctx: Ctx,
 ) -> TokenStream {
     let shared = component.render == RenderTarget::Shared;
-    let browser_bindings: Vec<_> = component
-        .bindings
-        .iter()
+    // A select's value applies after its options' own bindings set their values.
+    let mut ordered: Vec<&Binding> = component.bindings.iter().collect();
+    ordered.sort_by_key(|binding| {
+        matches!(
+            binding,
+            Binding::Bind {
+                control: Control::Select | Control::SelectMultiple,
+                ..
+            }
+        )
+    });
+    let browser_bindings: Vec<_> = ordered
+        .into_iter()
         .map(|item| browser_binding(item, shared, ctx, &component.async_locals))
         .collect();
     let shared_bindings = browser_bindings.iter().map(|binding| &binding.shared);
     let bindings = browser_bindings.iter().map(|binding| &binding.ordinary);
     let coherent_bindings = browser_bindings.iter().map(|binding| &binding.coherent);
-    let adoptions = component.bindings.iter().filter_map(|binding| match binding {
-        Binding::Input { node, kind, value } => {
-            let node = element(*node);
-            Some(match kind {
-                InputKind::Value => quote_spanned! {value.span()=> (#value).set(#node.value()); },
-                InputKind::Checked => quote_spanned! {value.span()=> (#value).set(#node.checked()); },
-            })
-        }
-        Binding::Field { node, value } => {
-            let node = element(*node);
-            Some(quote_spanned! {value.span()=> ::fusor_std::forms::browser::adopt(&__fusor_scope, &#node, &(#value))?; })
-        }
-        _ => None,
-    });
+    let adoptions = component
+        .bindings
+        .iter()
+        .filter_map(|binding| match binding {
+            Binding::Bind {
+                node,
+                control,
+                value,
+            } => Some(super::bind::adopt(*node, control, value)),
+            _ => None,
+        });
     let install = quote! {
         #typed_handles
         if __fusor_scope.is_hydrating() { #(#adoptions)* }
@@ -1053,8 +1050,7 @@ fn coherent_binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream
         | Binding::Property { .. }
         | Binding::Value { .. }
         | Binding::Checked { .. }
-        | Binding::Input { .. }
-        | Binding::Field { .. }
+        | Binding::Bind { .. }
         | Binding::Slot { .. } => emit::reject(
             span,
             "editable controls, widgets, outlets and opaque content must remain outside coherent regions",

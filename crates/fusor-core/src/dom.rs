@@ -10,6 +10,8 @@ mod commit;
 mod component;
 mod content;
 #[doc(hidden)]
+pub mod controls;
+#[doc(hidden)]
 pub use children::Children;
 #[cfg(feature = "islands")]
 pub mod delivery;

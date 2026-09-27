@@ -1,14 +1,13 @@
 //! Lower a native element's attributes: directives become bindings, and the
 //! opening tag is rewritten with the element's ID and managed-content marker.
-use crate::bindings::interpolation::{Interpolation, exact_expression, interpolations};
-use crate::bindings::ir::{
-    Binding, Component, Element, InputKind, InterpolatedString, RenderTarget, StringPart,
-};
+use crate::bindings::bind;
+use crate::bindings::interpolation::{exact_expression, interpolations, string};
+use crate::bindings::ir::{Binding, Component, Element, RenderTarget};
 use crate::bindings::markup;
 use crate::bindings::tags::{text_only_element, void_element};
 use crate::bindings::tokens::Rust;
 use crate::{ExtractError, error};
-use fusor::template::{self, ChildPolicy, ComponentId, ElementId};
+use fusor::template::{self, ChildPolicy, ComponentId, ElementId, InputKind};
 use html5gum::StartTag;
 use std::collections::BTreeMap;
 
@@ -57,8 +56,7 @@ enum Directive<'a> {
     Slot,
     Property(&'a str),
     Event(&'a str),
-    Field,
-    Bind(&'a str),
+    Bind,
     Class(&'a str),
     UnknownRust,
     Plain,
@@ -72,15 +70,13 @@ impl<'a> Directive<'a> {
             "hydrate:target" => Self::ActivationTarget,
             "rust:async" | "rust:await" => Self::Region,
             "rust:key" | "rust:slot" | "rust:if" => Self::Slot,
-            "bind:field" => Self::Field,
+            "bind" => Self::Bind,
             _ if name == "hydrate" || name.starts_with("hydrate:") => Self::Hydrate,
             _ => {
                 if let Some(property) = name.strip_prefix("prop:") {
                     Self::Property(property)
                 } else if let Some(event) = name.strip_prefix("on:") {
                     Self::Event(event)
-                } else if let Some(property) = name.strip_prefix("bind:") {
-                    Self::Bind(property)
                 } else if let Some(class) = name.strip_prefix("class:") {
                     Self::Class(class)
                 } else if name.starts_with("rust:") {
@@ -95,23 +91,6 @@ impl<'a> Directive<'a> {
 
 pub(super) fn is_directive(name: &str) -> bool {
     !matches!(Directive::classify(name), Directive::Plain)
-}
-
-fn string(value: &str, parts: Vec<Interpolation>, offset: usize) -> InterpolatedString {
-    let mut result = Vec::new();
-    let mut cursor = 0;
-    for part in parts {
-        result.push(StringPart::Literal(
-            value[cursor..part.range.start].to_owned(),
-        ));
-        result.push(StringPart::Expression(Rust::authored(
-            part.tokens,
-            offset + part.range.start,
-        )));
-        cursor = part.range.end;
-    }
-    result.push(StringPart::Literal(value[cursor..].to_owned()));
-    InterpolatedString(result)
 }
 
 /// Attribute values keyed by name, each with where the value starts in the source.
@@ -255,8 +234,14 @@ fn lower_attribute(
                 handler: Rust::parse(source, value, offset)?,
             })
         }
-        Directive::Field => Some(field_binding(native, value, offset)?),
-        Directive::Bind(property) => Some(input_binding(native, property, value, offset)?),
+        Directive::Bind => Some(bind::parse(
+            source,
+            native.name,
+            native.attrs,
+            native.node,
+            value,
+            offset,
+        )?),
         Directive::Class(class) => Some(class_binding(native, class, value, offset)?),
         Directive::UnknownRust => {
             return Err(error(
@@ -388,79 +373,6 @@ fn property_binding(
     })
 }
 
-fn field_binding(native: &Native, value: &str, offset: usize) -> Result<Binding, ExtractError> {
-    let source = native.source;
-    let kind = native
-        .attrs
-        .get("type")
-        .map_or("text", |(kind, _)| kind)
-        .to_ascii_lowercase();
-    if native.name != "textarea"
-        && (native.name != "input"
-            || !matches!(
-                kind.as_str(),
-                "text" | "search" | "email" | "url" | "tel" | "password"
-            ))
-    {
-        return Err(error(
-            source,
-            offset,
-            "bind:field requires a text input (text/search/email/url/tel/password) or textarea with a static type",
-        ));
-    }
-    if ["value", "bind:value", "bind:checked", "rust:slot"]
-        .iter()
-        .any(|name| native.attrs.contains_key(*name))
-    {
-        return Err(error(
-            source,
-            offset,
-            "bind:field owns the control value; remove value attributes, other value bindings and child ownership directives",
-        ));
-    }
-    Ok(Binding::Field {
-        node: native.node,
-        value: Rust::parse(source, value, offset)?,
-    })
-}
-
-fn input_binding(
-    native: &Native,
-    property: &str,
-    value: &str,
-    offset: usize,
-) -> Result<Binding, ExtractError> {
-    let source = native.source;
-    if native.name != "input" || !matches!(property, "value" | "checked") {
-        return Err(error(
-            source,
-            offset,
-            "supported two-way bindings are bind:value/bind:checked on <input>, and bind:field on text inputs/textarea",
-        ));
-    }
-    if native
-        .attrs
-        .get(property)
-        .is_some_and(|(value, _)| value.contains("{{"))
-    {
-        return Err(error(
-            source,
-            offset,
-            "a property cannot have both an interpolation and a two-way binding",
-        ));
-    }
-    let kind = if property == "value" {
-        InputKind::Value
-    } else {
-        InputKind::Checked
-    };
-    Ok(Binding::Input {
-        node: native.node,
-        kind,
-        value: Rust::parse(source, value, offset)?,
-    })
-}
-
 fn class_binding(
     native: &Native,
     class: &str,
@@ -536,15 +448,21 @@ fn plain_attribute(
         }));
     }
     let value = string(value, parts, offset);
-    Ok(Some(if attr == "value" && native.name == "input" {
-        Binding::Value { node, value }
-    } else {
-        Binding::Attribute {
-            node,
-            name: attr.to_owned(),
-            value,
-        }
-    }))
+    // A checkbox or radio's value is the choice it submits, not edited text.
+    let choice = native.attrs.get("type").is_some_and(|(kind, _)| {
+        matches!(InputKind::of(kind), InputKind::Checkbox | InputKind::Radio)
+    });
+    Ok(Some(
+        if attr == "value" && native.name == "input" && !choice {
+            Binding::Value { node, value }
+        } else {
+            Binding::Attribute {
+                node,
+                name: attr.to_owned(),
+                value,
+            }
+        },
+    ))
 }
 
 /// `rust:slot` hands the element's children to a Rust constructor; `rust:if` and

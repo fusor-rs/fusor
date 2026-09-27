@@ -16,7 +16,7 @@
     <output id="status" aria-live="polite">{{ state.status() }}</output>
     <p id="article-text" class="body" aria-busy="{{ state.data.with(|data| data.is_loading()) }}">{{ state.text() }}</p>
     <button id="refresh" on:click="state.data.refresh()">Refresh</button>
-    <label>Local note <input id="note" bind:value="state.draft"></label>
+    <label>Local note <input id="note" bind="state.draft"></label>
     <button id="toggle-metadata" on:click="state.metadata_visible.update(|visible| *visible = !*visible)">Toggle metadata</button>
     <div id="metadata"><Metadata rust:if="state.metadata_visible.get()"></Metadata></div>
     <p id="end">End of article.</p>

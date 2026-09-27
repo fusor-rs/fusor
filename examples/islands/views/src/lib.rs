@@ -8,6 +8,8 @@ pub struct CartView {
     quantity: Signal<String>,
     accepted: Signal<bool>,
     note: TextField<String>,
+    size: Signal<String>,
+    wrap: Signal<String>,
     submissions: Signal<u32>,
     input_id: String,
     lines: Signal<Vec<u32>>,
@@ -21,6 +23,8 @@ impl CartView {
             quantity: signal(props.quantity),
             accepted: signal(false),
             note: TextField::new(String::new()),
+            size: signal("medium".into()),
+            wrap: signal("plain".into()),
             submissions: signal(0),
             input_id: format!("quantity-{}", props.product_id),
         }

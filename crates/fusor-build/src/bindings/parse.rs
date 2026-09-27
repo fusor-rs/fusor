@@ -104,6 +104,15 @@ fn push_case(
     index
 }
 
+/// Whether an option opening here belongs to a bound select.
+fn in_bound_select(stack: &[Frame]) -> bool {
+    stack
+        .iter()
+        .rev()
+        .find(|frame| frame.name != "optgroup")
+        .is_some_and(|frame| frame.bound() == Bound::Options)
+}
+
 /// If and Match need an ordinary container: the HTML parser relocates or
 /// reinterprets content in tables, selects, text areas and foreign content.
 fn branch_allowed(stack: &[Frame], parent: Option<&Frame>) -> bool {
@@ -215,9 +224,21 @@ struct ElementFrame {
     text_host: Option<TextHost>,
     inert: bool,
     owns_children: bool,
-    field_value: bool,
+    bound: Bound,
     component_root: bool,
     region: Option<Region>,
+}
+
+/// What `bind` requires of an element's contents.
+#[derive(Clone, Copy, PartialEq)]
+enum Bound {
+    Free,
+    /// A bound textarea, whose value the binding owns.
+    Empty,
+    /// A bound select, whose options the binding chooses.
+    Options,
+    /// An option of a bound select without a `value`: its static text is its value.
+    StaticText,
 }
 
 struct InvocationFrame {
@@ -284,12 +305,20 @@ impl Frame {
             FrameKind::Router { .. } => Some("Router accepts Route children, not text"),
             FrameKind::Invocation(_) if named_content => Some(MIXED_CONTENT),
             FrameKind::Element(ElementFrame {
-                field_value: true, ..
+                bound: Bound::Empty,
+                ..
             }) => Some(
-                "bind:field owns the textarea value; leave its contents empty and initialize the field in Rust",
+                "bind owns the textarea value; leave its contents empty and initialize the value in Rust",
             ),
             _ if self.owns_children() => Some(OWNED_EMPTY),
             _ => None,
+        }
+    }
+
+    fn bound(&self) -> Bound {
+        match &self.kind {
+            FrameKind::Element(element) => element.bound,
+            _ => Bound::Free,
         }
     }
 
@@ -1492,6 +1521,16 @@ impl Parser<'_> {
     }
 
     fn start_element(&mut self, tag: StartTag<usize>, cx: TagContext) -> Result<(), ExtractError> {
+        if cx.name == "option"
+            && in_bound_select(&self.stack)
+            && tag.attributes.contains_key(b"selected".as_slice())
+        {
+            return Err(error(
+                self.source,
+                tag.span.start,
+                "bind chooses the selected options; remove the selected attribute",
+            ));
+        }
         let owner = self.element_owner(&tag, &cx)?;
         let region = self.element_region(&tag, &cx, &owner)?;
         let element_id = ElementId::new(self.node);
@@ -1829,12 +1868,10 @@ impl Parser<'_> {
         }
         if (async_attr.is_some() || enclosing)
             && (name.contains('-')
-                || tag.attributes.keys().any(|key| {
-                    matches!(
-                        key.as_ref(),
-                        b"is" | b"bind:value" | b"bind:checked" | b"bind:field" | b"rust:slot"
-                    )
-                }))
+                || tag
+                    .attributes
+                    .keys()
+                    .any(|key| matches!(key.as_ref(), b"is" | b"bind" | b"rust:slot")))
         {
             return Err(error(
                 source,
@@ -1982,7 +2019,7 @@ impl Parser<'_> {
                     && !matches!(name.as_str(), "template" | "pre" | "listing" | "noscript")
                     && !foreach_hosts.contains(&tag.span.start)
                     && !tag.attributes.contains_key(b"rust:slot".as_slice())
-                    && !tag.attributes.contains_key(b"bind:field".as_slice())
+                    && !tag.attributes.contains_key(b"bind".as_slice())
                     && !tag.attributes.contains_key(b"is".as_slice())
                     && !components[*index].elements.last().is_some_and(|element| {
                         element.id == element_id && element.children == ChildPolicy::Managed
@@ -2003,6 +2040,13 @@ impl Parser<'_> {
                     .filter(|element| element.id == element_id)
                     .map(|element| element.id),
             });
+        let has = |attribute: &[u8]| tag.attributes.contains_key(attribute);
+        let bound = match name.as_str() {
+            "textarea" if has(b"bind") => Bound::Empty,
+            "select" if has(b"bind") => Bound::Options,
+            "option" if in_bound_select(stack) && !has(b"value") => Bound::StaticText,
+            _ => Bound::Free,
+        };
         stack.push(Frame {
             name,
             owner,
@@ -2011,7 +2055,7 @@ impl Parser<'_> {
                 text_host,
                 inert,
                 owns_children: tag.attributes.contains_key(b"rust:slot".as_slice()),
-                field_value: tag.attributes.contains_key(b"bind:field".as_slice()),
+                bound,
                 component_root: component_id.is_some(),
                 region,
             }),
@@ -2244,6 +2288,13 @@ impl Parser<'_> {
                 source,
                 offset,
                 "text interpolation requires rendered HTML text; raw-text elements cannot contain bindings",
+            ));
+        }
+        if frame.bound() == Bound::StaticText {
+            return Err(error(
+                source,
+                offset,
+                "an option in a bound select needs a value attribute when its text is interpolated",
             ));
         }
         self.text_bindings(index, raw, offset)

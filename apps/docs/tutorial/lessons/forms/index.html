@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Form controls</title>
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <App state="{{ App::new() }}">
+    <main>
+      <label>Name <input id="name" bind="state.name"></label>
+      <output for="name">{{ state.name.get() }}</output>
+
+      <label>Seats <input id="seats" type="number" min="1" bind="state.seats"></label>
+      <button on:click="state.seats.set(4)">Book four seats</button>
+      <output for="seats">{{ state.seats.get() }}</output>
+
+      <label>Volume <input id="volume" type="range" min="0" max="1" step="0.1" bind="state.volume"></label>
+      <output for="volume">{{ state.volume.get() }}</output>
+
+      <label><input id="newsletter" type="checkbox" bind="state.newsletter"> Newsletter</label>
+      <output for="newsletter">{{ state.newsletter.get() }}</output>
+
+      <fieldset>
+        <legend>Toppings</legend>
+        <label><input id="cheese" type="checkbox" value="cheese" bind="state.toppings"> Cheese</label>
+        <label><input id="olives" type="checkbox" value="olives" bind="state.toppings"> Olives</label>
+        <output for="cheese olives">{{ state.toppings.get().join(", ") }}</output>
+      </fieldset>
+
+      <fieldset>
+        <legend>Size</legend>
+        <label><input id="small" type="radio" name="size" value="small" bind="state.size"> Small</label>
+        <label><input id="large" type="radio" name="size" value="large" bind="state.size"> Large</label>
+        <output for="small large">{{ state.size.get() }}</output>
+      </fieldset>
+
+      <label>Delivery
+        <select id="delivery" bind="state.delivery">
+          <option value="standard">Standard</option>
+          <option value="express">Express</option>
+        </select>
+      </label>
+      <output for="delivery">{{ state.delivery.get() }}</output>
+
+      <label>Days
+        <select id="days" multiple bind="state.days">
+          <option>Mon</option>
+          <option>Tue</option>
+          <option>Wed</option>
+        </select>
+      </label>
+      <output for="days">{{ state.days.get().join(", ") }}</output>
+
+      <label>Notes <textarea id="notes" bind="state.notes"></textarea></label>
+      <output for="notes">{{ state.notes.with(|notes| notes.chars().count()) }} characters</output>
+    </main>
+  </App>
+</body>
+</html>

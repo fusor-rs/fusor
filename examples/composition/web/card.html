@@ -45,6 +45,6 @@ impl Drop for Card {
     <p>Shared value: <output class="shared">{{ state.shared.get() }}</output></p>
     <button class="increment" on:click="batch(|| { state.shared.update(|n| *n += 1); state.clicks.update(|n| *n += 1); })">Increment</button>
     <p>Clicks here: <output class="clicks">{{ state.clicks.get() }}</output></p>
-    <label>Local note <input bind:value="state.draft"></label>
+    <label>Local note <input bind="state.draft"></label>
   </article>
 </template>

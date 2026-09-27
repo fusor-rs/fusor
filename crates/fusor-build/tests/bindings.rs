@@ -38,38 +38,117 @@ fn typed_text_keeps_original_closure_contract_for_returns_macros_and_attributes(
 }
 
 #[test]
-fn typed_fields_lower_to_optional_native_helper_with_source_origins() {
+fn bind_chooses_its_runtime_from_the_markup_with_source_origins() {
     let page = extract(&format!(
         r#"{STATE}
 <main rust:component="Counter">
-  <input type="text" bind:field="state.title">
-  <textarea bind:field="state.body"></textarea>
+  <input type="text" bind="state.title">
+  <textarea bind="state.body"></textarea>
+  <input type="range" min="1" max="10" bind="state.step">
+  <input type="checkbox" bind="state.enabled">
+  <input type="checkbox" value="{{{{ state.tag() }}}}" bind="state.tags">
+  <input type="radio" name="size" value="small" bind="state.size">
+  <select bind="state.size"><option value="small">Small</option><option>Large</option></select>
+  <select multiple bind="state.sizes"><option>S</option><option value="{{{{ state.large() }}}}">L</option></select>
 </main>"#
     ))
     .unwrap();
-    assert!(tokens(&page.rust).contains(&tokens("::fusor_std::forms::browser::bind")));
-    assert!(!page.html.contains("bind:field"));
-    assert!(page.locations.iter().any(|location| location.line == 3));
-    assert!(page.locations.iter().any(|location| location.line == 4));
+    let rust = tokens(&page.rust);
+    for (function, count) in [
+        ("text", 3),
+        ("select", 1),
+        ("select_multiple", 1),
+        ("checkbox", 2),
+        ("radio", 1),
+        ("adopt_text", 3),
+    ] {
+        let call = format!(":: fusor :: dom :: controls :: {function} (");
+        assert_eq!(rust.matches(&call).count(), count, "{function}");
+    }
+    // An unvalued checkbox submits "on"; a radio compares its own value.
+    assert!(rust.contains(&tokens(r#"move || ::std::string::String::from("on")"#)));
+    assert!(rust.contains(&tokens(r#"move || ::std::string::String::from("small")"#)));
+    assert!(!page.html.contains("bind="));
+    for line in 3..=10 {
+        assert!(
+            page.locations.iter().any(|location| location.line == line),
+            "line {line}"
+        );
+    }
     for markup in [
-        r#"<div bind:field="state.title"></div>"#,
-        r#"<input type="number" bind:field="state.title">"#,
-        r#"<input type="checkbox" bind:field="state.title">"#,
-        r#"<input type="{{ state.kind }}" bind:field="state.title">"#,
-        r#"<input bind:field="state.title" bind:value="state.value">"#,
-        r#"<input bind:field="state.title" bind:checked="state.value">"#,
-        r#"<input bind:field="state.title" value="default">"#,
-        r#"<input bind:field="state.title" value="{{ state.value }}">"#,
-        r#"<textarea bind:field="state.body">initial</textarea>"#,
-        r#"<textarea bind:field="state.body">{{ state.body }}</textarea>"#,
-        r#"<textarea bind:field="state.body" rust:slot="content"></textarea>"#,
-        r#"<input bind:field="">"#,
+        r#"<div bind="state.title"></div>"#,
+        r#"<input bind="">"#,
+        r#"<input type="{{ state.kind }}" bind="state.title">"#,
+        r#"<input type="file" bind="state.title">"#,
+        r#"<input type="hidden" bind="state.title">"#,
+        r#"<input type="radio" bind="state.size">"#,
+        r#"<input type="checkbox" checked bind="state.enabled">"#,
+        r#"<input bind="state.title" value="default">"#,
+        r#"<textarea bind="state.body">initial</textarea>"#,
+        r#"<textarea bind="state.body" rust:slot="content"></textarea>"#,
+        r#"<select multiple="{{ state.many() }}" bind="state.size"><option>Small</option></select>"#,
+        r#"<select bind="state.size"><optgroup label="S"><option selected>Small</option></optgroup></select>"#,
+        r#"<select bind="state.size"><option>{{ state.label() }}</option></select>"#,
     ] {
         let error = extract(&format!(
             "{STATE}\n<main rust:component=Counter>{markup}</main>"
         ))
         .expect_err(markup);
         assert_eq!(error.line, 2, "{markup}: {error}");
+    }
+}
+
+#[test]
+fn bind_writes_server_state_on_each_control() {
+    let page = extract(&format!(
+        r#"{STATE}
+<main rust:component="Counter" rust:render="shared">
+  <input bind="state.title"><input type="password" bind="state.secret">
+  <textarea bind="state.body"></textarea>
+  <input type="radio" value="small" bind="state.size">
+  <select bind="state.size"><option value="small">Small</option><option> Extra
+    large </option><option value="{{{{ state.large() }}}}">Large</option></select>
+</main>"#
+    ))
+    .unwrap();
+    let rust = tokens(&page.rust);
+    for (statement, count) in [
+        // Password text is never rendered.
+        (
+            r#"__fusor_writer.attr("value", ::fusor::bind::TextValue::text(&(state.title)));"#,
+            1,
+        ),
+        (
+            r#"__fusor_writer.attr("value", ::fusor::bind::TextValue::text(&(state.secret)));"#,
+            0,
+        ),
+        (
+            r#"__fusor_writer.text(::fusor::bind::TextValue::text(&(state.body)));"#,
+            1,
+        ),
+        (
+            r#"__fusor_writer.boolean("checked", ::fusor::bind::TextValue::shows(&(state.size), & ::std::string::String::from("small")));"#,
+            1,
+        ),
+        (
+            r#"__fusor_writer.boolean("selected", ::fusor::bind::TextValue::shows(&(state.size), & ::std::string::String::from("small")));"#,
+            1,
+        ),
+        // Option text is compared as the browser reads it: trimmed and collapsed.
+        (
+            r#"__fusor_writer.boolean("selected", ::fusor::bind::TextValue::shows(&(state.size), & ::std::string::String::from("Extra large")));"#,
+            1,
+        ),
+        (
+            r#"__fusor_writer.boolean("selected", ::fusor::bind::TextValue::shows(&(state.size), & ::std::string::ToString::to_string(&(state.large()))));"#,
+            1,
+        ),
+    ] {
+        assert_eq!(
+            rust.matches(&tokens(statement)).count(),
+            count,
+            "{statement}"
+        );
     }
 }
 
@@ -314,16 +393,14 @@ fn compiles_attributes_properties_events_and_two_way_bindings() {
     let source = format!(
         r#"{STATE}<section rust:component="Counter">
 <button title="Count: {{{{ state.count.get() }}}} &amp; {{braces}}" disabled="{{{{ state.count.get() == 0 }}}}" on:click="state.count.set(0)">Reset</button>
-<input bind:value="state.name" />
-<input type="checkbox" bind:checked="state.enabled" />
+<input bind="state.name" />
+<input type="checkbox" bind="state.enabled" />
 <input checked="{{{{ state.enabled.get() }}}}" value="{{{{ state.name.get() }}}}" />
 <p class="label" class:active="state.enabled.get()" aria-hidden="{{{{ !state.enabled.get() }}}}">Text</p>
 </section>"#
     );
     let page = extract(&source).unwrap();
-    for method in [
-        "attr", "on", "input", "checkbox", "checked", "value", "class",
-    ] {
+    for method in ["attr", "on", "checked", "value", "class"] {
         assert!(
             tokens(&page.rust).contains(&tokens(&format!("__fusor_scope.{method}"))),
             "missing {method}"
@@ -332,7 +409,7 @@ fn compiles_attributes_properties_events_and_two_way_bindings() {
     assert!(page.rust.contains("Count: {} & {{braces}}"));
     assert!(tokens(&page.rust).contains(&tokens("let value: bool")));
     assert!(!page.html.contains("on:click"));
-    assert!(!page.html.contains("bind:"));
+    assert!(!page.html.contains("bind="));
     assert!(!page.html.contains("{{"));
 }
 
@@ -387,8 +464,7 @@ fn malformed_or_ambiguous_binding_markup_fails_at_the_html_source() {
         "<p rust:component=Counter><i rust:component=Child></i></p>",
         "<p rust:component=Counter></p><p rust:component=Counter></p>",
         "<button on:click='state.reset()'></button>",
-        "<input rust:component=Counter bind:unknown='state.name'>",
-        "<input rust:component=Counter bind:value='state.name' value='{{ state.name.get() }}'>",
+        "<input rust:component=Counter bind='state.name' value='{{ state.name.get() }}'>",
         "<button rust:component=Counter disabled='prefix {{ true }}'></button>",
         "<p rust:component=Counter class='{{ state.classes() }}' class:active='true'></p>",
         "<p rust:component=Counter onclick='{{ state.code() }}'></p>",
@@ -480,7 +556,7 @@ fn selective_and_coherent_contracts_reject_unsupported_authoring() {
         r#"<main rust:component="Counter" rust:render="server"><div rust:async="state.view"></div></main>"#,
         r#"<main rust:component="Counter" rust:render="shared"><input value="{{ state.value }}"></main>"#,
         r#"<main rust:component="Counter" rust:render="shared"><ul><li>Stale placeholder</li><ForEach items="{{ state.items }}" key="{{ |item| item.id }}"><li>{{ item.get().title }}</li></ForEach></ul></main>"#,
-        r#"<main rust:component="Counter"><div rust:async="state.view"><input bind:value="state.value"></div></main>"#,
+        r#"<main rust:component="Counter"><div rust:async="state.view"><input bind="state.value"></div></main>"#,
         r#"<main rust:component="Counter"><div rust:async="state.view"><div rust:async="state.other"></div></div></main>"#,
         r#"<main rust:component="Counter"><div rust:async="state.view"><x-widget></x-widget></div></main>"#,
     ] {
@@ -796,7 +872,7 @@ fn async_components_validate_roots_scopes_inputs_and_render_targets() {
         "<Await value=\"{{ state.read }}\" let=state><p></p></Await>",
         "<Await value=\"{{ state.read }}\" let=\"a + b\"><p></p></Await>",
         "<Await value=\"{{ state.read }}\" let=result><p></p></await>",
-        "<Await value=\"{{ state.read }}\" let=result><p><input bind:value=state.draft></p></Await>",
+        "<Await value=\"{{ state.read }}\" let=result><p><input bind=state.draft></p></Await>",
         "<Await value=\"{{ state.read }}\" let=result><div><Await value=\"{{ state.other }}\" let=result><p></p></Await></div></Await>",
     ] {
         assert!(
@@ -1208,7 +1284,7 @@ fn binding_bundle_leaves_controls_and_other_binding_kinds_on_typed_fallback() {
         r#"<input on:click="state.click()">"#,
         r#"<textarea title="{{ state.title }}"></textarea>"#,
         r#"<select on:change="state.change()"><option>one</option></select>"#,
-        r#"<input type="text" bind:value="state.value">"#,
+        r#"<input type="text" bind="state.value">"#,
         r#"<p class:active="state.active">text</p>"#,
         r#"<div rust:slot="state.content"></div>"#,
         r#"<Child></Child>"#,
