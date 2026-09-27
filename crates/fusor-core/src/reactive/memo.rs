@@ -96,8 +96,7 @@ impl<T: 'static> MemoInner<T> {
 
 pub(super) trait MemoNode {
     fn refresh(&self);
-    fn invalidate(&self);
-    fn source(&self) -> &Source;
+    fn invalidate(&self) -> &Source;
 }
 
 struct EvaluationGuard<'a>(&'a Cell<bool>);
@@ -152,10 +151,8 @@ impl<T: 'static> MemoNode for MemoInner<T> {
         self.stale.set(false);
     }
 
-    fn invalidate(&self) {
+    fn invalidate(&self) -> &Source {
         self.stale.set(true);
-    }
-    fn source(&self) -> &Source {
         // Only an initialized graph's observer can propagate invalidation here.
         &self.graph.get().expect("memo graph initialized").source
     }

@@ -164,8 +164,7 @@ impl Source {
                 }
                 ObserverKind::Memo(memo) => {
                     if let Some(memo) = memo.upgrade() {
-                        memo.invalidate();
-                        memo.source().subscribers.borrow().push_into(pending);
+                        memo.invalidate().subscribers.borrow().push_into(pending);
                     }
                 }
             }
