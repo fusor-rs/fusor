@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "published": {
-    "experiment": "20260923-seven-framework-baseline",
+    "experiment": "20260927-runtime-optimizations",
     "evidence": "data/full.json",
-    "sha256": "15538b19361226540a298207996aa306f06395e11239d0e63a6a1830245a0e29"
+    "sha256": "78fa6cfaec9567d3bc947f9ea0a75efdf04f87c01b256934b9c76fce1728433a"
   },
   "experiments": [
     {
@@ -15,6 +15,11 @@
       "id": "20260923-seven-framework-baseline",
       "title": "Seven-framework baseline with Leptos",
       "path": "history/20260923-seven-framework-baseline/record.json"
+    },
+    {
+      "id": "20260927-runtime-optimizations",
+      "title": "Runtime optimizations",
+      "path": "history/20260927-runtime-optimizations/record.json"
     }
   ]
 }
