@@ -264,9 +264,16 @@ thread_local! {
     });
 }
 
+/// Where a listener is attached: a native target, or an entry of a validated
+/// binding bundle, which keeps its original node.
+enum ListenerTarget {
+    Node(EventTarget),
+    Bundle(Rc<JsValue>, u32),
+}
+
 /// A DOM event listener, removed when dropped.
 pub struct Listener {
-    target: EventTarget,
+    target: ListenerTarget,
     event: strings::EventName,
     callback: JsValue,
     slot: u32,
@@ -281,12 +288,26 @@ impl Listener {
         event: &str,
         handler: impl FnMut(Event) + 'static,
     ) -> Result<Self, JsValue> {
+        Self::attach(ListenerTarget::Node(target), event, handler)
+    }
+
+    fn attach(
+        target: ListenerTarget,
+        event: &str,
+        handler: impl FnMut(Event) + 'static,
+    ) -> Result<Self, JsValue> {
         let handler = RefCell::new(handler);
         let handler: Handler = Rc::new(move |event| (handler.borrow_mut())(event));
         let (slot, generation) = HANDLERS.with_borrow_mut(|handlers| handlers.insert(handler));
         let event = strings::EventName::from(event);
-        let callback = DISPATCH
-            .with(|dispatch| strings::listen(&target, &event, dispatch.as_ref(), slot, generation));
+        let callback = DISPATCH.with(|dispatch| match &target {
+            ListenerTarget::Node(node) => {
+                strings::listen(node, &event, dispatch.as_ref(), slot, generation)
+            }
+            ListenerTarget::Bundle(nodes, index) => {
+                strings::listen_bundle(nodes, *index, &event, dispatch.as_ref(), slot, generation)
+            }
+        });
         match callback {
             Ok(callback) => Ok(Self {
                 target,
@@ -306,12 +327,12 @@ impl Listener {
 
     /// Batch the handler's signal writes; skip events while `active` is false.
     fn batched(
-        target: EventTarget,
+        target: ListenerTarget,
         event: &str,
         active: impl Fn() -> bool + 'static,
         mut handler: impl FnMut(Event) + 'static,
     ) -> Result<Self, JsValue> {
-        Self::new(target, event, move |event| {
+        Self::attach(target, event, move |event| {
             if active() {
                 batch(|| handler(event));
             }
@@ -321,7 +342,12 @@ impl Listener {
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        let _ = strings::remove(&self.target, &self.event, &self.callback);
+        let _ = match &self.target {
+            ListenerTarget::Node(node) => strings::remove(node, &self.event, &self.callback),
+            ListenerTarget::Bundle(nodes, index) => {
+                strings::unlisten_bundle(nodes, *index, &self.event, &self.callback)
+            }
+        };
         let handler =
             HANDLERS.with_borrow_mut(|handlers| handlers.remove(self.slot, self.generation));
         drop(handler);

@@ -269,7 +269,6 @@ impl Scope {
         event: &str,
         handler: impl FnMut(Event) + 'static,
     ) -> Result<(), JsValue> {
-        let target = binding_element(nodes, index);
-        self.on(&target, event, handler)
+        self.on_bundle(nodes, index, event, handler)
     }
 }

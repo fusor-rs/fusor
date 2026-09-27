@@ -8,7 +8,7 @@ use web_sys::{Document, Element, EventTarget, NodeList};
 // Compare against the live DOM in JavaScript. Returning its old string to Rust
 // only to compare it allocates and transcodes a value that no caller needs.
 #[wasm_bindgen(
-    inline_js = "export function setTextIfChanged(node, value) { if (node.data !== value) node.data = value; } export function setIntegerTextIfChanged(node, number) { const value = '' + number; if (node.data !== value) node.data = value; } export function setIntegerAttribute(node, name, number) { node.setAttribute(name, '' + number); } export function serverRows(container, name, encoded, count, complete) { const keys = count ? encoded.split('\\n') : []; const rows = new Array(count); let node = container.firstElementChild; for (let i = 0; i < count; i++) { if (!node) throw 'missing native row'; if (node.getAttribute(name) !== keys[i]) throw 'native row key mismatch'; rows[i] = node; node = node.nextElementSibling; } if (complete ? node : !node) throw complete ? 'unexpected native row' : 'missing native row'; return rows; } export function listen(target, name, dispatch, slot, generation) { const listener = event => dispatch(slot, generation, event); target.addEventListener(name, listener); return listener; }"
+    inline_js = "export function setTextIfChanged(node, value) { if (node.data !== value) node.data = value; } export function setIntegerTextIfChanged(node, number) { const value = '' + number; if (node.data !== value) node.data = value; } export function setIntegerAttribute(node, name, number) { node.setAttribute(name, '' + number); } export function serverRows(container, name, encoded, count, complete) { const keys = count ? encoded.split('\\n') : []; const rows = new Array(count); let node = container.firstElementChild; for (let i = 0; i < count; i++) { if (!node) throw 'missing native row'; if (node.getAttribute(name) !== keys[i]) throw 'native row key mismatch'; rows[i] = node; node = node.nextElementSibling; } if (complete ? node : !node) throw complete ? 'unexpected native row' : 'missing native row'; return rows; } export function listenBundle(nodes, index, name, dispatch, slot, generation) { const listener = event => dispatch(slot, generation, event); nodes[index].addEventListener(name, listener); return listener; } export function unlistenBundle(nodes, index, name, listener) { nodes[index].removeEventListener(name, listener); } export function listen(target, name, dispatch, slot, generation) { const listener = event => dispatch(slot, generation, event); target.addEventListener(name, listener); return listener; }"
 )]
 extern "C" {
     #[wasm_bindgen(js_name = setTextIfChanged)]
@@ -29,6 +29,22 @@ extern "C" {
         count: u32,
         complete: bool,
     ) -> Result<js_sys::Array, JsValue>;
+    #[wasm_bindgen(catch, js_name = listenBundle)]
+    fn listen_bundle_native(
+        nodes: &JsValue,
+        index: u32,
+        name: &JsValue,
+        dispatch: &JsValue,
+        slot: u32,
+        generation: u32,
+    ) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch, js_name = unlistenBundle)]
+    fn unlisten_bundle_native(
+        nodes: &JsValue,
+        index: u32,
+        name: &JsValue,
+        listener: &JsValue,
+    ) -> Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = listen)]
     fn listen_native(
         target: &EventTarget,
@@ -149,6 +165,27 @@ pub(super) fn listen(
     generation: u32,
 ) -> Result<JsValue, JsValue> {
     name.with(|name| listen_native(target, name, dispatch, slot, generation))
+}
+
+/// [`listen`] on a validated binding bundle entry.
+pub(super) fn listen_bundle(
+    nodes: &JsValue,
+    index: u32,
+    name: &EventName,
+    dispatch: &JsValue,
+    slot: u32,
+    generation: u32,
+) -> Result<JsValue, JsValue> {
+    name.with(|name| listen_bundle_native(nodes, index, name, dispatch, slot, generation))
+}
+
+pub(super) fn unlisten_bundle(
+    nodes: &JsValue,
+    index: u32,
+    name: &EventName,
+    listener: &JsValue,
+) -> Result<(), JsValue> {
+    name.with(|name| unlisten_bundle_native(nodes, index, name, listener))
 }
 
 pub(super) fn remove(
