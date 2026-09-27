@@ -27,14 +27,17 @@ extern "C" {
     fn resolve_flat(plan: &JsValue, root: &Element) -> Result<js_sys::Array, JsValue>;
     #[wasm_bindgen(catch, js_name = resolveBindings)]
     fn resolve_bindings(plan: &JsValue, root: &Element, cached: bool) -> Result<JsValue, JsValue>;
-    #[wasm_bindgen(catch, js_name = mountTemplate)]
-    fn mount_template(
+    #[wasm_bindgen(js_name = mountTemplateOk)]
+    fn mount_template_ok(
         plan: &JsValue,
         selector: &JsValue,
         schema: &JsValue,
         identity: &JsValue,
         version_ok: bool,
-    ) -> Result<JsValue, JsValue>;
+    ) -> bool;
+    /// The result of the last `*Ok` call, or what it threw.
+    #[wasm_bindgen(js_name = takeOutcome)]
+    fn take_outcome() -> JsValue;
     #[cfg(feature = "islands")]
     #[wasm_bindgen(catch, js_name = hydrateRoot)]
     fn hydrate_native_root(
@@ -130,7 +133,11 @@ pub(super) fn mount_document_template(
     let metadata = strings::descriptor(descriptor.component, descriptor.version);
     let (selector, schema, identity) = metadata.native();
     let version_ok = descriptor.version == crate::template::VERSION;
-    let nodes = mount_template(&plan.native, selector, schema, identity, version_ok)?;
+    let mounted = mount_template_ok(&plan.native, selector, schema, identity, version_ok);
+    let nodes = take_outcome();
+    if !mounted {
+        return Err(nodes);
+    }
     let targets =
         descriptor.elements.len() + descriptor.texts.len() + descriptor.text_elements.len();
     let root = binding_element(&nodes, targets as u32);

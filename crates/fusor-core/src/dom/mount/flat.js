@@ -315,6 +315,24 @@ function mountedForm(certificate, identity) {
   return { identity, root, paths: targets.map((node) => pathFrom(root, node)) };
 }
 
+// Fallible entry points report success and keep their result or what they
+// threw for `takeOutcome`, so neither host call needs an exception wrapper.
+let outcome;
+export function mountTemplateOk(plan, selector, schema, identity, versionOk) {
+  try {
+    outcome = mountTemplate(plan, selector, schema, identity, versionOk);
+    return true;
+  } catch (error) {
+    outcome = error;
+    return false;
+  }
+}
+export function takeOutcome() {
+  const value = outcome;
+  outcome = undefined;
+  return value;
+}
+
 // A server-rendered root of a flat bundled descriptor in one native call, in
 // the typed Rust order: server identity, descriptor version, the complete
 // protocol scan, then instance marking.
