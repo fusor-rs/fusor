@@ -173,8 +173,11 @@ impl Scope {
                         // In ascending key order, as `retain` visits the map.
                         reconcile::sort_few(removed, &order);
                         for &index in removed.iter() {
-                            if let Some(row) = rows.remove(&order[index]) {
-                                remove_tree(&row.scope.root);
+                            if let Some(entry) = rows.remove_entry(&order[index]) {
+                                // Like retain, detach before dropping the owned
+                                // key, then release the row and its cleanup.
+                                remove_tree(&entry.1.scope.root);
+                                drop(entry);
                             }
                         }
                     }
