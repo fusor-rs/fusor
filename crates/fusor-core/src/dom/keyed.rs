@@ -203,7 +203,11 @@ impl Scope {
                         let anchor = order
                             .get(index + 1)
                             .map(|key| rows[key].scope.root.as_ref());
-                        container.insert_before(&rows[&order[index]].scope.root, anchor)?;
+                        strings::insert_before(
+                            &container,
+                            &rows[&order[index]].scope.root,
+                            anchor,
+                        )?;
                     }
                 }
                 let idle = queue.as_ref().is_none_or(|queue| queue.is_idle());

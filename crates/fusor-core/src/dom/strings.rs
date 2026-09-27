@@ -8,7 +8,7 @@ use web_sys::{Document, Element, EventTarget, NodeList};
 // Compare against the live DOM in JavaScript. Returning its old string to Rust
 // only to compare it allocates and transcodes a value that no caller needs.
 #[wasm_bindgen(
-    inline_js = "export function setTextIfChanged(node, value) { if (node.data !== value) node.data = value; } export function setIntegerTextIfChanged(node, number) { const value = '' + number; if (node.data !== value) node.data = value; } export function setIntegerAttribute(node, name, number) { node.setAttribute(name, '' + number); } export function serverRows(container, name, encoded, count, complete) { const keys = count ? encoded.split('\\n') : []; const rows = new Array(count); let node = container.firstElementChild; for (let i = 0; i < count; i++) { if (!node) throw 'missing native row'; if (node.getAttribute(name) !== keys[i]) throw 'native row key mismatch'; rows[i] = node; node = node.nextElementSibling; } if (complete ? node : !node) throw complete ? 'unexpected native row' : 'missing native row'; return rows; } export function listenBundle(nodes, index, name, dispatch, slot, generation) { const listener = event => dispatch(slot, generation, event); nodes[index].addEventListener(name, listener); return listener; } export function unlistenBundleOk(nodes, index, name, listener) { try { nodes[index].removeEventListener(name, listener); return true; } catch (error) { removal = error; return false; } } let removal; export function takeRemovalFailure() { const error = removal; removal = undefined; return error; } export function listen(target, name, dispatch, slot, generation) { const listener = event => dispatch(slot, generation, event); target.addEventListener(name, listener); return listener; }"
+    inline_js = "export function setTextIfChanged(node, value) { if (node.data !== value) node.data = value; } export function setIntegerTextIfChanged(node, number) { const value = '' + number; if (node.data !== value) node.data = value; } export function setIntegerAttribute(node, name, number) { node.setAttribute(name, '' + number); } export function serverRows(container, name, encoded, count, complete) { const keys = count ? encoded.split('\\n') : []; const rows = new Array(count); let node = container.firstElementChild; for (let i = 0; i < count; i++) { if (!node) throw 'missing native row'; if (node.getAttribute(name) !== keys[i]) throw 'native row key mismatch'; rows[i] = node; node = node.nextElementSibling; } if (complete ? node : !node) throw complete ? 'unexpected native row' : 'missing native row'; return rows; } export function listenBundle(nodes, index, name, dispatch, slot, generation) { const listener = event => dispatch(slot, generation, event); nodes[index].addEventListener(name, listener); return listener; } export function unlistenBundleOk(nodes, index, name, listener) { try { nodes[index].removeEventListener(name, listener); return true; } catch (error) { removal = error; return false; } } export function insertBeforeOk(parent, node, anchor) { try { parent.insertBefore(node, anchor); return true; } catch (error) { removal = error; return false; } } let removal; export function takeRemovalFailure() { const error = removal; removal = undefined; return error; } export function listen(target, name, dispatch, slot, generation) { const listener = event => dispatch(slot, generation, event); target.addEventListener(name, listener); return listener; }"
 )]
 extern "C" {
     #[wasm_bindgen(js_name = setTextIfChanged)]
@@ -44,6 +44,13 @@ extern "C" {
     fn unlisten_bundle_ok(nodes: &JsValue, index: u32, name: &JsValue, listener: &JsValue) -> bool;
     #[wasm_bindgen(js_name = takeRemovalFailure)]
     fn take_removal_failure() -> JsValue;
+    // Moving a row needs no handle to the moved node and rarely throws.
+    #[wasm_bindgen(js_name = insertBeforeOk)]
+    fn insert_before_ok(
+        parent: &Element,
+        node: &web_sys::Node,
+        anchor: Option<&web_sys::Node>,
+    ) -> bool;
     #[wasm_bindgen(catch, js_name = listen)]
     fn listen_native(
         target: &EventTarget,
@@ -191,6 +198,19 @@ pub(super) fn unlisten_bundle(
             Err(take_removal_failure())
         }
     })
+}
+
+/// `parent.insertBefore(node, anchor)` without returning the node.
+pub(super) fn insert_before(
+    parent: &Element,
+    node: &web_sys::Node,
+    anchor: Option<&web_sys::Node>,
+) -> Result<(), JsValue> {
+    if insert_before_ok(parent, node, anchor) {
+        Ok(())
+    } else {
+        Err(take_removal_failure())
+    }
 }
 
 pub(super) fn remove(
