@@ -352,10 +352,15 @@ fn drive(inner: &Rc<Inner>, evaluate: &Evaluate) {
     });
 }
 
+/// Record a write inside a coherent evaluation. Every signal write checks this,
+/// so the idle check inlines into callers.
+#[inline]
 pub(crate) fn mutation(operation: &str) -> bool {
-    if EVALUATION_DEPTH.get() == 0 {
-        return false;
-    }
+    EVALUATION_DEPTH.get() != 0 && evaluating_mutation(operation)
+}
+
+#[cold]
+fn evaluating_mutation(operation: &str) -> bool {
     EVALUATING.with(|stack| {
         let inner = stack.borrow().last().and_then(Weak::upgrade);
         if let Some(inner) = inner {
