@@ -2,17 +2,17 @@ use super::{
     ElementTarget, JsValue, Scope, document, reconcile, remove_tree, strings, with_native_root,
 };
 use crate::{Signal, signal, untrack};
-use std::{cell::Cell, collections::BTreeMap};
+use std::collections::BTreeMap;
 use wasm_bindgen::JsCast;
-use web_sys::{Document, Element, HtmlElement, HtmlInputElement, Node};
+use web_sys::{Document, Element, HtmlElement, HtmlInputElement};
 
 type EncodeKey<K> = dyn Fn(&K) -> Result<String, JsValue>;
 
 struct Row<T> {
-    state: Signal<T>,
+    // Held until the row drops, like the row's scope, even when the scope does
+    // not retain its item.
+    _state: Signal<T>,
     scope: Scope,
-    /// Index in the previous list, or [`reconcile::NEW`] for a detached root.
-    position: Cell<usize>,
 }
 
 impl Scope {
@@ -64,7 +64,12 @@ impl Scope {
     {
         let hydrating = self.is_hydrating();
         let container = target.resolve(self)?;
+        // `rows` owns the rows and orders their lifecycle by key. `order` and
+        // `states` hold the same keys in DOM order with each row's signal, so
+        // rows that keep their index are updated without a map lookup.
         let mut rows: BTreeMap<K, Row<T>> = BTreeMap::new();
+        let mut order: Vec<K> = Vec::new();
+        let mut states: Vec<Signal<T>> = Vec::new();
         let mut initialized = false;
         self.bind(move || {
             let items = items();
@@ -82,11 +87,14 @@ impl Scope {
                 };
                 let document = document()?;
                 let focused = focused(&document, &container);
+                let retained = reconcile::previous_positions(&order, &unique);
                 // Stage new scopes before touching the visible list. A failing
                 // render drops all staged listeners and leaves old rows intact.
                 let mut staged = BTreeMap::new();
+                let mut positions = retained.clone();
+                let mut fresh = Vec::new();
                 for (index, (key, item)) in keys.iter().zip(&items).enumerate() {
-                    if rows.contains_key(key) {
+                    if retained[index] != reconcile::NEW {
                         continue;
                     }
                     let state = signal(item.clone());
@@ -94,13 +102,15 @@ impl Scope {
                     let scope = with_native_root(native, || render(state.clone()))?;
                     // Server rows already occupy their final positions. Newly
                     // rendered roots are detached and must be inserted.
-                    let position = Cell::new(native.map_or(reconcile::NEW, |_| index));
+                    if native.is_some() {
+                        positions[index] = index;
+                    }
+                    fresh.push(state.clone());
                     staged.insert(
                         key.clone(),
                         Row {
-                            state,
+                            _state: state,
                             scope,
-                            position,
                         },
                     );
                 }
@@ -115,6 +125,19 @@ impl Scope {
                     }
                     initialized = true;
                 }
+                // Release the previous order before removed rows drop, as
+                // their own rows hold the remaining references.
+                let mut previous: Vec<_> =
+                    std::mem::take(&mut states).into_iter().map(Some).collect();
+                let mut fresh = fresh.into_iter();
+                let next: Vec<Signal<T>> = retained
+                    .iter()
+                    .map(|&position| match position {
+                        reconcile::NEW => fresh.next().expect("staged row"),
+                        position => previous[position].take().expect("retained row"),
+                    })
+                    .collect();
+                drop(previous);
                 rows.retain(|key, row| {
                     let keep = unique.contains_next(key);
                     if !keep {
@@ -131,19 +154,18 @@ impl Scope {
                 } else {
                     rows.append(&mut staged);
                 }
-                let ordered: Vec<_> = keys.iter().map(|key| &rows[key]).collect();
-                let positions: Vec<_> = ordered.iter().map(|row| row.position.get()).collect();
                 let stationary = reconcile::stationary(&positions);
-                for (index, (row, item)) in ordered.iter().zip(items).enumerate() {
-                    row.state.set(item);
-                    row.position.set(index);
+                for (state, item) in next.iter().zip(items) {
+                    state.set(item);
                 }
-                let mut anchor: Option<&Node> = None;
-                for (row, keep) in ordered.iter().zip(stationary).rev() {
+                (order, states) = (keys, next);
+                for (index, keep) in stationary.iter().enumerate().rev() {
                     if !keep {
-                        container.insert_before(&row.scope.root, anchor)?;
+                        let anchor = order
+                            .get(index + 1)
+                            .map(|key| rows[key].scope.root.as_ref());
+                        container.insert_before(&rows[&order[index]].scope.root, anchor)?;
                     }
-                    anchor = Some(row.scope.root.as_ref());
                 }
                 for row in rows.values() {
                     row.scope.commit();
