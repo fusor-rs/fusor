@@ -158,6 +158,40 @@ struct Dependency {
     version: u64,
 }
 
+/// Most observers read one or two sources; keep those inline, so a rerun
+/// neither allocates nor frees its dependency list.
+#[derive(Clone, Default)]
+enum Dependencies {
+    #[default]
+    None,
+    One(Dependency),
+    Two([Dependency; 2]),
+    Many(Vec<Dependency>),
+}
+
+impl Dependencies {
+    fn push(&mut self, dependency: Dependency) {
+        if let Self::Many(dependencies) = self {
+            return dependencies.push(dependency);
+        }
+        *self = match std::mem::take(self) {
+            Self::None => Self::One(dependency),
+            Self::One(first) => Self::Two([first, dependency]),
+            Self::Two([first, second]) => Self::Many(vec![first, second, dependency]),
+            Self::Many(_) => unreachable!("pushed above"),
+        };
+    }
+
+    fn as_slice(&self) -> &[Dependency] {
+        match self {
+            Self::None => &[],
+            Self::One(dependency) => std::slice::from_ref(dependency),
+            Self::Two(dependencies) => dependencies,
+            Self::Many(dependencies) => dependencies,
+        }
+    }
+}
+
 pub(super) enum ObserverKind {
     Effect(Weak<EffectInner>),
     Memo(Weak<dyn MemoNode>),
@@ -167,7 +201,7 @@ pub(super) struct Observer {
     id: u64,
     kind: ObserverKind,
     wave: Cell<u64>,
-    dependencies: RefCell<Vec<Dependency>>,
+    dependencies: RefCell<Dependencies>,
 }
 
 impl Observer {
@@ -184,12 +218,12 @@ impl Observer {
             id,
             kind,
             wave: Cell::new(0),
-            dependencies: RefCell::new(Vec::new()),
+            dependencies: RefCell::new(Dependencies::None),
         })
     }
 
     pub fn unsubscribe(&self) {
-        for dependency in self.dependencies.take() {
+        for dependency in self.dependencies.take().as_slice() {
             dependency.source.subscribers.borrow_mut().remove(&self.id);
         }
     }
@@ -197,22 +231,11 @@ impl Observer {
     pub fn changed(&self) -> bool {
         // Refreshing upstream memos executes user computations. Hold no graph
         // registry borrow across that boundary.
-        enum Snapshot {
-            Two([Dependency; 2]),
-            Many(Vec<Dependency>),
-        }
-        let snapshot = {
-            let dependencies = self.dependencies.borrow();
-            match dependencies.as_slice() {
-                [first, second] => Snapshot::Two([first.clone(), second.clone()]),
-                _ => Snapshot::Many(dependencies.clone()),
-            }
-        };
-        let dependencies = match &snapshot {
-            Snapshot::Two(dependencies) => dependencies.as_slice(),
-            Snapshot::Many(dependencies) => dependencies.as_slice(),
-        };
-        dependencies.iter().any(|d| d.source.version() != d.version)
+        let snapshot = self.dependencies.borrow().clone();
+        snapshot
+            .as_slice()
+            .iter()
+            .any(|d| d.source.version() != d.version)
     }
 }
 
