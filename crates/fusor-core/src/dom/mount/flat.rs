@@ -27,6 +27,14 @@ extern "C" {
     fn resolve_flat(plan: &JsValue, root: &Element) -> Result<js_sys::Array, JsValue>;
     #[wasm_bindgen(catch, js_name = resolveBindings)]
     fn resolve_bindings(plan: &JsValue, root: &Element, cached: bool) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch, js_name = mountTemplate)]
+    fn mount_template(
+        plan: &JsValue,
+        selector: &JsValue,
+        schema: &JsValue,
+        identity: &JsValue,
+        version_ok: bool,
+    ) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(js_name = bindingText)]
     fn binding_text(nodes: &JsValue, index: u32, value: &str);
     #[wasm_bindgen(js_name = bindingIntegerText)]
@@ -95,6 +103,22 @@ pub(super) fn resolve_bundle(
 ) -> Result<JsValue, JsValue> {
     let plan = plan(descriptor);
     resolve_bindings(&plan.native, root, cached)
+}
+
+/// Clone and resolve the document's template for a bundled flat descriptor in
+/// one native call, returning the root and its binding bundle.
+pub(super) fn mount_document_template(
+    descriptor: &TemplateDescriptor,
+) -> Result<(Element, JsValue), JsValue> {
+    let plan = plan(descriptor);
+    let metadata = strings::descriptor(descriptor.component, descriptor.version);
+    let (selector, schema, identity) = metadata.native();
+    let version_ok = descriptor.version == crate::template::VERSION;
+    let nodes = mount_template(&plan.native, selector, schema, identity, version_ok)?;
+    let targets =
+        descriptor.elements.len() + descriptor.texts.len() + descriptor.text_elements.len();
+    let root = binding_element(&nodes, targets as u32);
+    Ok((root, nodes))
 }
 
 #[cfg(feature = "islands")]

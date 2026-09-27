@@ -155,7 +155,10 @@ function pathFrom(root, target) {
 function followPath(root, path) {
   let node = root;
   for (const index of path) {
-    node = node.childNodes.item(index);
+    // Sibling steps address the same child as childNodes.item(index) without
+    // materializing a live NodeList for every step.
+    node = node.firstChild;
+    for (let step = 0; node && step < index; step++) node = node.nextSibling;
     if (!node) mismatch('template changed during resolution');
   }
   return node;
@@ -186,10 +189,12 @@ export function resolveBindings(plan, root, cached) {
     // Resolve every location before insertion can shift a later native path.
     nodes = certificate.paths.map(path => path === null ? null : followPath(root, path));
     validateSlots(plan, nodes);
+    // An equal clone of the validated inert certificate has the same node
+    // interfaces at every path: inert template documents never upgrade.
   } else {
     nodes = resolveFlat(plan, root);
+    validateBundleTypes(plan, nodes);
   }
-  validateBundleTypes(plan, nodes);
   if (cached && !cacheHit) {
     // Optional cache construction must not make a validated mount fail.
     try { rememberBundle(plan, root, nodes); } catch (_) {}
@@ -218,6 +223,27 @@ export function resolveBindings(plan, root, cached) {
     nodes[textOffset + plan.textIds.length + i] = text;
   }
   nodes.length = textOffset + plan.textIds.length + plan.textElements.length / 3;
+  return nodes;
+}
+
+// The document-template mount of a flat bundled descriptor in one native call.
+// Same checks, clone source, errors and order as the typed Rust sequence:
+// unique root, schema, template kind, one root element, descriptor version,
+// then complete validation before instance marking. The root follows the
+// binding targets in the returned bundle.
+export function mountTemplate(plan, selector, schema, identity, versionOk) {
+  const roots = document.querySelectorAll(selector);
+  if (roots.length !== 1) mismatch(`component ${identity} requires exactly one root, found ${roots.length}`);
+  const template = roots[0];
+  if (template.getAttribute('data-fusor-version') !== schema) mismatch('HTML schema version differs from Wasm; rebuild the application');
+  if (!(template instanceof HTMLTemplateElement)) mismatch('expected an HTML template');
+  const content = template.content;
+  if (content.childElementCount !== 1) throw 'fusor: a row template needs exactly one root element';
+  const root = content.firstElementChild.cloneNode(true);
+  if (!versionOk) mismatch('unsupported descriptor version; rebuild the application');
+  const nodes = resolveBindings(plan, root, true);
+  root.setAttribute('data-fusor-instance', identity);
+  nodes.push(root);
   return nodes;
 }
 

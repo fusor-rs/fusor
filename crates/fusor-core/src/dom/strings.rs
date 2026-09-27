@@ -160,6 +160,11 @@ pub(super) fn descriptor(component: ComponentId, version: u32) -> Rc<DescriptorS
 }
 
 impl DescriptorStrings {
+    /// Root selector, schema version and component identity, as native strings.
+    pub(super) fn native(&self) -> (&JsValue, &JsValue, &JsValue) {
+        (&self.selector, &self.schema, &self.identity)
+    }
+
     pub(super) fn roots(&self, document: &Document) -> Result<NodeList, JsValue> {
         document
             .unchecked_ref::<StringDocument>()
