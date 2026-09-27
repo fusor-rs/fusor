@@ -57,6 +57,8 @@ struct Inner {
 thread_local! {
     static NEXT: Cell<u64> = const { Cell::new(0) };
     static EVALUATING: RefCell<Vec<Weak<Inner>>> = const { RefCell::new(Vec::new()) };
+    // The length of EVALUATING, readable without a borrow on every write.
+    static EVALUATION_DEPTH: Cell<usize> = const { Cell::new(0) };
     static PREPARING: RefCell<Option<OwnerHandle>> = const { RefCell::new(None) };
 }
 
@@ -252,6 +254,7 @@ impl Drop for Evaluation {
         EVALUATING.with(|stack| {
             stack.borrow_mut().pop();
         });
+        EVALUATION_DEPTH.set(EVALUATION_DEPTH.get() - 1);
     }
 }
 struct Driving<'a>(&'a Cell<bool>);
@@ -288,6 +291,7 @@ fn drive(inner: &Rc<Inner>, evaluate: &Evaluate) {
         reads: RefCell::new(BTreeMap::new()),
     };
     EVALUATING.with(|stack| stack.borrow_mut().push(Rc::downgrade(inner)));
+    EVALUATION_DEPTH.set(EVALUATION_DEPTH.get() + 1);
     let guard = Evaluation;
     let (result, inputs) = Versions::capture(|| evaluate(&attempt));
     drop(guard);
@@ -349,6 +353,9 @@ fn drive(inner: &Rc<Inner>, evaluate: &Evaluate) {
 }
 
 pub(crate) fn mutation(operation: &str) -> bool {
+    if EVALUATION_DEPTH.get() == 0 {
+        return false;
+    }
     EVALUATING.with(|stack| {
         let inner = stack.borrow().last().and_then(Weak::upgrade);
         if let Some(inner) = inner {

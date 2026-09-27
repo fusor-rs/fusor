@@ -167,6 +167,17 @@ impl Owner {
         activate(&self.0);
     }
 
+    /// The status of an owner this caller holds, without a weak handle.
+    #[cfg(feature = "dom")]
+    pub(crate) fn is_active(&self) -> bool {
+        self.0.status.get() == Status::Active
+    }
+
+    #[cfg(feature = "dom")]
+    pub(crate) fn is_disposed(&self) -> bool {
+        self.0.status.get() == Status::Disposed
+    }
+
     #[cfg(any(feature = "dom", test))]
     pub(crate) fn was_activated(&self) -> bool {
         self.0.activated.get()

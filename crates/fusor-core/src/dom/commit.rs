@@ -24,7 +24,7 @@ impl ContextKey for MountContext {
 impl Scope {
     pub(super) fn prepare_queue(&mut self, parent: Option<&OwnerHandle>) {
         self.mount_parent = parent.cloned();
-        if self.owner().is_disposed() {
+        if self.owner.is_disposed() {
             self.mount_queue = None;
             return;
         }
@@ -48,10 +48,10 @@ impl Scope {
         &mut self,
         setup: impl FnOnce() -> Result<(), JsValue> + 'static,
     ) -> Result<(), JsValue> {
-        if self.owner().is_disposed() {
+        if self.owner.is_disposed() {
             return Err(JsValue::from_str("cannot initialize a disposed component"));
         }
-        if self.owner().is_active() {
+        if self.owner.is_active() {
             return setup();
         }
         let queue = self.mount_queue.as_ref().expect("prepared component queue");
@@ -67,7 +67,7 @@ impl Scope {
     /// Used before replacing a previous view.
     #[doc(hidden)]
     pub fn finish_prepare(&self) -> Result<(), JsValue> {
-        if self.owner().is_disposed() {
+        if self.owner.is_disposed() {
             return Err(JsValue::from_str("cannot commit a disposed component"));
         }
         self.mount_ready.set(true);
@@ -85,17 +85,18 @@ impl Scope {
     /// Unlike finish_prepare, an inactive parent does not defer fallible setup.
     /// The caller must keep work inactive until all participants can commit.
     pub fn finish_prepare_subtree(&self) -> Result<(), JsValue> {
-        if self.owner().is_disposed() {
+        if self.owner.is_disposed() {
             return Err(JsValue::from_str("cannot prepare a disposed subtree"));
         }
         self.mount_ready.set(true);
         if let Some(queue) = &self.mount_queue {
             let pending = queue.0.take();
+            let owner = self.owner();
             let (ready, waiting): (Vec<_>, Vec<_>) = pending
                 .into_iter()
                 .filter(|action| !action.owner.is_disposed() && action.ready.strong_count() > 0)
                 .partition(|action| {
-                    action.owner.is_within(&self.owner())
+                    action.owner.is_within(&owner)
                         && action.ready.upgrade().is_some_and(|ready| ready.get())
                 });
             queue.0.borrow_mut().extend(waiting);
@@ -105,7 +106,7 @@ impl Scope {
                 }
             }
         }
-        if self.owner().is_disposed() {
+        if self.owner.is_disposed() {
             return Err(JsValue::from_str(
                 "component disposed during initialization",
             ));
@@ -119,7 +120,7 @@ impl Scope {
         // Reconciliation revisits retained scopes. An active scope has already
         // prepared and committed, but new descendants can share its setup queue.
         // Only skip preparation when there is no pending setup anywhere in it.
-        if self.owner().is_active()
+        if self.owner.is_active()
             && self
                 .mount_queue
                 .as_ref()
@@ -129,7 +130,7 @@ impl Scope {
         }
         self.finish_prepare()?;
         self.owner.commit();
-        if self.owner().is_disposed() {
+        if self.owner.is_disposed() {
             return Err(JsValue::from_str("component disposed during activation"));
         }
         Ok(())
