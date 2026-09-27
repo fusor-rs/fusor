@@ -6,6 +6,10 @@ use std::{
     rc::{Rc, Weak},
 };
 
+thread_local! {
+    static PENDING: RefCell<VecDeque<Rc<Observer>>> = const { RefCell::new(VecDeque::new()) };
+}
+
 // Small sources keep up to two observers inline in ascending ID order.
 // Wider sources retain the ordinary ordered registry and its removal path.
 enum Subscribers {
@@ -19,17 +23,25 @@ impl Default for Subscribers {
     }
 }
 impl Subscribers {
+    #[cfg(test)]
     fn collect(&self) -> VecDeque<Rc<Observer>> {
+        let mut observers = VecDeque::new();
+        self.push_into(&mut observers);
+        observers
+    }
+
+    /// Append the live subscribers in ascending ID order.
+    fn push_into(&self, pending: &mut VecDeque<Rc<Observer>>) {
         match self {
-            Self::One(subscriber) => subscriber
-                .iter()
-                .filter_map(|(_, weak)| weak.upgrade())
-                .collect(),
-            Self::Two(subscribers) => subscribers
-                .iter()
-                .filter_map(|(_, weak)| weak.upgrade())
-                .collect(),
-            Self::Many(subscribers) => subscribers.values().filter_map(Weak::upgrade).collect(),
+            Self::One(subscriber) => {
+                pending.extend(subscriber.iter().filter_map(|(_, weak)| weak.upgrade()));
+            }
+            Self::Two(subscribers) => {
+                pending.extend(subscribers.iter().filter_map(|(_, weak)| weak.upgrade()));
+            }
+            Self::Many(subscribers) => {
+                pending.extend(subscribers.values().filter_map(Weak::upgrade))
+            }
         }
     }
 
@@ -114,10 +126,6 @@ impl Source {
         self.version.get()
     }
 
-    fn subscribers(&self) -> VecDeque<Rc<Observer>> {
-        self.subscribers.borrow().collect()
-    }
-
     pub fn notify(&self) {
         let wave = NEXT_WAVE.with(|next| {
             let wave = next
@@ -127,7 +135,20 @@ impl Source {
             next.set(wave);
             wave
         });
-        let mut pending = self.subscribers();
+        // Notification runs no user code, so one work queue serves every
+        // write. A reentrant notification would use its own.
+        PENDING.with(|shared| match shared.try_borrow_mut() {
+            Ok(mut pending) => {
+                // Drop anything an unwinding notification left behind.
+                pending.clear();
+                self.notify_into(&mut pending, wave);
+            }
+            Err(_) => self.notify_into(&mut VecDeque::new(), wave),
+        });
+    }
+
+    fn notify_into(&self, pending: &mut VecDeque<Rc<Observer>>, wave: u64) {
+        self.subscribers.borrow().push_into(pending);
         while let Some(observer) = pending.pop_front() {
             if observer.wave.replace(wave) == wave {
                 continue;
@@ -144,7 +165,7 @@ impl Source {
                 ObserverKind::Memo(memo) => {
                     if let Some(memo) = memo.upgrade() {
                         memo.invalidate();
-                        pending.extend(memo.source().subscribers());
+                        memo.source().subscribers.borrow().push_into(pending);
                     }
                 }
             }
