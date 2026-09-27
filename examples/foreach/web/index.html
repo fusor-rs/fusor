@@ -8,6 +8,7 @@
   </ForEach></ul>
   <p id="live">{{ state.live.get() }}</p>
   <ul id="tracked"><ForEach items="{{ state.items.get() }}" key="{{ |item| item.id }}"><TrackedRow item="{{ item.clone() }}" position="{{ index.clone() }}" live="{{ state.live.clone() }}"></TrackedRow></ForEach></ul>
+  <ul id="forwarded"><ForEach items="{{ state.items.get() }}" key="{{ |item| item.id }}"><ForwardedRow item="{{ item.clone() }}"></ForwardedRow></ForEach></ul>
   <button on:click="state.groups.update(|groups| groups.reverse())">Reverse groups</button>
   <ul id="groups"><ForEach items="{{ state.groups.get() }}" key="{{ |group| group.id }}" item="group" index="group_index">
   <li><h2>{{ group.get().title }}</h2><ul><ForEach items="{{ group.get().items }}" key="{{ |item| item.id }}">
@@ -15,4 +16,5 @@
   </ForEach></ul></li></ForEach></ul>
   </main>
 </App>
+<template rust:component="ForwardedRow"><li data-id="{{ state.item.get().id }}"><span class="forwarded-title">{{ state.item.get().title }}</span><button on:click="state.clicks.update(|n| *n+=1)">Count</button><output>{{ state.clicks.get() }}</output></li></template>
 <template rust:component="TrackedRow"><li data-id="{{ state.item.get().id }}"><span class="tracked-index">{{ state.position.get() }}</span><button on:click="state.clicks.update(|n| *n+=1)">Tap</button><output>{{ state.clicks.get() }}</output></li></template></body></html>

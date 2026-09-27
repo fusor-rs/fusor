@@ -76,6 +76,15 @@ impl ViewState {
 }
 fusor::template!("web/index.html");
 
+// Never reads its index: the compiler's position-free row source.
+#[derive(fusor::FromInputs)]
+struct ForwardedRow {
+    #[input]
+    item: Memo<Item>,
+    #[local(init = signal(0))]
+    clicks: Signal<u32>,
+}
+
 struct TrackedRow {
     item: Memo<Item>,
     position: Memo<usize>,

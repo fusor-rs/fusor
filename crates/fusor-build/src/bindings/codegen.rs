@@ -225,6 +225,7 @@ fn shared_list(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> Brows
         .ready
         .then(|| quote! { let ready = &__fusor_row_ready; });
     let clones = clone_locals(locals);
+    let (values, value_key) = row_values(ctx, *body);
     let ordinary_row = quote! { move |entry| #prepare(entry, &__fusor_parent) };
     let mount = if shared {
         quote! { __fusor_scope.keyed_hydrated(&#node, #read, #key_fn, #ordinary_row, |key| ::fusor_islands::encode(key).map_err(|error| ::fusor::dom::JsValue::from_str(&error.to_string())))?; }
@@ -251,8 +252,8 @@ fn shared_list(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> Brows
                 let __fusor_row_state = ::std::rc::Rc::clone(&state);
                 let __fusor_children = __fusor_children.clone();
                 __fusor_list_parts(
-                    { #clones move || { #read_ready let state = &__fusor_read_state; ::fusor_components::ForEach::entries({ #items }) } },
-                    { #clones move |entry| { #key_ready let state = &__fusor_key_state; ::fusor_components::ForEach::key(entry, #key) } },
+                    { #clones move || { #read_ready let state = &__fusor_read_state; #values({ #items }) } },
+                    { #clones move |entry| { #key_ready let state = &__fusor_key_state; #value_key(entry, #key) } },
                     { #clones move |entry, __fusor_parent| {
                         #row_ready
                         #row
@@ -942,6 +943,22 @@ fn branch_dispatch(
 }
 
 /// Prepare one ForEach row, whose state wraps the parent's state held in `state`.
+/// A row proven never to read its index receives bare values, so that moving
+/// it does not change its source. Other rows receive values with positions.
+fn row_values(ctx: Ctx, body: usize) -> (TokenStream, TokenStream) {
+    if ctx.components[body].item_only_row {
+        (
+            quote! { ::fusor_components::ForEach::values },
+            quote! { ::fusor_components::ForEach::value_key },
+        )
+    } else {
+        (
+            quote! { ::fusor_components::ForEach::entries },
+            quote! { ::fusor_components::ForEach::key },
+        )
+    }
+}
+
 fn foreach_row(span: Span, ctx: Ctx, body: usize, state: &str) -> TokenStream {
     let state = Ident::new(state, span);
     let constructor = if ctx.components[body].item_only_row {
@@ -989,8 +1006,9 @@ fn coherent_binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream
             let slot = node.index();
             let node = element(*node);
             let row = foreach_row(span, ctx, *body, "state");
-            quote_spanned! {span=> __fusor_frame.keyed(#slot, #node.as_ref(), || ::fusor_components::ForEach::entries({ #items }),
-            |entry| ::fusor_components::ForEach::key(entry, #key), |entry, __fusor_parent| {
+            let (values, value_key) = row_values(ctx, *body);
+            quote_spanned! {span=> __fusor_frame.keyed(#slot, #node.as_ref(), || #values({ #items }),
+            |entry| #value_key(entry, #key), |entry, __fusor_parent| {
                 #row
             })?; }
         }
