@@ -275,7 +275,6 @@ enum ListenerTarget {
 pub struct Listener {
     target: ListenerTarget,
     event: strings::EventName,
-    callback: JsValue,
     slot: u32,
     generation: u32,
 }
@@ -300,7 +299,7 @@ impl Listener {
         let handler: Handler = Rc::new(move |event| (handler.borrow_mut())(event));
         let (slot, generation) = HANDLERS.with_borrow_mut(|handlers| handlers.insert(handler));
         let event = strings::EventName::from(event);
-        let callback = DISPATCH.with(|dispatch| match &target {
+        let listening = DISPATCH.with(|dispatch| match &target {
             ListenerTarget::Node(node) => {
                 strings::listen(node, &event, dispatch.as_ref(), slot, generation)
             }
@@ -308,11 +307,10 @@ impl Listener {
                 strings::listen_bundle(nodes, *index, &event, dispatch.as_ref(), slot, generation)
             }
         });
-        match callback {
-            Ok(callback) => Ok(Self {
+        match listening {
+            Ok(()) => Ok(Self {
                 target,
                 event,
-                callback,
                 slot,
                 generation,
             }),
@@ -343,9 +341,9 @@ impl Listener {
 impl Drop for Listener {
     fn drop(&mut self) {
         let _ = match &self.target {
-            ListenerTarget::Node(node) => strings::remove(node, &self.event, &self.callback),
+            ListenerTarget::Node(node) => strings::remove(node, &self.event, self.slot),
             ListenerTarget::Bundle(nodes, index) => {
-                strings::unlisten_bundle(nodes, *index, &self.event, &self.callback)
+                strings::unlisten_bundle(nodes, *index, &self.event, self.slot)
             }
         };
         let handler =
