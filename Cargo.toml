@@ -13,25 +13,25 @@ output = "dist"
 "/benchmarks/" = "fusor-benchmarks"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/fusor-rs/fusor"
 
 [workspace.dependencies]
-fusor-npm = { path = "crates/fusor-npm", version = "=0.1.0" }
-fusor-components = { path = "crates/fusor-components", version = "=0.1.0" }
-fusor-macros = { path = "crates/fusor-macros", version = "=0.1.0" }
-fusor-core = { path = "crates/fusor-core", version = "=0.1.0" }
-fusor-build = { path = "crates/fusor-build", version = "=0.1.0" }
-fusor-async = { path = "crates/fusor-async", version = "=0.1.0" }
-fusor-router = { path = "crates/fusor-router", version = "=0.1.0" }
-fusor-query = { path = "crates/fusor-query", version = "=0.1.0" }
-fusor-test = { path = "crates/fusor-test", version = "=0.1.0" }
-fusor-std = { path = "crates/fusor-std", version = "=0.1.0" }
-fusor-islands = { path = "crates/fusor-islands", version = "=0.1.0" }
-fusor-server = { path = "crates/fusor-server", version = "=0.1.0" }
+fusor-npm = { path = "crates/fusor-npm", version = "=0.1.1" }
+fusor-components = { path = "crates/fusor-components", version = "=0.1.1" }
+fusor-macros = { path = "crates/fusor-macros", version = "=0.1.1" }
+fusor-core = { path = "crates/fusor-core", version = "=0.1.1" }
+fusor-build = { path = "crates/fusor-build", version = "=0.1.1" }
+fusor-async = { path = "crates/fusor-async", version = "=0.1.1" }
+fusor-router = { path = "crates/fusor-router", version = "=0.1.1" }
+fusor-query = { path = "crates/fusor-query", version = "=0.1.1" }
+fusor-test = { path = "crates/fusor-test", version = "=0.1.1" }
+fusor-std = { path = "crates/fusor-std", version = "=0.1.1" }
+fusor-islands = { path = "crates/fusor-islands", version = "=0.1.1" }
+fusor-server = { path = "crates/fusor-server", version = "=0.1.1" }
 # Exact: the wasm-bindgen tool fusor downloads (BINDGEN_VERSION in
 # crates/fusor-cli/src/layout.rs) must match this crate version.
 wasm-bindgen = "=0.2.117"
