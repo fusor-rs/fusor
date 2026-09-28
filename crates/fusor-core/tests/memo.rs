@@ -1,3 +1,4 @@
+use fusor::versions::Versions;
 use fusor::{Memo, Signal, batch, derived, effect, memo, memo_with_eq, signal, untrack};
 use std::{
     cell::{Cell, RefCell},
@@ -179,6 +180,69 @@ fn untracked_reads_preserve_internal_dependencies_and_equality_does_not_track() 
 }
 
 #[test]
+fn first_untracked_memo_read_captures_its_published_version() {
+    let input = signal(1);
+    let value = memo({
+        let input = input.clone();
+        move || input.get() % 2
+    });
+    let (initial, versions) = Versions::capture(|| value.get_untracked());
+    assert_eq!(initial, 1);
+    assert!(versions.is_current());
+    input.set(3);
+    assert!(
+        versions.is_current(),
+        "equal output changed the captured version"
+    );
+    let (_, equal) = Versions::capture(|| value.clone().get_untracked());
+    assert!(versions.same(&equal));
+    input.set(4);
+    assert!(
+        !versions.is_current(),
+        "untracked read did not capture the memo"
+    );
+    let (changed, current) = Versions::capture(|| value.get_untracked());
+    assert_eq!(changed, 0);
+    assert!(current.is_current());
+    assert!(!versions.same(&current));
+}
+
+#[test]
+fn last_unread_clone_releases_compute_and_equality_captures() {
+    let input = signal(0);
+    let computations = Rc::new(Cell::new(0));
+    let compute_capture = Rc::new(());
+    let equal_capture = Rc::new(());
+    let compute_weak = Rc::downgrade(&compute_capture);
+    let equal_weak = Rc::downgrade(&equal_capture);
+    let value = memo_with_eq(
+        {
+            let (input, computations) = (input.clone(), computations.clone());
+            move || {
+                let _ = &compute_capture;
+                computations.set(computations.get() + 1);
+                input.get()
+            }
+        },
+        move |a, b| {
+            let _ = &equal_capture;
+            a == b
+        },
+    );
+    let last = value.clone();
+    drop(value);
+    input.set(1);
+    assert_eq!(computations.get(), 0);
+    assert!(compute_weak.upgrade().is_some());
+    assert!(equal_weak.upgrade().is_some());
+    drop(last);
+    assert!(compute_weak.upgrade().is_none());
+    assert!(equal_weak.upgrade().is_none());
+    input.set(2);
+    assert_eq!(computations.get(), 0);
+}
+
+#[test]
 fn last_handle_drop_releases_captures_and_pending_consumers_can_be_disposed() {
     let input = signal(0);
     let captured = Rc::new(());
@@ -279,6 +343,31 @@ fn failed_recomputations_retry_without_another_signal_write() {
 }
 
 #[test]
+fn failed_first_read_retries_without_a_write_and_tracks_remaining_inputs() {
+    let first = signal(1);
+    let second = signal(2);
+    let value = memo({
+        let (first, second) = (first.clone(), second.clone());
+        let fail = Cell::new(true);
+        move || {
+            let first = first.get();
+            assert!(!fail.replace(false), "first read failed once");
+            first + second.get()
+        }
+    });
+    assert!(catch_unwind(AssertUnwindSafe(|| value.get())).is_err());
+    assert_eq!(value.get(), 3);
+    let results = Rc::new(RefCell::new(Vec::new()));
+    let _effect = effect({
+        let results = results.clone();
+        move || results.borrow_mut().push(value.get())
+    });
+    first.set(2);
+    second.set(3);
+    assert_eq!(*results.borrow(), [3, 4, 5]);
+}
+
+#[test]
 fn destructors_of_discarded_equal_values_do_not_subscribe_the_caller() {
     struct Value {
         value: i32,
@@ -342,6 +431,32 @@ fn destructors_of_discarded_equal_values_do_not_subscribe_the_caller() {
         "final cache destruction must also stay untracked"
     );
     assert_eq!(runs.get(), 2);
+}
+
+#[test]
+fn a_cycle_on_the_first_read_reports_the_error_and_recovers() {
+    let holder = Rc::new(RefCell::new(None::<Memo<i32>>));
+    let recursive = signal(true);
+    let value = memo({
+        let (holder, recursive) = (holder.clone(), recursive.clone());
+        move || {
+            if recursive.get() {
+                holder.borrow().as_ref().unwrap().get()
+            } else {
+                42
+            }
+        }
+    });
+    *holder.borrow_mut() = Some(value.clone());
+    let error = catch_unwind(AssertUnwindSafe(|| value.get())).unwrap_err();
+    let message = error
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| error.downcast_ref::<String>().map(String::as_str));
+    assert_eq!(message, Some("reactive cycle: a memo depends on itself"));
+    recursive.set(false);
+    assert_eq!(value.get(), 42);
+    holder.borrow_mut().take();
 }
 
 #[test]
@@ -549,4 +664,29 @@ fn widening_memo_notifications_preserve_breadth_first_effect_order() {
     log.borrow_mut().clear();
     input.set(3);
     assert_eq!(*log.borrow(), [("direct", 6), ("deep", 7), ("sibling", 8)]);
+}
+
+#[test]
+fn memo_notifications_keep_creation_order_when_first_reads_are_reversed() {
+    let input = signal(0);
+    let first = memo({
+        let input = input.clone();
+        move || input.get() + 10
+    });
+    let second = memo({
+        let input = input.clone();
+        move || input.get() + 20
+    });
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let _second = effect({
+        let log = log.clone();
+        move || log.borrow_mut().push(("second", second.get()))
+    });
+    let _first = effect({
+        let log = log.clone();
+        move || log.borrow_mut().push(("first", first.get()))
+    });
+    log.borrow_mut().clear();
+    input.set(1);
+    assert_eq!(*log.borrow(), [("first", 11), ("second", 21)]);
 }

@@ -26,7 +26,6 @@ export function resolveFlat(plan, root) {
   // One descriptor-sized output array also holds validation state. It is local
   // to this call; no application nodes enter the cached immutable plan.
   const elements = new Array(hostOffset + plan.textElements.length / 3 * 2);
-  const walker = root.ownerDocument.createTreeWalker(root);
   let node = root;
   do {
     if (node.nodeType === 1) {
@@ -67,8 +66,21 @@ export function resolveFlat(plan, root) {
       if (elements[slot]) mismatch(`duplicate text ${end ? 'end' : 'start'} ${id}`);
       elements[slot] = node;
     }
-  } while ((node = walker.nextNode()));
+  } while ((node = following(node, root)));
   return validateSlots(plan, elements);
+}
+
+// The next node of a SHOW_ALL TreeWalker's pre-order walk confined to `root`,
+// without allocating a walker for every scan.
+function following(node, root) {
+  const child = node.firstChild;
+  if (child) return child;
+  while (node !== root) {
+    const sibling = node.nextSibling;
+    if (sibling) return sibling;
+    node = node.parentNode;
+  }
+  return null;
 }
 
 function validateSlots(plan, elements) {
@@ -155,7 +167,10 @@ function pathFrom(root, target) {
 function followPath(root, path) {
   let node = root;
   for (const index of path) {
-    node = node.childNodes.item(index);
+    // Sibling steps address the same child as childNodes.item(index) without
+    // materializing a live NodeList for every step.
+    node = node.firstChild;
+    for (let step = 0; node && step < index; step++) node = node.nextSibling;
     if (!node) mismatch('template changed during resolution');
   }
   return node;
@@ -169,28 +184,50 @@ function rememberBundle(plan, root, nodes) {
   const wrapper = root.ownerDocument.createElement('template');
   const inert = wrapper.content.ownerDocument;
   const pristine = inert.importNode(root, true);
-  const paths = nodes.map((node, index) => {
-    const existingText = index >= hostOffset
-      ? (index - hostOffset) % 2 === 1
-      : index >= textOffset && (index - textOffset) % 3 === 2;
-    return existingText ? null : pathFrom(root, node);
-  });
-  plan.bindingCache = { pristine, paths };
+  // One step per bundle target, in bundle order: the node at a path, or a new
+  // empty Text before an end anchor (1) or inside a text host (2).
+  const paths = [], creates = [];
+  for (let i = 0; i < textOffset; i++) {
+    paths.push(pathFrom(root, nodes[i]));
+    creates.push(0);
+  }
+  for (let i = 0; i < plan.textIds.length; i++) {
+    const slot = textOffset + i * 3, text = nodes[slot + 2];
+    paths.push(pathFrom(root, text ?? nodes[slot + 1]));
+    creates.push(text ? 0 : 1);
+  }
+  for (let i = 0; i < plan.textElements.length / 3; i++) {
+    const slot = hostOffset + i * 2, text = nodes[slot + 1];
+    paths.push(pathFrom(root, text ?? nodes[slot]));
+    creates.push(text ? 0 : 2);
+  }
+  plan.bindingCache = { pristine, paths, creates };
 }
 
-export function resolveBindings(plan, root, cached) {
-  let nodes;
-  const certificate = cached && plan.bindingCache;
-  const cacheHit = certificate && root.isEqualNode(certificate.pristine);
-  if (cacheHit) {
-    // Resolve every location before insertion can shift a later native path.
-    nodes = certificate.paths.map(path => path === null ? null : followPath(root, path));
-    validateSlots(plan, nodes);
-  } else {
-    nodes = resolveFlat(plan, root);
+// An equal clone of the validated inert certificate has the same slots and
+// node interfaces at every path: inert template documents never upgrade.
+// `extra` trailing entries are left for the caller.
+function certifiedBindings(certificate, root, extra) {
+  const { paths, creates } = certificate, count = paths.length;
+  const nodes = new Array(count + extra);
+  // Resolve every location before insertion can shift a later native path.
+  for (let i = 0; i < count; i++) nodes[i] = followPath(root, paths[i]);
+  // Match finish_resolution's global document rather than root.ownerDocument.
+  for (let i = 0; i < count; i++) {
+    const create = creates[i];
+    if (create === 0) continue;
+    const text = document.createTextNode(''), target = nodes[i];
+    if (create === 1) target.parentNode.insertBefore(text, target);
+    else target.appendChild(text);
+    nodes[i] = text;
   }
+  return nodes;
+}
+
+function scannedBindings(plan, root, cached) {
+  const nodes = resolveFlat(plan, root);
   validateBundleTypes(plan, nodes);
-  if (cached && !cacheHit) {
+  if (cached) {
     // Optional cache construction must not make a validated mount fail.
     try { rememberBundle(plan, root, nodes); } catch (_) {}
   }
@@ -221,6 +258,94 @@ export function resolveBindings(plan, root, cached) {
   return nodes;
 }
 
+export function resolveBindings(plan, root, cached) {
+  const certificate = cached && plan.bindingCache;
+  if (certificate && root.isEqualNode(certificate.pristine)) return certifiedBindings(certificate, root, 0);
+  return scannedBindings(plan, root, cached);
+}
+
+// The document-template mount of a flat bundled descriptor in one native call.
+// Same checks, clone source, errors and order as the typed Rust sequence:
+// unique root, schema, template kind, one root element, descriptor version,
+// then complete validation before instance marking. The root follows the
+// binding targets in the returned bundle.
+export function mountTemplate(plan, selector, schema, identity, versionOk) {
+  const roots = document.querySelectorAll(selector);
+  if (roots.length !== 1) mismatch(`component ${identity} requires exactly one root, found ${roots.length}`);
+  const template = roots[0];
+  if (template.getAttribute('data-fusor-version') !== schema) mismatch('HTML schema version differs from Wasm; rebuild the application');
+  if (!(template instanceof HTMLTemplateElement)) mismatch('expected an HTML template');
+  const content = template.content;
+  if (content.childElementCount !== 1) throw 'fusor: a row template needs exactly one root element';
+  const source = content.firstElementChild;
+  if (!versionOk) mismatch('unsupported descriptor version; rebuild the application');
+  const certificate = plan.bindingCache;
+  // A template equal to its certificate clones the certificate's mounted form,
+  // which already holds the created text nodes and the instance mark.
+  if (certificate && source.isEqualNode(certificate.pristine)) {
+    let mounted = certificate.mounted;
+    if (mounted === undefined || mounted.identity !== identity) {
+      mounted = certificate.mounted = mountedForm(certificate, identity);
+    }
+    return mountedBindings(mounted);
+  }
+  const root = source.cloneNode(true);
+  const nodes = scannedBindings(plan, root, true);
+  nodes.push(root);
+  root.setAttribute('data-fusor-instance', identity);
+  return nodes;
+}
+
+// A clone of the mounted form, with its binding targets and then its root.
+function mountedBindings(mounted) {
+  const root = mounted.root.cloneNode(true), paths = mounted.paths, count = paths.length;
+  const nodes = new Array(count + 1);
+  for (let i = 0; i < count; i++) nodes[i] = followPath(root, paths[i]);
+  nodes[count] = root;
+  return nodes;
+}
+
+// The certified template as a certified mount leaves it: an inert copy of the
+// pristine snapshot with its created text nodes and instance mark, and the
+// path of every binding target within it.
+function mountedForm(certificate, identity) {
+  const root = certificate.pristine.cloneNode(true);
+  const targets = certifiedBindings(certificate, root, 0);
+  root.setAttribute('data-fusor-instance', identity);
+  return { identity, root, paths: targets.map((node) => pathFrom(root, node)) };
+}
+
+// Fallible entry points report success and keep their result or what they
+// threw for `takeOutcome`, so neither host call needs an exception wrapper.
+let outcome;
+export function mountTemplateOk(plan, selector, schema, identity, versionOk) {
+  try {
+    outcome = mountTemplate(plan, selector, schema, identity, versionOk);
+    return true;
+  } catch (error) {
+    outcome = error;
+    return false;
+  }
+}
+export function takeOutcome() {
+  const value = outcome;
+  outcome = undefined;
+  return value;
+}
+
+// A server-rendered root of a flat bundled descriptor in one native call, in
+// the typed Rust order: server identity, descriptor version, the complete
+// protocol scan, then instance marking.
+export function hydrateRoot(plan, root, schema, identity, versionOk) {
+  if (root.getAttribute('data-fusor-version') !== schema || root.getAttribute('data-fusor-component') !== identity) {
+    mismatch('server root identity differs from the browser template');
+  }
+  if (!versionOk) mismatch('unsupported descriptor version; rebuild the application');
+  const nodes = resolveBindings(plan, root, false);
+  root.setAttribute('data-fusor-instance', identity);
+  return nodes;
+}
+
 export function bindingText(nodes, index, value) {
   const text = nodes[index];
   if (text.data !== value) text.data = value;
@@ -229,8 +354,47 @@ export function bindingIntegerText(nodes, index, number) {
   const text = nodes[index], value = "" + number;
   if (text.data !== value) text.data = value;
 }
+export function hydrateRootOk(plan, root, schema, identity, versionOk) {
+  try {
+    outcome = hydrateRoot(plan, root, schema, identity, versionOk);
+    return true;
+  } catch (error) {
+    outcome = error;
+    return false;
+  }
+}
+export function bindingSetAttributeOk(nodes, index, name, value) {
+  try {
+    nodes[index].setAttribute(name, value);
+    return true;
+  } catch (error) {
+    outcome = error;
+    return false;
+  }
+}
+export function bindingSetIntegerAttributeOk(nodes, index, name, number) {
+  try {
+    nodes[index].setAttribute(name, "" + number);
+    return true;
+  } catch (error) {
+    outcome = error;
+    return false;
+  }
+}
+export function bindingRemoveAttributeOk(nodes, index, name) {
+  try {
+    nodes[index].removeAttribute(name);
+    return true;
+  } catch (error) {
+    outcome = error;
+    return false;
+  }
+}
 export function bindingSetAttribute(nodes, index, name, value) {
   nodes[index].setAttribute(name, value);
+}
+export function bindingSetIntegerAttribute(nodes, index, name, number) {
+  nodes[index].setAttribute(name, "" + number);
 }
 export function bindingRemoveAttribute(nodes, index, name) {
   nodes[index].removeAttribute(name);

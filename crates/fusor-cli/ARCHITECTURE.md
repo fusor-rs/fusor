@@ -74,9 +74,12 @@ work on a host with build output and no Rust, so candidates come either from
 
 **Fast refresh** (`dev/refresh.rs`). An edit can skip Cargo only when the Rust
 the browser is already running is unchanged, compared as token trees *and*
-locations. Anything unclear (a source that does not tokenize, a file include, a
-JavaScript module) falls back to a normal build. Which includes are exempt is
-decided by `fusor-build`, which generates them.
+locations. Anything unclear (a source that does not tokenize, an unresolved
+file include, a JavaScript module) falls back to a normal build. `fusor-build`
+recognizes its generated includes and direct literal data includes. The CLI
+may clear a data include only when its file remains watched across publications
+and lies outside authored HTML and public assets; editing that file still
+requires a normal build.
 
 ## Exit codes
 

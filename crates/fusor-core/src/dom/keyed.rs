@@ -2,17 +2,25 @@ use super::{
     ElementTarget, JsValue, Scope, document, reconcile, remove_tree, strings, with_native_root,
 };
 use crate::{Signal, signal, untrack};
-use std::{cell::Cell, collections::BTreeMap};
+use std::collections::BTreeMap;
 use wasm_bindgen::JsCast;
-use web_sys::{Document, Element, HtmlElement, HtmlInputElement, Node};
+use web_sys::{Document, Element, HtmlElement, HtmlInputElement};
 
 type EncodeKey<K> = dyn Fn(&K) -> Result<String, JsValue>;
 
+/// How a reconcile finds the previous rows whose keys are gone.
+enum Removal<'a, K> {
+    /// Merge every key against the ordered map.
+    Sorted(reconcile::SortedKeys<'a, K>),
+    /// The previous indices of the few removed keys.
+    Direct(Vec<usize>),
+}
+
 struct Row<T> {
-    state: Signal<T>,
+    // Held until the row drops, like the row's scope, even when the scope does
+    // not retain its item.
+    _state: Signal<T>,
     scope: Scope,
-    /// Index in the previous list, or [`reconcile::NEW`] for a detached root.
-    position: Cell<usize>,
 }
 
 impl Scope {
@@ -64,14 +72,35 @@ impl Scope {
     {
         let hydrating = self.is_hydrating();
         let container = target.resolve(self)?;
+        // `rows` owns the rows and orders their lifecycle by key. `order` and
+        // `states` hold the same keys in DOM order with each row's signal, so
+        // rows that keep their index are updated without a map lookup.
         let mut rows: BTreeMap<K, Row<T>> = BTreeMap::new();
+        let mut order: Vec<K> = Vec::new();
+        let mut states: Vec<Signal<T>> = Vec::new();
         let mut initialized = false;
+        // Every row in `rows` was committed by a reconcile that completed.
+        let mut settled = false;
+        let queue = self.mount_queue.clone();
         self.bind(move || {
             let items = items();
             untrack(|| {
                 let keys: Vec<K> = items.iter().map(&key).collect();
-                let mut unique = reconcile::SortedKeys::new(&keys)
-                    .ok_or_else(|| JsValue::from_str("fusor: duplicate key in list"))?;
+                let duplicate = || JsValue::from_str("fusor: duplicate key in list");
+                // A small edit resolves its few changed keys directly. Any other
+                // change validates and merges through every key in order.
+                let (retained, mut removal) =
+                    match reconcile::small_edit(&order, &keys, |key| rows.contains_key(key)) {
+                        Some(plan) => {
+                            let (positions, removed) = plan.map_err(|()| duplicate())?;
+                            (positions, Removal::Direct(removed))
+                        }
+                        None => {
+                            let unique = reconcile::SortedKeys::new(&keys).ok_or_else(duplicate)?;
+                            let positions = reconcile::previous_positions(&order, &unique);
+                            (positions, Removal::Sorted(unique))
+                        }
+                    };
                 let native_rows = if hydrating && !initialized {
                     let encode = encode.as_ref().ok_or_else(|| {
                         JsValue::from_str("hydrated lists require generated key metadata")
@@ -85,8 +114,10 @@ impl Scope {
                 // Stage new scopes before touching the visible list. A failing
                 // render drops all staged listeners and leaves old rows intact.
                 let mut staged = BTreeMap::new();
+                let mut positions = retained.clone();
+                let mut fresh = Vec::new();
                 for (index, (key, item)) in keys.iter().zip(&items).enumerate() {
-                    if rows.contains_key(key) {
+                    if retained[index] != reconcile::NEW {
                         continue;
                     }
                     let state = signal(item.clone());
@@ -94,13 +125,15 @@ impl Scope {
                     let scope = with_native_root(native, || render(state.clone()))?;
                     // Server rows already occupy their final positions. Newly
                     // rendered roots are detached and must be inserted.
-                    let position = Cell::new(native.map_or(reconcile::NEW, |_| index));
+                    if native.is_some() {
+                        positions[index] = index;
+                    }
+                    fresh.push(state.clone());
                     staged.insert(
                         key.clone(),
                         Row {
-                            state,
+                            _state: state,
                             scope,
-                            position,
                         },
                     );
                 }
@@ -115,13 +148,45 @@ impl Scope {
                     }
                     initialized = true;
                 }
-                rows.retain(|key, row| {
-                    let keep = unique.contains_next(key);
-                    if !keep {
-                        remove_tree(&row.scope.root);
+                // Release the previous order before removed rows drop, as
+                // their own rows hold the remaining references.
+                let mut previous: Vec<_> =
+                    std::mem::take(&mut states).into_iter().map(Some).collect();
+                let mut fresh = fresh.into_iter();
+                let next: Vec<Signal<T>> = retained
+                    .iter()
+                    .map(|&position| match position {
+                        reconcile::NEW => fresh.next().expect("staged row"),
+                        position => previous[position].take().expect("retained row"),
+                    })
+                    .collect();
+                drop(previous);
+                match &mut removal {
+                    Removal::Sorted(unique) => rows.retain(|key, row| {
+                        let keep = unique.contains_next(key);
+                        if !keep {
+                            remove_tree(&row.scope.root);
+                        }
+                        keep
+                    }),
+                    Removal::Direct(removed) => {
+                        // In ascending key order, as `retain` visits the map.
+                        reconcile::sort_few(removed, &order);
+                        for &index in removed.iter() {
+                            if let Some(entry) = rows.remove_entry(&order[index]) {
+                                // Like retain, detach before dropping the owned
+                                // key, then release the row and its cleanup.
+                                remove_tree(&entry.1.scope.root);
+                                drop(entry);
+                            }
+                        }
                     }
-                    keep
-                });
+                }
+                // Committing a settled row again only finishes setup that a
+                // descendant queued, so without pending setup only new rows
+                // need committing.
+                let fresh_keys: Option<Vec<K>> = settled.then(|| staged.keys().cloned().collect());
+                settled = false;
                 if rows.is_empty() {
                     rows = staged;
                 } else if staged.len() <= rows.len() / (rows.len().ilog2() as usize + 1) {
@@ -131,23 +196,37 @@ impl Scope {
                 } else {
                     rows.append(&mut staged);
                 }
-                let ordered: Vec<_> = keys.iter().map(|key| &rows[key]).collect();
-                let positions: Vec<_> = ordered.iter().map(|row| row.position.get()).collect();
                 let stationary = reconcile::stationary(&positions);
-                for (index, (row, item)) in ordered.iter().zip(items).enumerate() {
-                    row.state.set(item);
-                    row.position.set(index);
+                for (state, item) in next.iter().zip(items) {
+                    state.set(item);
                 }
-                let mut anchor: Option<&Node> = None;
-                for (row, keep) in ordered.iter().zip(stationary).rev() {
+                (order, states) = (keys, next);
+                for (index, keep) in stationary.iter().enumerate().rev() {
                     if !keep {
-                        container.insert_before(&row.scope.root, anchor)?;
+                        let anchor = order
+                            .get(index + 1)
+                            .map(|key| rows[key].scope.root.as_ref());
+                        strings::insert_before(
+                            &container,
+                            &rows[&order[index]].scope.root,
+                            anchor,
+                        )?;
                     }
-                    anchor = Some(row.scope.root.as_ref());
                 }
-                for row in rows.values() {
-                    row.scope.commit();
+                let idle = queue.as_ref().is_none_or(|queue| queue.is_idle());
+                match fresh_keys.filter(|_| idle) {
+                    Some(keys) => {
+                        for key in &keys {
+                            rows[key].scope.commit();
+                        }
+                    }
+                    None => {
+                        for row in rows.values() {
+                            row.scope.commit();
+                        }
+                    }
                 }
+                settled = true;
                 restore_focus(&document, &container, focused)
             })
         })
@@ -156,6 +235,45 @@ impl Scope {
 
 /// Adopt the server-rendered rows, which must match `keys` in order.
 fn server_rows<K>(
+    container: &Element,
+    keys: &[K],
+    encode: &EncodeKey<K>,
+) -> Result<Vec<Element>, JsValue> {
+    // Compare every row natively in one call. Keys encode in order: a failed
+    // encoding is reported after the rows before it and its own row are
+    // checked, as when comparing one row at a time.
+    let mut encoded = String::new();
+    let mut failure = None;
+    let mut count = 0;
+    for key in keys {
+        match encode(key) {
+            // A separator inside an encoding needs the one-at-a-time path.
+            Ok(value) if value.contains('\n') => {
+                return server_rows_one_by_one(container, keys, encode);
+            }
+            Ok(value) => {
+                if count > 0 {
+                    encoded.push('\n');
+                }
+                encoded.push_str(&value);
+                count += 1;
+            }
+            Err(error) => {
+                failure = Some(error);
+                break;
+            }
+        }
+    }
+    let rows = strings::server_rows(container, &encoded, count as u32, failure.is_none())?;
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    Ok((0..count as u32)
+        .map(|index| rows.get(index).unchecked_into())
+        .collect())
+}
+
+fn server_rows_one_by_one<K>(
     container: &Element,
     keys: &[K],
     encode: &EncodeKey<K>,

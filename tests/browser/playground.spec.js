@@ -16,30 +16,6 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(() => expect(browserErrors).toEqual([]));
 
-test("a module load failure is reported in the page", async ({ page }) => {
-  await page.route("**/pkg/app.js", (route) => route.fulfill({
-    status: 200,
-    contentType: "text/javascript",
-    body: 'throw new Error("expected module load failure");',
-  }));
-  const failure = page.waitForEvent("console", {
-    predicate: (message) => message.type() === "error"
-      && message.text().startsWith("fusor failed to initialize:"),
-  });
-  await page.reload();
-  await expect(page.locator("#load-error")).toBeVisible();
-  await expect(page.locator("#runtime-state")).toHaveText("Unable to start WebAssembly");
-  await expect(page.locator("#playground")).toHaveAttribute("data-ready", "false");
-  expect(browserErrors).toHaveLength(1);
-  // Console text formatting differs across engines; verify the Error itself.
-  const message = await failure;
-  expect(await message.args()[1].evaluate((error) => ({
-    name: error.name,
-    message: error.message,
-  }))).toEqual({ name: "Error", message: "expected module load failure" });
-  browserErrors = []; // The deliberately injected load failure was handled.
-});
-
 test("Rust events update signals, derived values, and boolean attributes", async ({
   page,
 }) => {

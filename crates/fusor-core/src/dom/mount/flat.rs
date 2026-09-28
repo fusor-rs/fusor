@@ -27,20 +27,41 @@ extern "C" {
     fn resolve_flat(plan: &JsValue, root: &Element) -> Result<js_sys::Array, JsValue>;
     #[wasm_bindgen(catch, js_name = resolveBindings)]
     fn resolve_bindings(plan: &JsValue, root: &Element, cached: bool) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(js_name = mountTemplateOk)]
+    fn mount_template_ok(
+        plan: &JsValue,
+        selector: &JsValue,
+        schema: &JsValue,
+        identity: &JsValue,
+        version_ok: bool,
+    ) -> bool;
+    /// The result of the last `*Ok` call, or what it threw.
+    #[wasm_bindgen(js_name = takeOutcome)]
+    fn take_outcome() -> JsValue;
+    #[cfg(feature = "islands")]
+    #[wasm_bindgen(js_name = hydrateRootOk)]
+    fn hydrate_root_ok(
+        plan: &JsValue,
+        root: &Element,
+        schema: &JsValue,
+        identity: &JsValue,
+        version_ok: bool,
+    ) -> bool;
     #[wasm_bindgen(js_name = bindingText)]
     fn binding_text(nodes: &JsValue, index: u32, value: &str);
     #[wasm_bindgen(js_name = bindingIntegerText)]
     fn binding_integer_text(nodes: &JsValue, index: u32, value: f64);
-    #[wasm_bindgen(catch, js_name = bindingSetAttribute)]
-    fn binding_set_attribute(
+    #[wasm_bindgen(js_name = bindingSetAttributeOk)]
+    fn binding_set_attribute_ok(nodes: &JsValue, index: u32, name: &JsValue, value: &str) -> bool;
+    #[wasm_bindgen(js_name = bindingSetIntegerAttributeOk)]
+    fn binding_set_integer_attribute_ok(
         nodes: &JsValue,
         index: u32,
         name: &JsValue,
-        value: &str,
-    ) -> Result<(), JsValue>;
-    #[wasm_bindgen(catch, js_name = bindingRemoveAttribute)]
-    fn binding_remove_attribute(nodes: &JsValue, index: u32, name: &JsValue)
-    -> Result<(), JsValue>;
+        value: f64,
+    ) -> bool;
+    #[wasm_bindgen(js_name = bindingRemoveAttributeOk)]
+    fn binding_remove_attribute_ok(nodes: &JsValue, index: u32, name: &JsValue) -> bool;
     // All target types were validated before the user factory. Returning the
     // pinned handle must not re-check a prototype changed by that factory.
     #[wasm_bindgen(js_name = bindingElement)]
@@ -95,6 +116,80 @@ pub(super) fn resolve_bundle(
 ) -> Result<JsValue, JsValue> {
     let plan = plan(descriptor);
     resolve_bindings(&plan.native, root, cached)
+}
+
+/// A `*Ok` host call's result: nothing, or what it threw.
+fn outcome(ok: bool) -> Result<(), JsValue> {
+    if ok { Ok(()) } else { Err(take_outcome()) }
+}
+
+#[cfg(feature = "islands")]
+fn hydrate_native_root(
+    plan: &JsValue,
+    root: &Element,
+    schema: &JsValue,
+    identity: &JsValue,
+    version_ok: bool,
+) -> Result<JsValue, JsValue> {
+    let hydrated = hydrate_root_ok(plan, root, schema, identity, version_ok);
+    let nodes = take_outcome();
+    if hydrated { Ok(nodes) } else { Err(nodes) }
+}
+
+fn binding_set_attribute(
+    nodes: &JsValue,
+    index: u32,
+    name: &JsValue,
+    value: &str,
+) -> Result<(), JsValue> {
+    outcome(binding_set_attribute_ok(nodes, index, name, value))
+}
+
+fn binding_set_integer_attribute(
+    nodes: &JsValue,
+    index: u32,
+    name: &JsValue,
+    value: f64,
+) -> Result<(), JsValue> {
+    outcome(binding_set_integer_attribute_ok(nodes, index, name, value))
+}
+
+fn binding_remove_attribute(nodes: &JsValue, index: u32, name: &JsValue) -> Result<(), JsValue> {
+    outcome(binding_remove_attribute_ok(nodes, index, name))
+}
+
+/// Clone and resolve the document's template for a bundled flat descriptor in
+/// one native call, returning the root and its binding bundle.
+pub(super) fn mount_document_template(
+    descriptor: &TemplateDescriptor,
+) -> Result<(Element, JsValue), JsValue> {
+    let plan = plan(descriptor);
+    let metadata = strings::descriptor(descriptor.component, descriptor.version);
+    let (selector, schema, identity) = metadata.native();
+    let version_ok = descriptor.version == crate::template::VERSION;
+    let mounted = mount_template_ok(&plan.native, selector, schema, identity, version_ok);
+    let nodes = take_outcome();
+    if !mounted {
+        return Err(nodes);
+    }
+    let targets =
+        descriptor.elements.len() + descriptor.texts.len() + descriptor.text_elements.len();
+    let root = binding_element(&nodes, targets as u32);
+    Ok((root, nodes))
+}
+
+/// Adopt a server-rendered root of a bundled flat descriptor in one native
+/// call: identity, descriptor version, complete validation, then marking.
+#[cfg(feature = "islands")]
+pub(super) fn hydrate_root(
+    descriptor: &TemplateDescriptor,
+    root: &Element,
+) -> Result<JsValue, JsValue> {
+    let plan = plan(descriptor);
+    let metadata = strings::descriptor(descriptor.component, descriptor.version);
+    let (_, schema, identity) = metadata.native();
+    let version_ok = descriptor.version == crate::template::VERSION;
+    hydrate_native_root(&plan.native, root, schema, identity, version_ok)
 }
 
 #[cfg(feature = "islands")]
@@ -189,6 +284,24 @@ impl Scope {
         })
     }
 
+    /// An attribute that is always present, with the text path's conversion.
+    #[doc(hidden)]
+    pub fn bundle_attr_value(
+        &mut self,
+        nodes: &Rc<JsValue>,
+        index: u32,
+        name: &'static str,
+        read: impl Fn() -> crate::dom::text_value::Output + 'static,
+    ) -> Result<(), JsValue> {
+        use crate::dom::text_value::Output;
+        let nodes = Rc::clone(nodes);
+        let name = strings::static_attribute(name);
+        self.bind_dom(move || match read() {
+            Output::String(value) => binding_set_attribute(&nodes, index, &name, &value),
+            Output::Integer(value) => binding_set_integer_attribute(&nodes, index, &name, value),
+        })
+    }
+
     #[doc(hidden)]
     pub fn bundle_on(
         &mut self,
@@ -197,7 +310,6 @@ impl Scope {
         event: &str,
         handler: impl FnMut(Event) + 'static,
     ) -> Result<(), JsValue> {
-        let target = binding_element(nodes, index);
-        self.on(&target, event, handler)
+        self.on_bundle(nodes, index, event, handler)
     }
 }

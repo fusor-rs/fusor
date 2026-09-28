@@ -1,0 +1,1339 @@
+{
+  "schemaVersion": 1,
+  "baselineSource": "61adf1ec6735b703b7746af38883b9cb1c0012dde1a9f511047095965cd6d980",
+  "candidateSource": "2e58e82669cb77d69efc21174b46864ff7092a91bb042bed1970d237b9b7fa93",
+  "environmentDifferences": [],
+  "limitations": "Descriptive comparison, not a causal estimate or significance test. Different environments, sample counts and clock-floor results require review.",
+  "rows": [
+    {
+      "framework": "fusor",
+      "id": "ssr-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.312875,
+      "candidate": 0.206,
+      "changePercent": -34.15900918897324,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "ssr-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 3.0041249999999997,
+      "candidate": 2.309584,
+      "changePercent": -23.11957724795073,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "ssr-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.9401250000000232,
+      "candidate": 0.8207500000000039,
+      "changePercent": -12.697779550593424,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "ssr-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 14.659542000000044,
+      "candidate": 13.395208000000025,
+      "changePercent": -8.624648710034844,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "ssr-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.38520900000003166,
+      "candidate": 0.30224999999995816,
+      "changePercent": -21.53610118145388,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "ssr-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 5.409834000000046,
+      "candidate": 4.573541999999975,
+      "changePercent": -15.45873681151888,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "ssr-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.2754580000000715,
+      "candidate": 0.2648750000000746,
+      "changePercent": -3.8419650182583753,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "ssr-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 3.3284589999999525,
+      "candidate": 2.584082999999964,
+      "changePercent": -22.363982852124632,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "ssr-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 1.010167000000024,
+      "candidate": 1.0285410000000184,
+      "changePercent": 1.8189071707939375,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "ssr-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 11.348749999999995,
+      "candidate": 9.058875000000057,
+      "changePercent": -20.17733230531943,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "ssr-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 1.6445420000000013,
+      "candidate": 1.4729999999999563,
+      "changePercent": -10.430989296718774,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "ssr-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 16.53816699999993,
+      "candidate": 15.472667000000001,
+      "changePercent": -6.442672879043565,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "ssr-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.8943329999999999,
+      "candidate": 0.450542,
+      "changePercent": -49.62256788019674,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "ssr-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 6.126333000000001,
+      "candidate": 4.997959,
+      "changePercent": -18.418424202536833,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "initial-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 1.899999976158142,
+      "candidate": 1.899999976158142,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "initial-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 18.799999952316284,
+      "candidate": 17.899999976158142,
+      "changePercent": -4.787233927876988,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "single",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.8999999761581421,
+      "candidate": 0.8000000715255737,
+      "changePercent": -11.11110080907347,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "bulk-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 1.899999976158142,
+      "candidate": 1.7999999523162842,
+      "changePercent": -5.26315921561541,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "bulk-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 10.5,
+      "candidate": 9.5,
+      "changePercent": -9.523809523809524,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "insert",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 2.600000023841858,
+      "candidate": 2.0999999046325684,
+      "changePercent": -19.23077363939676,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "delete",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 2.299999952316284,
+      "candidate": 2.3000000715255737,
+      "changePercent": 0.000005183012685705535,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "swap",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 114.89999997615814,
+      "candidate": 107.5,
+      "changePercent": -6.440382922274712,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "computed",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.7999999523162842,
+      "candidate": 0.8999999761581421,
+      "changePercent": 12.50000372529052,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "fanout-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.8999999761581421,
+      "candidate": 1,
+      "changePercent": 11.11111405455043,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "fanout-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 9.200000047683716,
+      "candidate": 9,
+      "changePercent": -2.1739135505120966,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "fanin",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.10000002384185791,
+      "candidate": 0.10000002384185791,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "unmount",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 4.100000023841858,
+      "candidate": 6.200000047683716,
+      "changePercent": 51.219512478784736,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "events",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 48.39999997615814,
+      "candidate": 45.700000047683716,
+      "changePercent": -5.578512251662082,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "hydration-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 6.799999952316284,
+      "candidate": 6.399999976158142,
+      "changePercent": -5.882352631809795,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "hydration-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 119.29999995231628,
+      "candidate": 112.5,
+      "changePercent": -5.6999161400119185,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "react",
+      "id": "startup",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 23.09999990463257,
+      "candidate": 22.700000047683716,
+      "changePercent": -1.7316011194815406,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "initial-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 4,
+      "candidate": 3.399999976158142,
+      "changePercent": -15.000000596046448,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "initial-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 39.299999952316284,
+      "candidate": 36.60000002384186,
+      "changePercent": -6.870228833970504,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "single",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0,
+      "candidate": 0.10000002384185791,
+      "changePercent": null,
+      "belowBrowserClockFloor": true
+    },
+    {
+      "framework": "vue",
+      "id": "bulk-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 2,
+      "candidate": 1.899999976158142,
+      "changePercent": -5.0000011920928955,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "bulk-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 20.100000023841858,
+      "candidate": 18.600000023841858,
+      "changePercent": -7.462686558312226,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "insert",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 8.300000071525574,
+      "candidate": 7.899999976158142,
+      "changePercent": -4.819278215908618,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "delete",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 8.5,
+      "candidate": 7.5,
+      "changePercent": -11.764705882352944,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "swap",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 6,
+      "candidate": 5.200000047683716,
+      "changePercent": -13.333332538604736,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "computed",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0,
+      "candidate": 0,
+      "changePercent": null,
+      "belowBrowserClockFloor": true
+    },
+    {
+      "framework": "vue",
+      "id": "fanout-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 1.8000000715255737,
+      "candidate": 2.3000000715255737,
+      "changePercent": 27.777776673988107,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "fanout-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 29.100000023841858,
+      "candidate": 24.600000023841858,
+      "changePercent": -15.463917513103487,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "fanin",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 4.100000023841858,
+      "candidate": 4,
+      "changePercent": -2.439024957569491,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "unmount",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 7.199999928474426,
+      "candidate": 6.299999952316284,
+      "changePercent": -12.499999793039429,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "events",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 37.89999997615814,
+      "candidate": 31.899999976158142,
+      "changePercent": -15.831134574602734,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "hydration-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 9.5,
+      "candidate": 9.399999976158142,
+      "changePercent": -1.0526318299142967,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "hydration-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 43.10000002384186,
+      "candidate": 42.5,
+      "changePercent": -1.3921114234569654,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "vue",
+      "id": "startup",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 18.399999976158142,
+      "candidate": 18.09999990463257,
+      "changePercent": -1.6304351734472866,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "initial-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 2.9000000953674316,
+      "candidate": 2.8000000715255737,
+      "changePercent": -3.4482765708043095,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "initial-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 32.199999928474426,
+      "candidate": 30.899999976158142,
+      "changePercent": -4.037266941627216,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "single",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0,
+      "candidate": 0,
+      "changePercent": null,
+      "belowBrowserClockFloor": true
+    },
+    {
+      "framework": "preact",
+      "id": "bulk-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 1.6999999284744263,
+      "candidate": 1.600000023841858,
+      "changePercent": -5.8823475788206565,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "bulk-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 17.399999976158142,
+      "candidate": 16.700000047683716,
+      "changePercent": -4.022988100192992,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "insert",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 3.399999976158142,
+      "candidate": 2.0999999046325684,
+      "changePercent": -38.23529648945821,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "delete",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 3,
+      "candidate": 2,
+      "changePercent": -33.333333333333336,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "swap",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 3.100000023841858,
+      "candidate": 2,
+      "changePercent": -35.48387146393044,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "computed",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0,
+      "candidate": 0,
+      "changePercent": null,
+      "belowBrowserClockFloor": true
+    },
+    {
+      "framework": "preact",
+      "id": "fanout-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 1.399999976158142,
+      "candidate": 1.2000000476837158,
+      "changePercent": -14.285709420028914,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "fanout-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 17.699999928474426,
+      "candidate": 17.199999928474426,
+      "changePercent": -2.8248587684773785,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "fanin",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.10000002384185791,
+      "candidate": 0.10000002384185791,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "unmount",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 2.200000047683716,
+      "candidate": 2.100000023841858,
+      "changePercent": -4.545455530655262,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "events",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 30.899999976158142,
+      "candidate": 31.799999952316284,
+      "changePercent": 2.912621284312511,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "hydration-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 7,
+      "candidate": 7,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "hydration-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 85.60000002384186,
+      "candidate": 87,
+      "changePercent": 1.6355139903834193,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "preact",
+      "id": "startup",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 12.5,
+      "candidate": 12.899999976158142,
+      "changePercent": 3.1999998092651305,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "initial-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 1.899999976158142,
+      "candidate": 1.899999976158142,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "initial-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 18.799999952316284,
+      "candidate": 18.90000009536743,
+      "changePercent": 0.5319156558765137,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "single",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0,
+      "candidate": 0,
+      "changePercent": null,
+      "belowBrowserClockFloor": true
+    },
+    {
+      "framework": "fusor",
+      "id": "bulk-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.3999999761581421,
+      "candidate": 0.3999999761581421,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "bulk-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 2.700000047683716,
+      "candidate": 2.799999952316284,
+      "changePercent": 3.7037001061669184,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "insert",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.2999999523162842,
+      "candidate": 0.20000004768371582,
+      "changePercent": -33.33330684237589,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "delete",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.20000004768371582,
+      "candidate": 0.20000004768371582,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "swap",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.2999999523162842,
+      "candidate": 0.20000004768371582,
+      "changePercent": -33.33330684237589,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "computed",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0,
+      "candidate": 0,
+      "changePercent": null,
+      "belowBrowserClockFloor": true
+    },
+    {
+      "framework": "fusor",
+      "id": "fanout-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.20000004768371582,
+      "candidate": 0.20000004768371582,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "fanout-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 3.0999999046325684,
+      "candidate": 2.399999976158142,
+      "changePercent": -22.580643548677614,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "fanin",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.30000007152557373,
+      "candidate": 0.2999999523162842,
+      "changePercent": -0.00003973642037635727,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "unmount",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 5.899999976158142,
+      "candidate": 4.399999976158142,
+      "changePercent": -25.42372891629643,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "events",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 15.699999928474426,
+      "candidate": 14.700000047683716,
+      "changePercent": -6.3694260213151495,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "hydration-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 7.899999976158142,
+      "candidate": 7.900000095367432,
+      "changePercent": 0.0000015089783422794767,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "hydration-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 34.200000047683716,
+      "candidate": 33,
+      "changePercent": -3.5087720643584897,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "fusor",
+      "id": "startup",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 17.799999952316284,
+      "candidate": 18.300000071525574,
+      "changePercent": 2.808989441284937,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "initial-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 1.1999999284744263,
+      "candidate": 1.2000000476837158,
+      "changePercent": 0.000009934108047282564,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "initial-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 10.400000095367432,
+      "candidate": 11.600000023841858,
+      "changePercent": 11.538460744908585,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "single",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0,
+      "candidate": 0,
+      "changePercent": null,
+      "belowBrowserClockFloor": true
+    },
+    {
+      "framework": "solid",
+      "id": "bulk-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.40000009536743164,
+      "candidate": 0.3999999761581421,
+      "changePercent": -0.000029802315282267955,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "bulk-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 4.100000023841858,
+      "candidate": 4.100000023841858,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "insert",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.30000007152557373,
+      "candidate": 0.30000007152557373,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "delete",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.2999999523162842,
+      "candidate": 0.2999999523162842,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "swap",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.7000000476837158,
+      "candidate": 0.8999999761581421,
+      "changePercent": 28.571416407216187,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "computed",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0,
+      "candidate": 0,
+      "changePercent": null,
+      "belowBrowserClockFloor": true
+    },
+    {
+      "framework": "solid",
+      "id": "fanout-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.20000004768371582,
+      "candidate": 0.20000004768371582,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "fanout-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 3.5,
+      "candidate": 2.8000000715255737,
+      "changePercent": -19.999997956412173,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "fanin",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.5,
+      "candidate": 0.5,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "unmount",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 1.1999999284744263,
+      "candidate": 1.2000000476837158,
+      "changePercent": 0.000009934108047282564,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "events",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 20.399999976158142,
+      "candidate": 21,
+      "changePercent": 2.9411765908974985,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "hydration-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 3.8000000715255737,
+      "candidate": 4.199999928474426,
+      "changePercent": 10.526311826838096,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "hydration-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 21.299999952316284,
+      "candidate": 23,
+      "changePercent": 7.981220899011543,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "solid",
+      "id": "startup",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 10,
+      "candidate": 9.799999952316284,
+      "changePercent": -2.0000004768371604,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "initial-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 4,
+      "candidate": 4.200000047683716,
+      "changePercent": 5.0000011920928955,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "initial-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 130.39999997615814,
+      "candidate": 135.39999997615814,
+      "changePercent": 3.8343558289219093,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "single",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.7999999523162842,
+      "candidate": 0.6000000238418579,
+      "changePercent": -24.99999254941896,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "bulk-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 1.399999976158142,
+      "candidate": 1.3000000715255737,
+      "changePercent": -7.142850452539761,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "bulk-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 10.799999952316284,
+      "candidate": 7.700000047683716,
+      "changePercent": -28.703702947403343,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "insert",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 13.700000047683716,
+      "candidate": 11.700000047683716,
+      "changePercent": -14.598540095174261,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "delete",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 14,
+      "candidate": 10.299999952316284,
+      "changePercent": -26.428571769169395,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "swap",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 13.5,
+      "candidate": 11,
+      "changePercent": -18.518518518518523,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "computed",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.7000000476837158,
+      "candidate": 0.6999999284744263,
+      "changePercent": -0.00001702989734786442,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "fanout-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.20000004768371582,
+      "candidate": 0.2999999523162842,
+      "changePercent": 49.999940395369435,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "fanout-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 3.5,
+      "candidate": 3.799999952316284,
+      "changePercent": 8.571427209036697,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "fanin",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 4.100000023841858,
+      "candidate": 5.100000023841858,
+      "changePercent": 24.390243760607632,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "unmount",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 2.700000047683716,
+      "candidate": 2.899999976158142,
+      "changePercent": 7.407404627492609,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "events",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 28.100000023841858,
+      "candidate": 29.5,
+      "changePercent": 4.982206316620252,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "hydration-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 10.300000071525574,
+      "candidate": 10.399999976158142,
+      "changePercent": 0.9708728537684008,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "hydration-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 126.79999995231628,
+      "candidate": 127.30000007152557,
+      "changePercent": 0.39432186072343445,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "svelte",
+      "id": "startup",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 18.90000009536743,
+      "candidate": 19.200000047683716,
+      "changePercent": 1.5873013269974479,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "initial-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 3.299999952316284,
+      "candidate": 3.5,
+      "changePercent": 6.060607593140577,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "initial-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 34.10000002384186,
+      "candidate": 31.699999928474426,
+      "changePercent": -7.038123441904432,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "single",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0,
+      "candidate": 0,
+      "changePercent": null,
+      "belowBrowserClockFloor": true
+    },
+    {
+      "framework": "leptos",
+      "id": "bulk-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.6000000238418579,
+      "candidate": 0.6000000238418579,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "bulk-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 5.199999928474426,
+      "candidate": 4.700000047683716,
+      "changePercent": -9.615382455157073,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "insert",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.5,
+      "candidate": 0.5,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "delete",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.5,
+      "candidate": 0.5,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "swap",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.2999999523162842,
+      "candidate": 0.30000007152557373,
+      "changePercent": 0.00003973643616372868,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "computed",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0,
+      "candidate": 0,
+      "changePercent": null,
+      "belowBrowserClockFloor": true
+    },
+    {
+      "framework": "leptos",
+      "id": "fanout-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 2.3000000715255737,
+      "candidate": 2.399999976158142,
+      "changePercent": 4.347821805337571,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "fanout-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 216,
+      "candidate": 213.89999997615814,
+      "changePercent": -0.9722222332601227,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "fanin",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 0.8999999761581421,
+      "candidate": 0.8999999761581421,
+      "changePercent": 0,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "unmount",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 7.199999928474426,
+      "candidate": 7.5,
+      "changePercent": 4.16666770146954,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "events",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 16.100000023841858,
+      "candidate": 15.800000071525574,
+      "changePercent": -1.8633537383355603,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "hydration-1000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 5.899999976158142,
+      "candidate": 5.800000071525574,
+      "changePercent": -1.6949136446892776,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "hydration-10000",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 31.199999928474426,
+      "candidate": 28.600000023841858,
+      "changePercent": -8.33333304677254,
+      "belowBrowserClockFloor": false
+    },
+    {
+      "framework": "leptos",
+      "id": "startup",
+      "status": "compared",
+      "unit": "ms",
+      "baseline": 26.799999952316284,
+      "candidate": 18.699999928474426,
+      "changePercent": -30.22388073975272,
+      "belowBrowserClockFloor": false
+    }
+  ]
+}

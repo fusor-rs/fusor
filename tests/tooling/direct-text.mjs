@@ -180,6 +180,88 @@ mod browser {
         Ok(())
     }
     #[wasm_bindgen]
+    pub fn cancelled_readiness() -> Result<(), JsValue> {
+        use std::{cell::Cell, rc::Rc};
+        for ready in [false, true] {
+            for reprepare in [false, true] {
+                let mut parent = Scope::new(document()?.create_element("div")?);
+                parent.prepare_owner(None);
+                let mut child = Scope::new(document()?.create_element("div")?);
+                child.prepare_owner(Some(&parent.owner()));
+                let stale = Rc::new(Cell::new(0));
+                let observed = stale.clone();
+                let captured = Rc::new(());
+                let released = Rc::downgrade(&captured);
+                child.before_commit(move || {
+                    let _ = &captured;
+                    observed.set(observed.get() + 1);
+                    Ok(())
+                })?;
+                if ready { child.finish_prepare()?; }
+                if reprepare {
+                    child.prepare_owner(Some(&parent.owner()));
+                    let fresh = Rc::new(Cell::new(0));
+                    let observed = fresh.clone();
+                    child.before_commit(move || { observed.set(observed.get() + 1); Ok(()) })?;
+                    parent.finish_prepare_subtree()?;
+                    assert_eq!(fresh.get(), 0, "reprepared child inherited queued readiness");
+                    assert_eq!(stale.get(), 0, "reprepared child ran stale setup");
+                    assert!(released.upgrade().is_none(), "stale setup retained its captures");
+                    child.finish_prepare()?;
+                    parent.finish_prepare_subtree()?;
+                    assert_eq!(fresh.get(), 1, "reprepared child did not run fresh setup");
+                    parent.try_commit()?;
+                    child.try_commit()?;
+                    parent.finish_prepare_subtree()?;
+                    assert_eq!(fresh.get(), 1, "fresh setup ran twice");
+                } else {
+                    drop(child);
+                    parent.finish_prepare_subtree()?;
+                    parent.try_commit()?;
+                    parent.finish_prepare_subtree()?;
+                }
+                assert_eq!(stale.get(), 0, "cancelled child ran queued setup");
+                assert!(released.upgrade().is_none(), "cancelled setup retained its captures");
+            }
+        }
+        Ok(())
+    }
+    #[wasm_bindgen]
+    pub fn sibling_readiness_disposal() -> Result<(), JsValue> {
+        use std::rc::Rc;
+        let mut parent = Scope::new(document()?.create_element("div")?);
+        parent.prepare_owner(None);
+        let mut first = Scope::new(document()?.create_element("div")?);
+        first.prepare_owner(Some(&parent.owner()));
+        let mut second = Scope::new(document()?.create_element("div")?);
+        second.prepare_owner(Some(&parent.owner()));
+        let second = Rc::new(RefCell::new(second));
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let observed = calls.clone();
+        let disposed = second.clone();
+        first.before_commit(move || {
+            observed.borrow_mut().push("first");
+            disposed.borrow().dispose();
+            Ok(())
+        })?;
+        let observed = calls.clone();
+        second.borrow_mut().before_commit(move || {
+            observed.borrow_mut().push("second");
+            Ok(())
+        })?;
+        first.finish_prepare()?;
+        second.borrow().finish_prepare()?;
+        assert!(calls.borrow().is_empty(), "prepared parent did not defer setup");
+        parent.finish_prepare_subtree()?;
+        assert!(second.borrow().owner().is_disposed(), "first setup did not dispose sibling");
+        assert_eq!(*calls.borrow(), ["first"], "disposed sibling ran already-ready setup");
+        parent.finish_prepare_subtree()?;
+        parent.try_commit()?;
+        first.try_commit()?;
+        assert_eq!(*calls.borrow(), ["first"], "setup reran after sibling disposal");
+        Ok(())
+    }
+    #[wasm_bindgen]
     pub fn change(value: String) {
         let state = APP.with(|app| app.borrow().as_ref().unwrap().0.clone());
         fusor::batch(|| {
@@ -263,6 +345,8 @@ mod browser {
         }
       };
       app.legacy_readiness();
+      app.cancelled_readiness();
+      app.sibling_readiness_disposal();
       for (const oldActive of [false, true]) {
         for (const newActive of [false, true]) {
           for (const reprepare of [false, true]) {

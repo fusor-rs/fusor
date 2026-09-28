@@ -18,5 +18,7 @@ pub use config::{
 pub(crate) use error::SourceError;
 pub use generate::generate;
 pub use includes::includes_foreign_file;
+#[doc(hidden)]
+pub use includes::includes_foreign_file_with;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;

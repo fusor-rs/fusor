@@ -25,6 +25,12 @@ try {
   await page.locator('#tracked > li').nth(0).getByRole('button').click();
   await rows.nth(0).getByRole('textbox').fill('keep this note');
   await rows.nth(0).evaluate(node=>window.adaRow=node);
+  // Position-free forwarding rows: moves keep identity and local state; value
+  // changes still reach retained rows.
+  const forwarded=page.locator('#forwarded > li');
+  await expect(forwarded.locator('.forwarded-title')).toHaveText(['Ada','Grace']);
+  await forwarded.nth(0).getByRole('button').click();
+  await forwarded.nth(0).evaluate(node=>window.adaForwarded=node);
   await page.getByRole('button',{name:'Reverse',exact:true}).click();
   await expect(rows.locator('.title')).toHaveText(['Grace','Ada']);
   await expect(rows.locator('.position')).toHaveText(['0','1']);
@@ -32,13 +38,23 @@ try {
   await expect(page.locator('#tracked .tracked-index')).toHaveText(['0','1']);
   assert(await rows.nth(1).evaluate(node=>node===window.adaRow));
   await expect(rows.nth(1).getByRole('textbox')).toHaveValue('keep this note');
+  await expect(forwarded.locator('.forwarded-title')).toHaveText(['Grace','Ada']);
+  await expect(forwarded.locator('output')).toHaveText(['0','1']);
+  assert(await forwarded.nth(1).evaluate(node=>node===window.adaForwarded));
   await page.getByRole('button',{name:'Rename',exact:true}).click();
   await expect(rows.locator('.title')).toHaveText(['Grace','Ada Lovelace']);
+  await expect(forwarded.locator('.forwarded-title')).toHaveText(['Grace','Ada Lovelace']);
+  assert(await forwarded.nth(1).evaluate(node=>node===window.adaForwarded));
   await page.getByRole('button',{name:'Insert',exact:true}).click();
   await expect(rows.locator('.position')).toHaveText(['0','1','2']);
   assert(await rows.nth(2).evaluate(node=>node===window.adaRow));
+  await expect(forwarded.locator('.forwarded-title')).toHaveText(['Lin','Grace','Ada Lovelace']);
+  await expect(forwarded.locator('output')).toHaveText(['0','0','1']);
+  assert(await forwarded.nth(2).evaluate(node=>node===window.adaForwarded));
   await rows.nth(0).getByRole('button',{name:'Remove'}).click();
   await expect(rows.locator('.position')).toHaveText(['0','1']);
+  await expect(forwarded.locator('.forwarded-title')).toHaveText(['Grace','Ada Lovelace']);
+  assert(await forwarded.nth(1).evaluate(node=>node===window.adaForwarded));
   await expect(page.locator('#live')).toHaveText('2');
   await expect(page.locator('#groups .nested')).toHaveText(['0.0 Nested Ada','1.0 Nested Grace']);
   await page.getByRole('button',{name:'Reverse groups',exact:true}).click();

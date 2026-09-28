@@ -1,4 +1,6 @@
-use super::{ElementTarget, InputTarget, JsValue, Listener, Scope, strings, text_value};
+use super::{
+    ElementTarget, InputTarget, JsValue, Listener, ListenerTarget, Scope, strings, text_value,
+};
 use crate::{Effect, effect};
 use std::{cell::RefCell, rc::Rc};
 use web_sys::{Event, Text};
@@ -157,6 +159,25 @@ impl Scope {
         })
     }
 
+    /// Compiler entry point for an always-present attribute, with the text
+    /// path's exact-integer conversion.
+    #[doc(hidden)]
+    pub fn attr_value(
+        &mut self,
+        target: impl ElementTarget,
+        name: &str,
+        read: impl Fn() -> text_value::Output + 'static,
+    ) -> Result<(), JsValue> {
+        let node = target.resolve(self)?;
+        let name = name.to_owned();
+        self.bind_dom(move || match read() {
+            text_value::Output::String(value) => node.set_attribute(&name, &value),
+            text_value::Output::Integer(value) => {
+                strings::set_integer_attribute(&node, &name, value)
+            }
+        })
+    }
+
     pub fn class(
         &mut self,
         target: impl ElementTarget,
@@ -179,7 +200,31 @@ impl Scope {
         event: &str,
         handler: impl FnMut(Event) + 'static,
     ) -> Result<(), JsValue> {
-        let target = target.resolve(self)?.into();
+        let target = ListenerTarget::Node(target.resolve(self)?.into());
+        self.listen(target, event, handler)
+    }
+
+    /// Listen on a validated binding bundle entry, without fetching its node.
+    pub(super) fn on_bundle(
+        &mut self,
+        nodes: &Rc<JsValue>,
+        index: u32,
+        event: &str,
+        handler: impl FnMut(Event) + 'static,
+    ) -> Result<(), JsValue> {
+        self.listen(
+            ListenerTarget::Bundle(Rc::clone(nodes), index),
+            event,
+            handler,
+        )
+    }
+
+    fn listen(
+        &mut self,
+        target: ListenerTarget,
+        event: &str,
+        handler: impl FnMut(Event) + 'static,
+    ) -> Result<(), JsValue> {
         let owner = self.owner();
         let listener = Listener::batched(target, event, move || owner.is_active(), handler)?;
         self.listeners.push(listener);

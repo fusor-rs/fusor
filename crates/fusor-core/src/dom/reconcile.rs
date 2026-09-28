@@ -28,7 +28,14 @@ pub(super) fn stationary(positions: &[usize]) -> Vec<bool> {
         if !existing(position) {
             continue;
         }
-        let length = tails.partition_point(|&tail| positions[tail] < *position);
+        // Rows mostly keep their relative order: extending the longest run
+        // needs no search, which keeps a few moves among many rows linear.
+        let extends = tails.last().is_none_or(|&tail| positions[tail] < *position);
+        let length = if extends {
+            tails.len()
+        } else {
+            tails.partition_point(|&tail| positions[tail] < *position)
+        };
         predecessor[row] = length.checked_sub(1).map(|shorter| tails[shorter]);
         if length == tails.len() {
             tails.push(row);
@@ -44,9 +51,152 @@ pub(super) fn stationary(positions: &[usize]) -> Vec<bool> {
     stationary
 }
 
+/// The index of each `next` key in `previous`, or [`NEW`]. `previous` holds
+/// distinct keys. Keys that keep their index, including an unchanged prefix
+/// and suffix, match without a search; the remaining previous keys are looked
+/// up among the next keys.
+pub(super) fn previous_positions<K: Ord>(previous: &[K], next: &SortedKeys<'_, K>) -> Vec<usize> {
+    let keys = next.all;
+    let (old, new) = (previous.len(), keys.len());
+    let prefix = previous
+        .iter()
+        .zip(keys)
+        .take_while(|(a, b)| a == b)
+        .count();
+    let suffix = previous[prefix..]
+        .iter()
+        .rev()
+        .zip(keys[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let mut positions = vec![NEW; new];
+    for (index, position) in positions.iter_mut().enumerate().take(prefix) {
+        *position = index;
+    }
+    for offset in 1..=suffix {
+        positions[new - offset] = old - offset;
+    }
+    let (next_middle, previous_middle) = (prefix..new - suffix, prefix..old - suffix);
+    let kept = |index: usize| {
+        next_middle.contains(&index)
+            && previous_middle.contains(&index)
+            && previous[index] == keys[index]
+    };
+    let mut unmatched = next_middle.len();
+    for index in next_middle.clone().filter(|&index| kept(index)) {
+        positions[index] = index;
+        unmatched -= 1;
+    }
+    if unmatched > 0 {
+        for index in previous_middle.clone().filter(|&index| !kept(index)) {
+            if let Some(found) = next.index_of(&previous[index]) {
+                positions[found] = index;
+            }
+        }
+    }
+    positions
+}
+
+/// Unmatched keys that [`small_edit`] resolves directly. Beyond this, sorting
+/// every key is cheaper than the per-key work.
+const SMALL_EDIT: usize = 32;
+
+/// A small edit to `previous`, planned without sorting every key: the
+/// previous position of each `next` key (or [`NEW`]) and the previous indices
+/// whose keys are gone. `known` answers whether a key is among `previous`.
+/// `None` when too many keys changed; `Some(Err(()))` for a duplicate key.
+#[allow(clippy::type_complexity)]
+pub(super) fn small_edit<K: Ord>(
+    previous: &[K],
+    next: &[K],
+    known: impl Fn(&K) -> bool,
+) -> Option<Result<(Vec<usize>, Vec<usize>), ()>> {
+    let (old, new) = (previous.len(), next.len());
+    let prefix = previous
+        .iter()
+        .zip(next)
+        .take_while(|(a, b)| a == b)
+        .count();
+    let suffix = previous[prefix..]
+        .iter()
+        .rev()
+        .zip(next[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let (next_middle, previous_middle) = (prefix..new - suffix, prefix..old - suffix);
+    let kept = |index: usize| previous_middle.contains(&index) && previous[index] == next[index];
+    let mut positions = vec![NEW; new];
+    for (index, position) in positions.iter_mut().enumerate().take(prefix) {
+        *position = index;
+    }
+    for offset in 1..=suffix {
+        positions[new - offset] = old - offset;
+    }
+    let mut unmatched = Vec::new();
+    for index in next_middle.clone() {
+        if kept(index) {
+            positions[index] = index;
+        } else if unmatched.len() == SMALL_EDIT {
+            return None;
+        } else {
+            unmatched.push(index);
+        }
+    }
+    let mut gone = Vec::new();
+    for index in previous_middle {
+        if !(next_middle.contains(&index) && previous[index] == next[index]) {
+            if gone.len() == SMALL_EDIT {
+                return None;
+            }
+            gone.push(index);
+        }
+    }
+    // Matched keys are distinct: each has its own previous index. Unmatched
+    // keys must be distinct among themselves...
+    sort_few(&mut unmatched, next);
+    if unmatched
+        .windows(2)
+        .any(|pair| next[pair[0]] == next[pair[1]])
+    {
+        return Some(Err(()));
+    }
+    let mut claimed = vec![false; unmatched.len()];
+    let mut removed = Vec::new();
+    for index in gone {
+        match unmatched.binary_search_by(|&at| next[at].cmp(&previous[index])) {
+            Ok(slot) => {
+                positions[unmatched[slot]] = index;
+                claimed[slot] = true;
+            }
+            Err(_) => removed.push(index),
+        }
+    }
+    // ...and a key that no unmatched previous key claims is new, unless a
+    // matched previous key already has it.
+    for (slot, &index) in unmatched.iter().enumerate() {
+        if !claimed[slot] && known(&next[index]) {
+            return Some(Err(()));
+        }
+    }
+    Some(Ok((positions, removed)))
+}
+
+/// Order at most [`SMALL_EDIT`] indices by their keys, without instantiating
+/// a general sort for every key type.
+pub(super) fn sort_few<K: Ord>(indices: &mut [usize], keys: &[K]) {
+    for sorted in 1..indices.len() {
+        let mut at = sorted;
+        while at > 0 && keys[indices[at - 1]] > keys[indices[at]] {
+            indices.swap(at - 1, at);
+            at -= 1;
+        }
+    }
+}
+
 /// Borrowed uniqueness validation and a merge cursor for ascending map keys.
 /// Input order remains in the caller's original key vector.
 pub(super) struct SortedKeys<'a, K> {
+    all: &'a [K],
     keys: Vec<&'a K>,
     next: usize,
 }
@@ -59,8 +209,20 @@ impl<'a, K: Ord> SortedKeys<'a, K> {
             return None;
         }
         Some(Self {
+            all: keys,
             keys: sorted,
             next: 0,
+        })
+    }
+
+    /// The index of `key` among the validated keys.
+    pub(super) fn index_of(&self, key: &K) -> Option<usize> {
+        let found = self.keys[self.keys.binary_search(&key).ok()?];
+        // `found` borrows an element of `all`. Distinct zero-sized keys
+        // cannot exceed one, at index zero.
+        Some(match std::mem::size_of::<K>() {
+            0 => 0,
+            size => (found as *const K as usize - self.all.as_ptr() as usize) / size,
         })
     }
 
@@ -179,6 +341,141 @@ mod tests {
                 }
             });
         }
+    }
+
+    fn positions<K: Ord>(previous: &[K], next: &[K]) -> Vec<usize> {
+        previous_positions(previous, &SortedKeys::new(next).unwrap())
+    }
+
+    fn oracle(previous: &[u8], next: &[u8]) -> Vec<usize> {
+        next.iter()
+            .map(|key| previous.iter().position(|old| old == key).unwrap_or(NEW))
+            .collect()
+    }
+
+    #[test]
+    fn previous_positions_match_a_full_search_for_every_small_change() {
+        let mut lists: Vec<Vec<u8>> = Vec::new();
+        for size in 0..=5 {
+            permutations(&mut (0..size).collect::<Vec<_>>(), 0, &mut |order| {
+                lists.push(order.iter().map(|&key| key as u8).collect());
+            });
+        }
+        // Distinct subsets of 0..7 in several orders, including new keys.
+        for mask in 0u32..128 {
+            let keys: Vec<u8> = (0..7).filter(|bit| mask & (1 << bit) != 0).collect();
+            let mut reversed = keys.clone();
+            reversed.reverse();
+            lists.push(keys);
+            lists.push(reversed);
+        }
+        for previous in &lists {
+            for next in &lists {
+                assert_eq!(
+                    positions(previous, next),
+                    oracle(previous, next),
+                    "{previous:?} -> {next:?}"
+                );
+            }
+        }
+        let long: Vec<u16> = (0..1000).collect();
+        let mut swapped = long.clone();
+        swapped.swap(1, 998);
+        let mut inserted = long.clone();
+        inserted.insert(500, 1000);
+        for next in [
+            swapped,
+            inserted,
+            long[..400].to_vec(),
+            long.iter().rev().copied().collect(),
+        ] {
+            let expected: Vec<usize> = next
+                .iter()
+                .map(|key| long.iter().position(|old| old == key).unwrap_or(NEW))
+                .collect();
+            assert_eq!(positions(&long, &next), expected);
+        }
+    }
+
+    #[test]
+    fn small_edits_match_a_full_search_and_reject_every_duplicate() {
+        let mut lists: Vec<Vec<u8>> = Vec::new();
+        for size in 0..=5 {
+            permutations(&mut (0..size).collect::<Vec<_>>(), 0, &mut |order| {
+                lists.push(order.iter().map(|&key| key as u8).collect());
+            });
+        }
+        for mask in 0u32..128 {
+            let keys: Vec<u8> = (0..7).filter(|bit| mask & (1 << bit) != 0).collect();
+            let mut reversed = keys.clone();
+            reversed.reverse();
+            lists.push(keys);
+            lists.push(reversed);
+        }
+        // Every list with one existing key repeated at every position.
+        let mut duplicated = Vec::new();
+        for list in lists.iter().filter(|list| list.len() <= 4) {
+            for &key in list {
+                for at in 0..=list.len() {
+                    let mut copy = list.clone();
+                    copy.insert(at, key);
+                    duplicated.push(copy);
+                }
+            }
+        }
+        let distinct = |list: &[u8]| {
+            let mut sorted = list.to_vec();
+            sorted.sort();
+            sorted.windows(2).all(|pair| pair[0] != pair[1])
+        };
+        for previous in &lists {
+            for next in lists.iter().chain(&duplicated) {
+                match small_edit(previous, next, |key| previous.contains(key)) {
+                    // The sorted path then validates every key.
+                    None => assert!(next.len() + previous.len() > SMALL_EDIT),
+                    Some(Err(())) => assert!(!distinct(next), "{previous:?} -> {next:?}"),
+                    Some(Ok((positions, mut removed))) => {
+                        assert!(distinct(next), "{previous:?} -> {next:?}");
+                        assert_eq!(
+                            positions,
+                            oracle(previous, next),
+                            "{previous:?} -> {next:?}"
+                        );
+                        removed.sort();
+                        let gone: Vec<usize> = (0..previous.len())
+                            .filter(|&index| !next.contains(&previous[index]))
+                            .collect();
+                        assert_eq!(removed, gone, "{previous:?} -> {next:?}");
+                    }
+                }
+            }
+        }
+        let long: Vec<u16> = (0..1000).collect();
+        let mut swapped = long.clone();
+        swapped.swap(1, 998);
+        let mut inserted = long.clone();
+        inserted.insert(500, 1000);
+        let mut deleted = long.clone();
+        deleted.remove(500);
+        let mut repeated = long.clone();
+        repeated.insert(500, 7);
+        for (next, gone) in [(swapped, vec![]), (inserted, vec![]), (deleted, vec![500])] {
+            let (positions, removed) = small_edit(&long, &next, |key| long.contains(key))
+                .expect("small edit")
+                .expect("distinct keys");
+            let expected: Vec<usize> = next
+                .iter()
+                .map(|key| long.iter().position(|old| old == key).unwrap_or(NEW))
+                .collect();
+            assert_eq!(positions, expected);
+            assert_eq!(removed, gone);
+        }
+        assert_eq!(
+            small_edit(&long, &repeated, |key| long.contains(key)),
+            Some(Err(()))
+        );
+        let reversed: Vec<u16> = long.iter().rev().copied().collect();
+        assert_eq!(small_edit(&long, &reversed, |key| long.contains(key)), None);
     }
 
     #[test]

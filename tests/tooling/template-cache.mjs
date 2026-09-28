@@ -76,6 +76,27 @@ impl PartialOrd for ReverseKey{fn partial_cmp(&self,other:&Self)->Option<std::cm
 #[wasm_bindgen]pub fn keyed_dense(){let items=KEYED.with(|app|app.borrow().as_ref().unwrap().1.clone());items.set([4,2].into_iter().chain(100..2100).collect());}
 #[wasm_bindgen]pub fn keyed_set(values:Vec<u32>){let items=KEYED.with(|app|app.borrow().as_ref().unwrap().1.clone());items.set(values);}
 #[wasm_bindgen]pub fn keyed_unmount(){KEYED.with(|app|app.borrow_mut().take());}
+thread_local!{static KEY_DROP_APP:RefCell<Option<(Scope,Signal<Vec<u32>>)>>=const{RefCell::new(None)};static KEY_DROP_LOG:RefCell<Vec<String>>=const{RefCell::new(Vec::new())};}
+#[derive(Clone,Eq,PartialEq)]struct DropKey(u32);
+impl Ord for DropKey{fn cmp(&self,other:&Self)->std::cmp::Ordering{other.0.cmp(&self.0)}}
+impl PartialOrd for DropKey{fn partial_cmp(&self,other:&Self)->Option<std::cmp::Ordering>{Some(self.cmp(other))}}
+fn log_key_lifecycle(kind:&str,id:u32){
+ let connected=fusor::dom::document().unwrap().get_element_by_id(&format!("drop-row-{id}")).is_some();
+ KEY_DROP_LOG.with(|log|log.borrow_mut().push(format!("{kind}:{id}:{connected}")));
+}
+impl Drop for DropKey{fn drop(&mut self){log_key_lifecycle("key",self.0);}}
+#[wasm_bindgen]pub fn key_drop_mount()->Result<(),JsValue>{
+ let root=fusor::dom::document()?.create_element("section")?;root.set_id("key-drop-fixture");
+ let mut scope=Scope::new(root.clone());let items=signal(vec![1_u32,2,3,4]);let observed=items.clone();
+ scope.keyed(&root,move||observed.get(),|id|DropKey(*id),|item|{
+  let id=item.get_untracked();let root=fusor::dom::document()?.create_element("input")?;root.set_id(&format!("drop-row-{id}"));
+  let mut row=Scope::new(root);row.retain(row.owner().on_cleanup(move||log_key_lifecycle("row",id)));Ok(row)
+ })?;
+ scope.attach(&fusor::dom::document()?.get_element_by_id("host").unwrap())?;KEY_DROP_APP.with(|app|app.replace(Some((scope,items))));KEY_DROP_LOG.with(|log|log.borrow_mut().clear());Ok(())
+}
+#[wasm_bindgen]pub fn key_drop_remove(){let items=KEY_DROP_APP.with(|app|app.borrow().as_ref().unwrap().1.clone());items.set(vec![4,2]);}
+#[wasm_bindgen]pub fn key_drop_log()->String{KEY_DROP_LOG.with(|log|log.borrow().join(","))}
+#[wasm_bindgen]pub fn key_drop_unmount(){KEY_DROP_APP.with(|app|app.borrow_mut().take());}
 struct Example {value:Signal<u32>,text:Signal<String>}
 #[wasm_bindgen(start)]pub fn start()->Result<(),JsValue>{mount()}
 #[wasm_bindgen]pub fn mount()->Result<(),JsValue>{let mut scope=Example{value:signal(0),text:signal("hello".into())}.mount()?;scope.attach(&fusor::dom::document()?.get_element_by_id("host").unwrap())?;APP.with(|app|app.replace(Some(scope)));Ok(())}
@@ -86,7 +107,7 @@ struct Example {value:Signal<u32>,text:Signal<String>}
  let descriptor=TemplateDescriptor{version:VERSION,component:ComponentId::new(id),kind:RootKind::Template,elements:if bad{BAD}else{GOOD},texts:&[],text_elements:&[]};
  let _=descriptor.mount()?;Ok(())}
 </script>
-<template id="fixture" rust:component="Example"><section id="card">prefix {{ state.value.get() }} middle {{ state.value.get()+1 }} <button id="increment" on:click="state.value.update(|v|*v+=1)">next</button><input id="edit" bind="state.text"><output id="echo">{{ state.text.get() }}</output><div><article><strong id="nested-a">{{ state.value.get()+10 }}</strong><span id="nested-b">{{ state.value.get()+20 }}</span><em><output id="nested-c">{{ state.value.get()+30 }}</output></em></article></div><cache-probe></cache-probe></section></template>
+<template id="fixture" rust:component="Example"><section id="card" data-value="{{ state.value.get() }}">prefix {{ state.value.get() }} middle {{ state.value.get()+1 }} <button id="increment" on:click="state.value.update(|v|*v+=1)">next</button><input id="edit" bind="state.text"><output id="echo">{{ state.text.get() }}</output><div><article><strong id="nested-a">{{ state.value.get()+10 }}</strong><span id="nested-b">{{ state.value.get()+20 }}</span><em><output id="nested-c">{{ state.value.get()+30 }}</output></em></article></div><cache-probe></cache-probe></section></template>
 </body></html>`,
   );
   await exec(
@@ -163,9 +184,13 @@ struct Example {value:Signal<u32>,text:Signal<String>}
         const card = document.querySelector("#card");
         if (!card.textContent.startsWith("prefix 0 middle 1"))
           throw Error("multiple text paths");
+        if (card.getAttribute("data-value") !== "0")
+          throw Error("typed integer attribute");
         card.querySelector("#increment").click();
         if (!card.textContent.startsWith("prefix 1 middle 2"))
           throw Error("later bound button path");
+        if (card.getAttribute("data-value") !== "1")
+          throw Error("typed integer attribute update");
         if (
           ["a", "b", "c"].some(
             (suffix, i) =>
@@ -391,12 +416,27 @@ struct Example {value:Signal<u32>,text:Signal<String>}
           previous = current;
         }
         app.keyed_unmount();
+        // Map-owned keys must outlive native removal, then drop before their
+        // row cleanup, in custom Ord order. Other key copies may drop later;
+        // this deliberately does not pin the number of clones or comparisons.
+        app.key_drop_mount();
+        app.key_drop_remove();
+        const keyDrops = app.key_drop_log().split(",").filter((entry) => {
+          const id = entry.split(":")[1];
+          return id === "1" || id === "3";
+        });
+        if (keyDrops.some((entry) => entry.endsWith(":true")))
+          throw Error("removed key dropped before its row detached: " + keyDrops.join(","));
+        if (keyDrops.slice(0, 4).join() !== "key:3:false,row:3:false,key:1:false,row:1:false")
+          throw Error("removed key and row cleanup lost Ord lifecycle order: " + keyDrops.join(","));
+        app.key_drop_unmount();
         return { hits, mounts, constructors: constructed, imports };
       } finally {
         Node.prototype.isEqualNode = equal;
         Document.prototype.importNode = importNode;
         app.unmount();
         app.keyed_unmount();
+        app.key_drop_unmount();
       }
     });
     await page.evaluate(async source => {

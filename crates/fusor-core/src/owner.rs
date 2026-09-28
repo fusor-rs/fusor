@@ -20,6 +20,9 @@ struct Inner {
     committed: Cell<bool>,
     // Monotone lifecycle history; disposal must not erase adopted-DOM ownership.
     activated: Cell<bool>,
+    // Fallible DOM setup can finish while this owner still awaits activation.
+    #[cfg(feature = "dom")]
+    mount_ready: Cell<bool>,
     parent: Option<Weak<Inner>>,
     children: RefCell<Vec<Weak<Inner>>>,
     dead_children: Cell<usize>,
@@ -126,6 +129,8 @@ impl Owner {
             status: Cell::new(Status::Prepared),
             committed: Cell::new(false),
             activated: Cell::new(false),
+            #[cfg(feature = "dom")]
+            mount_ready: Cell::new(false),
             parent,
             children: RefCell::new(Vec::new()),
             dead_children: Cell::new(0),
@@ -165,6 +170,22 @@ impl Owner {
     pub fn commit(&self) {
         self.0.committed.set(true);
         activate(&self.0);
+    }
+
+    /// The status of an owner this caller holds, without a weak handle.
+    #[cfg(feature = "dom")]
+    pub(crate) fn is_active(&self) -> bool {
+        self.0.status.get() == Status::Active
+    }
+
+    #[cfg(feature = "dom")]
+    pub(crate) fn is_disposed(&self) -> bool {
+        self.0.status.get() == Status::Disposed
+    }
+
+    #[cfg(feature = "dom")]
+    pub(crate) fn mark_mount_ready(&self) {
+        self.0.mount_ready.set(true);
     }
 
     #[cfg(any(feature = "dom", test))]
@@ -219,24 +240,29 @@ fn invalidate(inner: &Rc<Inner>, callbacks: &mut Vec<Callback>) {
     if inner.status.replace(Status::Disposed) == Status::Disposed {
         return;
     }
+    // Most owners register nothing; skip their empty registries.
     // Hold discarded activation callbacks until the entire tree is invalid.
-    let activations = inner.activate.take();
-    if !activations.is_empty() {
+    if !inner.activate.borrow().is_empty() {
+        let activations = inner.activate.take();
         callbacks.push(Box::new(move || drop(activations)));
     }
-    callbacks.extend(inner.cleanup.take().into_values());
-    for child in inner
-        .children
-        .take()
-        .into_iter()
-        .filter_map(|c| c.upgrade())
-    {
-        invalidate(&child, callbacks);
+    if !inner.cleanup.borrow().is_empty() {
+        callbacks.extend(inner.cleanup.take().into_values());
+    }
+    if !inner.children.borrow().is_empty() {
+        for child in inner
+            .children
+            .take()
+            .into_iter()
+            .filter_map(|c| c.upgrade())
+        {
+            invalidate(&child, callbacks);
+        }
     }
     // Defer destructors until the whole tree is invalid. Release a provider
     // after its children's cleanup callbacks have run.
-    let contexts = inner.contexts.take();
-    if !contexts.is_empty() {
+    if !inner.contexts.borrow().is_empty() {
+        let contexts = inner.contexts.take();
         callbacks.push(Box::new(move || drop(contexts)));
     }
 }
@@ -324,6 +350,10 @@ impl OwnerHandle {
         self.0
             .upgrade()
             .is_none_or(|p| p.status.get() == Status::Disposed)
+    }
+    #[cfg(feature = "dom")]
+    pub(crate) fn is_mount_ready(&self) -> bool {
+        self.0.upgrade().is_some_and(|p| p.mount_ready.get())
     }
     /// Run on activation (immediately if active). Does not run after disposal.
     pub fn on_activate(&self, callback: impl FnOnce() + 'static) -> Registration {

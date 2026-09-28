@@ -103,7 +103,7 @@ mod browser {
 `);
   await writeFile(join(scratch, 'web/index.html'), `<!doctype html><html><head><meta charset="utf-8"></head><body><div id="host"></div>
 <script type="text/rust" src="../src/lib.rs" rust:module="crate"></script>
-<template id="fixture-template" rust:component="Fixture" rust:render="shared"><section id="fixture"${Array.from({ length: 80 }, (_, index) => ` data-cache-${index}="{{ state.value.get() }}"`).join('')}><x-bundle-probe></x-bundle-probe><output id="empty">{{ state.empty.get() }}</output><output id="first" title="{{ state.value.get() }}">{{ state.text() }}</output><p id="mixed">[{{ state.text() }}]</p><button id="action" on:click="state.clicks.update(|count| *count += 1)">+</button><output id="count">{{ state.clicks.get() }}</output><output id="later" title="{{ state.value.get() }}">{{ state.text() }}</output><output id="integer">{{ state.integer() }}</output><output id="signed">{{ state.signed.get() }}</output><output id="small">{{ u8::MAX }}|{{ i8::MIN }}|{{ u16::MAX }}|{{ i16::MIN }}</output><output id="wide">{{ u64::MAX }}</output><output id="float">{{ -0.0f64 }}</output><output id="custom">{{ Custom(state.signed.get()) }}</output></section></template>
+<template id="fixture-template" rust:component="Fixture" rust:render="shared"><section id="fixture"${Array.from({ length: 80 }, (_, index) => ` data-cache-${index}="{{ state.value.get() }}"`).join('')}><x-bundle-probe></x-bundle-probe><output id="empty">{{ state.empty.get() }}</output><output id="first" title="{{ state.value.get() }}">{{ state.text() }}</output><p id="mixed">[{{ state.text() }}]</p><button id="action" on:click="state.clicks.update(|count| *count += 1)">+</button><output id="count">{{ state.clicks.get() }}</output><output id="later" title="{{ state.value.get() }}">{{ state.text() }}</output><output id="integer" data-number="{{ state.integer() }}">{{ state.integer() }}</output><output id="signed" data-signed="{{ state.signed.get() }}">{{ state.signed.get() }}</output><output id="small">{{ u8::MAX }}|{{ i8::MIN }}|{{ u16::MAX }}|{{ i16::MIN }}</output><output id="wide">{{ u64::MAX }}</output><output id="float">{{ -0.0f64 }}</output><output id="custom">{{ Custom(state.signed.get()) }}</output></section></template>
 </body></html>`);
   await exec('cargo', ['build', '-p', 'fusor-cli', '--locked', '--offline'], { cwd: root, timeout: 240000, maxBuffer: 8e6 });
   await run('cargo', ['generate-lockfile', '--offline']);
@@ -227,6 +227,7 @@ mod browser {
         check(text.data === initial && first.title === initial, 'initial bindings');
         const integer = host.querySelector('#integer').firstChild;
         check(integer.data === '4294967295' && host.querySelector('#signed').textContent === '-2147483648', 'integer initial range');
+        check(host.querySelector('#integer').getAttribute('data-number') === '4294967295' && host.querySelector('#signed').getAttribute('data-signed') === '-2147483648', 'integer attribute initial range');
         check(host.querySelector('#small').textContent === '255|-128|65535|-32768', 'small signed and unsigned ranges');
         check(host.querySelector('#wide').textContent === '18446744073709551615' && host.querySelector('#float').textContent === '-0', 'wide integer and float fallback');
         for (const [number, signed] of [[0, 0], [1, -1], [9, 10], [99, -100], [2147483648, 2147483647], [4294967295, -2147483648]]) {
@@ -234,6 +235,7 @@ mod browser {
           try { Number.prototype.toString = () => { throw Error('mutable numeric formatting hook'); }; app.numbers(number, signed); }
           finally { Number.prototype.toString = prototypeToString; }
           check(integer.data === String(number) && host.querySelector('#signed').textContent === String(signed), 'integer update precision');
+          check(host.querySelector('#integer').getAttribute('data-number') === String(number) && host.querySelector('#signed').getAttribute('data-signed') === String(signed), 'integer attribute update precision');
           check(host.querySelector('#custom').textContent === 'custom(' + signed + ')', 'custom Deref formatting bypassed');
         }
         integer.data = 'external integer mutation'; app.touch();

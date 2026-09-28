@@ -197,7 +197,7 @@ impl EffectInner {
             return;
         }
         // Recollect on every run, so conditional reads shed stale dependencies.
-        self.unsubscribe();
+        let _run = self.observer.begin();
         let _tracking = TrackingGuard::replace(Some(Rc::downgrade(&self.observer)));
         (self.callback.borrow_mut())();
     }

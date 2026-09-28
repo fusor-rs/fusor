@@ -6,6 +6,10 @@ use std::{
     rc::{Rc, Weak},
 };
 
+thread_local! {
+    static PENDING: RefCell<VecDeque<Rc<Observer>>> = const { RefCell::new(VecDeque::new()) };
+}
+
 // Small sources keep up to two observers inline in ascending ID order.
 // Wider sources retain the ordinary ordered registry and its removal path.
 enum Subscribers {
@@ -19,17 +23,25 @@ impl Default for Subscribers {
     }
 }
 impl Subscribers {
+    #[cfg(test)]
     fn collect(&self) -> VecDeque<Rc<Observer>> {
+        let mut observers = VecDeque::new();
+        self.push_into(&mut observers);
+        observers
+    }
+
+    /// Append the live subscribers in ascending ID order.
+    fn push_into(&self, pending: &mut VecDeque<Rc<Observer>>) {
         match self {
-            Self::One(subscriber) => subscriber
-                .iter()
-                .filter_map(|(_, weak)| weak.upgrade())
-                .collect(),
-            Self::Two(subscribers) => subscribers
-                .iter()
-                .filter_map(|(_, weak)| weak.upgrade())
-                .collect(),
-            Self::Many(subscribers) => subscribers.values().filter_map(Weak::upgrade).collect(),
+            Self::One(subscriber) => {
+                pending.extend(subscriber.iter().filter_map(|(_, weak)| weak.upgrade()));
+            }
+            Self::Two(subscribers) => {
+                pending.extend(subscribers.iter().filter_map(|(_, weak)| weak.upgrade()));
+            }
+            Self::Many(subscribers) => {
+                pending.extend(subscribers.values().filter_map(Weak::upgrade))
+            }
         }
     }
 
@@ -114,10 +126,6 @@ impl Source {
         self.version.get()
     }
 
-    fn subscribers(&self) -> VecDeque<Rc<Observer>> {
-        self.subscribers.borrow().collect()
-    }
-
     pub fn notify(&self) {
         let wave = NEXT_WAVE.with(|next| {
             let wave = next
@@ -127,7 +135,20 @@ impl Source {
             next.set(wave);
             wave
         });
-        let mut pending = self.subscribers();
+        // Notification runs no user code, so one work queue serves every
+        // write. A reentrant notification would use its own.
+        PENDING.with(|shared| match shared.try_borrow_mut() {
+            Ok(mut pending) => {
+                // Drop anything an unwinding notification left behind.
+                pending.clear();
+                self.notify_into(&mut pending, wave);
+            }
+            Err(_) => self.notify_into(&mut VecDeque::new(), wave),
+        });
+    }
+
+    fn notify_into(&self, pending: &mut VecDeque<Rc<Observer>>, wave: u64) {
+        self.subscribers.borrow().push_into(pending);
         while let Some(observer) = pending.pop_front() {
             if observer.wave.replace(wave) == wave {
                 continue;
@@ -143,8 +164,7 @@ impl Source {
                 }
                 ObserverKind::Memo(memo) => {
                     if let Some(memo) = memo.upgrade() {
-                        memo.invalidate();
-                        pending.extend(memo.source().subscribers());
+                        memo.invalidate().subscribers.borrow().push_into(pending);
                     }
                 }
             }
@@ -158,6 +178,70 @@ struct Dependency {
     version: u64,
 }
 
+/// Most observers read one or two sources; keep those inline, so a rerun
+/// neither allocates nor frees its dependency list.
+#[derive(Clone, Default)]
+enum Dependencies {
+    #[default]
+    None,
+    One(Dependency),
+    Two([Dependency; 2]),
+    Many(Vec<Dependency>),
+}
+
+impl Dependencies {
+    fn push(&mut self, dependency: Dependency) {
+        if let Self::Many(dependencies) = self {
+            return dependencies.push(dependency);
+        }
+        *self = match std::mem::take(self) {
+            Self::None => Self::One(dependency),
+            Self::One(first) => Self::Two([first, dependency]),
+            Self::Two([first, second]) => Self::Many(vec![first, second, dependency]),
+            Self::Many(_) => unreachable!("pushed above"),
+        };
+    }
+
+    fn as_slice(&self) -> &[Dependency] {
+        match self {
+            Self::None => &[],
+            Self::One(dependency) => std::slice::from_ref(dependency),
+            Self::Two(dependencies) => dependencies,
+            Self::Many(dependencies) => dependencies,
+        }
+    }
+
+    fn get_mut(&mut self, index: usize) -> Option<&mut Dependency> {
+        match self {
+            Self::None => None,
+            Self::One(dependency) => (index == 0).then_some(dependency),
+            Self::Two(dependencies) => dependencies.get_mut(index),
+            Self::Many(dependencies) => dependencies.get_mut(index),
+        }
+    }
+
+    /// Keep the first `length` dependencies and return the rest.
+    fn split_off(&mut self, length: usize) -> Vec<Dependency> {
+        if length >= self.as_slice().len() {
+            return Vec::new();
+        }
+        let mut all = match std::mem::take(self) {
+            Self::None => Vec::new(),
+            Self::One(dependency) => vec![dependency],
+            Self::Two(dependencies) => Vec::from(dependencies),
+            Self::Many(dependencies) => dependencies,
+        };
+        let rest = all.split_off(length);
+        for dependency in all {
+            self.push(dependency);
+        }
+        rest
+    }
+}
+
+/// `Observer::reuse` outside a run, or after a run stopped matching.
+const NO_REUSE: usize = usize::MAX;
+
 pub(super) enum ObserverKind {
     Effect(Weak<EffectInner>),
     Memo(Weak<dyn MemoNode>),
@@ -167,29 +251,58 @@ pub(super) struct Observer {
     id: u64,
     kind: ObserverKind,
     wave: Cell<u64>,
-    dependencies: RefCell<Vec<Dependency>>,
+    dependencies: RefCell<Dependencies>,
+    /// While a run reads its previous sources again in the same order, the
+    /// index of the next one. Those keep their subscriptions.
+    reuse: Cell<usize>,
 }
 
 impl Observer {
     pub fn new(kind: ObserverKind) -> Rc<Self> {
-        let id = NEXT_ID.with(|next| {
+        Self::with_id(Self::reserve_id(), kind)
+    }
+
+    /// Lazy memos reserve identity at construction to preserve notification order.
+    pub fn reserve_id() -> u64 {
+        NEXT_ID.with(|next| {
             let id = next
                 .get()
                 .checked_add(1)
                 .expect("reactive observer ID exhausted");
             next.set(id);
             id
-        });
+        })
+    }
+
+    pub fn with_id(id: u64, kind: ObserverKind) -> Rc<Self> {
         Rc::new(Self {
             id,
             kind,
             wave: Cell::new(0),
-            dependencies: RefCell::new(Vec::new()),
+            dependencies: RefCell::new(Dependencies::None),
+            reuse: Cell::new(NO_REUSE),
         })
     }
 
     pub fn unsubscribe(&self) {
-        for dependency in self.dependencies.take() {
+        self.reuse.set(NO_REUSE);
+        for dependency in self.dependencies.take().as_slice() {
+            dependency.source.subscribers.borrow_mut().remove(&self.id);
+        }
+    }
+
+    /// Recollect dependencies for one run, so conditional reads shed stale
+    /// ones. Until the run ends, previous sources stay subscribed while the run
+    /// reads them again in order; the rest are released when it stops matching
+    /// or when the returned guard drops, including on unwind.
+    pub fn begin(&self) -> Run<'_> {
+        self.reuse.set(0);
+        Run(self)
+    }
+
+    fn release_from(&self, length: usize) {
+        let released = self.dependencies.borrow_mut().split_off(length);
+        for dependency in &released {
             dependency.source.subscribers.borrow_mut().remove(&self.id);
         }
     }
@@ -197,28 +310,28 @@ impl Observer {
     pub fn changed(&self) -> bool {
         // Refreshing upstream memos executes user computations. Hold no graph
         // registry borrow across that boundary.
-        enum Snapshot {
-            Two([Dependency; 2]),
-            Many(Vec<Dependency>),
-        }
-        let snapshot = {
-            let dependencies = self.dependencies.borrow();
-            match dependencies.as_slice() {
-                [first, second] => Snapshot::Two([first.clone(), second.clone()]),
-                _ => Snapshot::Many(dependencies.clone()),
-            }
-        };
-        let dependencies = match &snapshot {
-            Snapshot::Two(dependencies) => dependencies.as_slice(),
-            Snapshot::Many(dependencies) => dependencies.as_slice(),
-        };
-        dependencies.iter().any(|d| d.source.version() != d.version)
+        let snapshot = self.dependencies.borrow().clone();
+        snapshot
+            .as_slice()
+            .iter()
+            .any(|d| d.source.version() != d.version)
     }
 }
 
 impl Drop for Observer {
     fn drop(&mut self) {
         self.unsubscribe();
+    }
+}
+
+pub(super) struct Run<'a>(&'a Observer);
+
+impl Drop for Run<'_> {
+    fn drop(&mut self) {
+        let next = self.0.reuse.replace(NO_REUSE);
+        if next != NO_REUSE {
+            self.0.release_from(next);
+        }
     }
 }
 
@@ -229,6 +342,20 @@ pub(super) fn track(source: &Rc<Source>) {
         if matches!(&current.kind, ObserverKind::Effect(e) if e.upgrade().is_none_or(|e| !e.active.get()))
         {
             return;
+        }
+        let next = current.reuse.get();
+        if next != NO_REUSE {
+            if let Some(dependency) = current.dependencies.borrow_mut().get_mut(next) {
+                if Rc::ptr_eq(&dependency.source, source) {
+                    dependency.version = source.version.get();
+                    current.reuse.set(next + 1);
+                    return;
+                }
+            }
+            // The run no longer follows the previous order: release the rest
+            // of those sources and subscribe from here as before.
+            current.reuse.set(NO_REUSE);
+            current.release_from(next);
         }
         if source
             .subscribers

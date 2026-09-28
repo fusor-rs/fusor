@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "kind": "validation-summary",
+  "commit": "af57da5",
+  "previousPublishedRecord": "20260927-runtime-optimizations-2",
+  "previousMeasuredCommit": "b6e93a3",
+  "scope": "Code validation and completed engineering measurements; publication-run evaluation and receipts must be recorded separately.",
+  "status": "not_all_green",
+  "sourceChanges": {
+    "commits": ["e35baaf", "6020185", "73bc079", "af57da5"],
+    "existingTestsWeakened": false,
+    "benchmarkWorkloadsChanged": false,
+    "timingLogicChanged": false,
+    "inputsOrIterationCountsChanged": false,
+    "publicApiChanged": false,
+    "htmlSyntaxChanged": false,
+    "dependenciesChanged": false
+  },
+  "checks": [
+    {
+      "name": "just check",
+      "status": "passed",
+      "log": "target/perf-work/check-session3.log",
+      "coverage": ["formatting", "workspace tests", "Clippy -D warnings", "feature isolation", "external consumers", "rustdoc"]
+    },
+    {
+      "name": "three-engine playground Playwright",
+      "status": "failed",
+      "passed": 115,
+      "total": 116,
+      "engines": {
+        "chromiumDesktopAndMobile": {"passed": 58, "total": 58},
+        "firefox": {"passed": 29, "total": 29},
+        "webkit": {"passed": 28, "total": 29}
+      },
+      "failure": {
+        "test": "a module load failure is reported in the page",
+        "location": "tests/browser/playground.spec.js:30",
+        "observed": "#load-error remained hidden",
+        "reproducedOnCommit": "b6e93a3",
+        "reproduction": "Exact unchanged test against an isolated source-archive build",
+        "baselineLog": "target/perf-work/webkit-baseline-test.log",
+        "baselineBuildLog": "target/perf-work/webkit-baseline-build.log"
+      },
+      "log": "target/perf-work/ci-browser-session3.log"
+    },
+    {
+      "name": "remaining original browser gate jobs",
+      "status": "failed",
+      "allJobsAttempted": true,
+      "enginesEnabled": ["chromium", "firefox", "webkit"],
+      "passed": ["template-cache", "router", "navigation", "composition", "editor", "framework-fixtures", "benchmark-runtime", "template-resolution", "direct-text", "component-hydration", "bundle-bindings", "coherent", "islands", "delivery", "islands-consumer"],
+      "failed": [
+        {"name": "dev", "location": "tests/tooling/dev.mjs:83", "observed": "generation-ID equality assertion", "knownFromOwnerHandoff": true, "log": "target/perf-work/final-dev.log"},
+        {"name": "standalone", "location": "tests/tooling/standalone.mjs:94", "observed": "boot-URL equality assertion", "knownFromOwnerHandoff": true, "log": "target/perf-work/final-standalone.log"}
+      ],
+      "results": "target/perf-work/ci-remaining.json",
+      "log": "target/perf-work/ci-remaining-session3.log"
+    },
+    {
+      "name": "new focused memo cases before optimization",
+      "status": "passed",
+      "memoTests": 20,
+      "newCases": 5,
+      "implementation": "eager memo graph baseline",
+      "log": "target/perf-work/memo-before-final.log"
+    },
+    {
+      "name": "complete diff review since dd377eb",
+      "status": "passed",
+      "unresolvedIssues": 0,
+      "msrvHazardFound": false,
+      "whitespaceErrors": false
+    }
+  ],
+  "engineeringEvidence": {
+    "fullRun": {
+      "path": "target/benchmarks/perf/20260927-session3-final/latest.json",
+      "profile": "baseline",
+      "protocol": "seven-framework-v2",
+      "measuredTimingRows": 133,
+      "frameworks": 7,
+      "errors": 0,
+      "publicationSelection": false
+    },
+    "finalPairedBrowser": "target/perf-work/final-session3-ab.json",
+    "finalPairedIsolated": "target/perf-work/final-session3-isolated.json",
+    "finalPairedNative": "target/perf-work/final-session3-ssr.json",
+    "residualHydration1000Regression": {
+      "comparatorCommit": "fdbac71",
+      "comparatorRecord": "20260927-runtime-optimizations",
+      "comparisonIsAgainstPreviousRecordMinus2": false,
+      "baselineMeanMs": 7.4012499988079075,
+      "finalMeanMs": 7.512499998509884,
+      "relativeChange": 0.015031244684329658,
+      "pooledSampleBootstrap95CI": [0.00925147303374991, 0.020907701517478533],
+      "winningRounds": 0,
+      "rounds": 8
+    }
+  },
+  "workloadArtifact": {
+    "wasmBytes": 274872,
+    "sha256": "80e304b84578846e8d5d39db5107a91e4d1a3dc0241d7eade17356af747388e2"
+  }
+}

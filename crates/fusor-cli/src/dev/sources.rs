@@ -12,6 +12,30 @@ use std::{
 pub(crate) type Snapshot = BTreeMap<PathBuf, u64>;
 
 pub(crate) fn snapshot(cx: &Context, project: &Project) -> io::Result<Snapshot> {
+    let mut files = source_snapshot(cx, project)?;
+    // Package imports and authored modules outside the Cargo package roots are
+    // exact dependencies, even though scanning all node_modules is unnecessary.
+    // Missing files disappear from the snapshot and therefore trigger a rebuild.
+    if let Ok(output) = OutputManifest::read(&project.output(cx)) {
+        if let Some(javascript) = output.javascript {
+            for input in javascript.inputs {
+                let path = PathBuf::from(input);
+                match fs::read(&path) {
+                    Ok(contents) => {
+                        files.insert(path, fingerprint(&contents));
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error),
+                }
+            }
+        }
+    }
+    Ok(files)
+}
+
+/// These files stay watched across publications. Previous output metadata may
+/// add JavaScript inputs that disappear after the next full build.
+pub(crate) fn source_snapshot(cx: &Context, project: &Project) -> io::Result<Snapshot> {
     let generated = [
         project.target.clone(),
         project.output(cx),
@@ -49,23 +73,6 @@ pub(crate) fn snapshot(cx: &Context, project: &Project) -> io::Result<Snapshot> 
         let path = project.workspace.join(name);
         if path.exists() {
             collect(&path, &generated, &mut files)?;
-        }
-    }
-    // Package imports and authored modules outside the Cargo package roots are
-    // exact dependencies, even though scanning all node_modules is unnecessary.
-    // Missing files disappear from the snapshot and therefore trigger a rebuild.
-    if let Ok(output) = OutputManifest::read(&project.output(cx)) {
-        if let Some(javascript) = output.javascript {
-            for input in javascript.inputs {
-                let path = PathBuf::from(input);
-                match fs::read(&path) {
-                    Ok(contents) => {
-                        files.insert(path, fingerprint(&contents));
-                    }
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                    Err(error) => return Err(error),
-                }
-            }
         }
     }
     Ok(files)

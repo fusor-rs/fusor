@@ -38,6 +38,49 @@ fn typed_text_keeps_original_closure_contract_for_returns_macros_and_attributes(
 }
 
 #[test]
+fn typed_attributes_keep_the_string_contract_unless_one_plain_interpolation() {
+    for (value, typed) in [
+        ("{{ state.value.get() }}", true),
+        (" {{ state.value.get() }}", false),
+        ("{{ state.value.get() }} ", false),
+        ("row-{{ state.value.get() }}", false),
+        ("{{ state.a }}{{ state.b }}", false),
+        ("fixed", false),
+        (
+            "{{ { if state.done { return state.text.clone(); } state.value } }}",
+            false,
+        ),
+        ("{{ opaque!(state.value) }}", false),
+        (
+            "{{ { #[allow(unused)] let value = state.value; value } }}",
+            false,
+        ),
+    ] {
+        for (host, bundled) in [("p", true), ("textarea", false)] {
+            let page = extract(&format!(
+                "{STATE}<template rust:component=Counter><section><{host} title=\"{value}\"></{host}></section></template>"
+            ))
+            .unwrap();
+            let rust = tokens(&page.rust);
+            let method = match (typed, bundled) {
+                (true, true) => "bundle_attr_value",
+                (true, false) => "__fusor_scope . attr_value",
+                (false, true) => "bundle_attr (",
+                (false, false) => "__fusor_scope . attr (",
+            };
+            if value == "fixed" {
+                assert!(!rust.contains("attr_value"), "{value}: {rust}");
+                continue;
+            }
+            assert!(rust.contains(method), "{host} {value}: {rust}");
+            if !typed {
+                assert!(!rust.contains("attr_value"), "{host} {value}: {rust}");
+            }
+        }
+    }
+}
+
+#[test]
 fn bind_chooses_its_runtime_from_the_markup_with_source_origins() {
     let page = extract(&format!(
         r#"{STATE}
@@ -1258,7 +1301,7 @@ fn binding_bundle_uses_dense_ordinals_and_defers_typed_extraction_to_fallback() 
         .unwrap();
     let rust = &rust[start..];
     assert!(rust.contains(&tokens(
-        "__fusor_scope.bundle_attr(&__fusor_bundle, 0u32, \"title\", move || ::std::option::Option::Some(::std::string::ToString::to_string(&(state.title))))? ;"
+        "__fusor_scope.bundle_attr_value(&__fusor_bundle, 0u32, \"title\", move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.title))).__fusor_into_text() })? ;"
     )), "{rust}");
     assert!(rust.contains(&tokens(
         "__fusor_scope.bundle_on(&__fusor_bundle, 1u32, \"click\", move |event| { state.click() })? ;"

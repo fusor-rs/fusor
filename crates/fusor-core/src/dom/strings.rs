@@ -8,13 +8,61 @@ use web_sys::{Document, Element, EventTarget, NodeList};
 // Compare against the live DOM in JavaScript. Returning its old string to Rust
 // only to compare it allocates and transcodes a value that no caller needs.
 #[wasm_bindgen(
-    inline_js = "export function setTextIfChanged(node, value) { if (node.data !== value) node.data = value; } export function setIntegerTextIfChanged(node, number) { const value = '' + number; if (node.data !== value) node.data = value; }"
+    inline_js = "export function setTextIfChanged(node, value) { if (node.data !== value) node.data = value; } export function setIntegerTextIfChanged(node, number) { const value = '' + number; if (node.data !== value) node.data = value; } export function setIntegerAttribute(node, name, number) { node.setAttribute(name, '' + number); } export function serverRows(container, name, encoded, count, complete) { const keys = count ? encoded.split('\\n') : []; const rows = new Array(count); let node = container.firstElementChild; for (let i = 0; i < count; i++) { if (!node) throw 'missing native row'; if (node.getAttribute(name) !== keys[i]) throw 'native row key mismatch'; rows[i] = node; node = node.nextElementSibling; } if (complete ? node : !node) throw complete ? 'unexpected native row' : 'missing native row'; return rows; } const listeners = []; export function listenBundleOk(nodes, index, name, dispatch, slot, generation) { try { const listener = event => dispatch(slot, generation, event); nodes[index].addEventListener(name, listener); listeners[slot] = listener; return true; } catch (error) { removal = error; return false; } } export function unlistenBundleOk(nodes, index, name, slot) { try { const listener = listeners[slot]; listeners[slot] = undefined; nodes[index].removeEventListener(name, listener); return true; } catch (error) { removal = error; return false; } } export function unlistenOk(target, name, slot) { try { const listener = listeners[slot]; listeners[slot] = undefined; target.removeEventListener(name, listener); return true; } catch (error) { removal = error; return false; } } export function insertBeforeOk(parent, node, anchor) { try { parent.insertBefore(node, anchor); return true; } catch (error) { removal = error; return false; } } let removal; export function takeRemovalFailure() { const error = removal; removal = undefined; return error; } export function listenOk(target, name, dispatch, slot, generation) { try { const listener = event => dispatch(slot, generation, event); target.addEventListener(name, listener); listeners[slot] = listener; return true; } catch (error) { removal = error; return false; } }"
 )]
 extern "C" {
     #[wasm_bindgen(js_name = setTextIfChanged)]
     pub(super) fn set_text_if_changed(node: &web_sys::Text, value: &str);
     #[wasm_bindgen(js_name = setIntegerTextIfChanged)]
     pub(super) fn set_integer_text_if_changed(node: &web_sys::Text, value: f64);
+    #[wasm_bindgen(catch, js_name = setIntegerAttribute)]
+    pub(super) fn set_integer_attribute(
+        node: &Element,
+        name: &str,
+        value: f64,
+    ) -> Result<(), JsValue>;
+    #[wasm_bindgen(catch, js_name = serverRows)]
+    fn server_rows_native(
+        container: &Element,
+        name: &JsValue,
+        encoded: &str,
+        count: u32,
+        complete: bool,
+    ) -> Result<js_sys::Array, JsValue>;
+    // Native listeners stay on the JavaScript side, indexed by their handler
+    // slot, so neither listening nor removal passes a callback handle.
+    #[wasm_bindgen(js_name = listenBundleOk)]
+    fn listen_bundle_ok(
+        nodes: &JsValue,
+        index: u32,
+        name: &JsValue,
+        dispatch: &JsValue,
+        slot: u32,
+        generation: u32,
+    ) -> bool;
+    // Removal reports success and keeps what it threw, so the common case
+    // needs no exception wrapper.
+    #[wasm_bindgen(js_name = unlistenBundleOk)]
+    fn unlisten_bundle_ok(nodes: &JsValue, index: u32, name: &JsValue, slot: u32) -> bool;
+    #[wasm_bindgen(js_name = unlistenOk)]
+    fn unlisten_ok(target: &EventTarget, name: &JsValue, slot: u32) -> bool;
+    #[wasm_bindgen(js_name = takeRemovalFailure)]
+    fn take_removal_failure() -> JsValue;
+    // Moving a row needs no handle to the moved node and rarely throws.
+    #[wasm_bindgen(js_name = insertBeforeOk)]
+    fn insert_before_ok(
+        parent: &Element,
+        node: &web_sys::Node,
+        anchor: Option<&web_sys::Node>,
+    ) -> bool;
+    #[wasm_bindgen(js_name = listenOk)]
+    fn listen_ok(
+        target: &EventTarget,
+        name: &JsValue,
+        dispatch: &JsValue,
+        slot: u32,
+        generation: u32,
+    ) -> bool;
 }
 
 #[wasm_bindgen]
@@ -37,12 +85,6 @@ extern "C" {
     #[wasm_bindgen(method, structural, catch, js_name = querySelectorAll)]
     fn query(this: &StringDocument, selector: &JsValue) -> Result<NodeList, JsValue>;
 
-    #[wasm_bindgen(extends = EventTarget, js_name = EventTarget)]
-    type StringTarget;
-    #[wasm_bindgen(method, structural, catch, js_name = addEventListener)]
-    fn add(this: &StringTarget, name: &JsValue, callback: &JsValue) -> Result<(), JsValue>;
-    #[wasm_bindgen(method, structural, catch, js_name = removeEventListener)]
-    fn remove(this: &StringTarget, name: &JsValue, callback: &JsValue) -> Result<(), JsValue>;
 }
 
 /// Framework names, in `NAMES` order.
@@ -77,6 +119,19 @@ fn string_element(element: &Element) -> &StringElement {
     element.unchecked_ref()
 }
 
+/// The first `count` element children of `container`, checked against the
+/// newline-separated key encodings; `complete` also rejects any further row.
+pub(super) fn server_rows(
+    container: &Element,
+    encoded: &str,
+    count: u32,
+    complete: bool,
+) -> Result<js_sys::Array, JsValue> {
+    with_name(Name::Key, |name| {
+        server_rows_native(container, name, encoded, count, complete)
+    })
+}
+
 pub(super) fn attribute(element: &Element, name: Name) -> Option<String> {
     with_name(name, |name| string_element(element).attribute(name))
 }
@@ -106,24 +161,63 @@ impl EventName {
     }
 }
 
-pub(super) fn add(
+/// Add a native listener that forwards its events to `dispatch` with the
+/// handler's slot, returning the listener for removal.
+pub(super) fn listen(
     target: &EventTarget,
     name: &EventName,
-    callback: &JsValue,
+    dispatch: &JsValue,
+    slot: u32,
+    generation: u32,
 ) -> Result<(), JsValue> {
-    name.with(|name| target.unchecked_ref::<StringTarget>().add(name, callback))
+    name.with(|name| status(listen_ok(target, name, dispatch, slot, generation)))
 }
 
-pub(super) fn remove(
-    target: &EventTarget,
+/// [`listen`] on a validated binding bundle entry.
+pub(super) fn listen_bundle(
+    nodes: &JsValue,
+    index: u32,
     name: &EventName,
-    callback: &JsValue,
+    dispatch: &JsValue,
+    slot: u32,
+    generation: u32,
 ) -> Result<(), JsValue> {
     name.with(|name| {
-        target
-            .unchecked_ref::<StringTarget>()
-            .remove(name, callback)
+        status(listen_bundle_ok(
+            nodes, index, name, dispatch, slot, generation,
+        ))
     })
+}
+
+pub(super) fn unlisten_bundle(
+    nodes: &JsValue,
+    index: u32,
+    name: &EventName,
+    slot: u32,
+) -> Result<(), JsValue> {
+    name.with(|name| status(unlisten_bundle_ok(nodes, index, name, slot)))
+}
+
+/// A `*Ok` host call's result: nothing, or what it threw.
+fn status(ok: bool) -> Result<(), JsValue> {
+    if ok {
+        Ok(())
+    } else {
+        Err(take_removal_failure())
+    }
+}
+
+/// `parent.insertBefore(node, anchor)` without returning the node.
+pub(super) fn insert_before(
+    parent: &Element,
+    node: &web_sys::Node,
+    anchor: Option<&web_sys::Node>,
+) -> Result<(), JsValue> {
+    status(insert_before_ok(parent, node, anchor))
+}
+
+pub(super) fn remove(target: &EventTarget, name: &EventName, slot: u32) -> Result<(), JsValue> {
+    name.with(|name| status(unlisten_ok(target, name, slot)))
 }
 
 /// Bounded immutable metadata only; no DOM roots, scopes or application values.
@@ -160,6 +254,11 @@ pub(super) fn descriptor(component: ComponentId, version: u32) -> Rc<DescriptorS
 }
 
 impl DescriptorStrings {
+    /// Root selector, schema version and component identity, as native strings.
+    pub(super) fn native(&self) -> (&JsValue, &JsValue, &JsValue) {
+        (&self.selector, &self.schema, &self.identity)
+    }
+
     pub(super) fn roots(&self, document: &Document) -> Result<NodeList, JsValue> {
         document
             .unchecked_ref::<StringDocument>()

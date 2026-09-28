@@ -62,6 +62,19 @@ try {
         try { api.hydrate(1000); } catch (error) { rejected = String(error).includes('template mismatch'); }
         if (!rejected) throw Error(`accepted malformed hydration: ${damage}`);
       }
+      // Keyed server rows must match the list's keys in order, none missing or extra.
+      for (const [damage, expected] of [['missing-row', 'missing native row'], ['extra-row', 'unexpected native row'],
+        ['key', 'native row key mismatch'], ['order', 'native row key mismatch']]) {
+        api.unmount(); host.innerHTML = html;
+        const rows = [...host.querySelectorAll('li')];
+        if (damage === 'missing-row') rows.at(-1).remove();
+        if (damage === 'extra-row') rows.at(-1).after(rows.at(-1).cloneNode(true));
+        if (damage === 'key') rows[500].setAttribute('data-fusor-key', '"500"');
+        if (damage === 'order') rows[1].before(rows[2]);
+        let message = '';
+        try { api.hydrate(1000); } catch (error) { message = String(error); }
+        if (message !== expected) throw Error(`keyed hydration ${damage}: ${message || 'accepted'}`);
+      }
       // Validation of a descriptor must finish before filling any empty text host.
       api.unmount(); host.innerHTML = html;
       const invalidRow = host.querySelector('li'), empty = invalidRow.querySelector('span');

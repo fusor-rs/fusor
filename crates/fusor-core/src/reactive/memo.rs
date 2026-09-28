@@ -4,8 +4,8 @@ use super::{
     untrack,
 };
 use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
+    cell::{Cell, OnceCell, RefCell},
+    rc::{Rc, Weak},
 };
 
 /// A shared lazy cache of a pure computation over tracked signals and memos.
@@ -37,8 +37,9 @@ pub fn memo_with_eq<T: 'static>(
     equal: impl Fn(&T, &T) -> bool + 'static,
 ) -> Memo<T> {
     Memo(Rc::<MemoInner<T>>::new_cyclic(|weak| MemoInner {
-        source: Rc::new(Source::new(Some(weak.clone()))),
-        observer: Observer::new(ObserverKind::Memo(weak.clone())),
+        graph: OnceCell::new(),
+        weak_self: weak.clone(),
+        observer_id: Observer::reserve_id(),
         value: RefCell::new(None),
         compute: Box::new(compute),
         equal: Box::new(equal),
@@ -50,9 +51,15 @@ pub fn memo_with_eq<T: 'static>(
 
 type Equal<T> = dyn Fn(&T, &T) -> bool;
 
-struct MemoInner<T> {
+struct MemoGraph {
     source: Rc<Source>,
     observer: Rc<Observer>,
+}
+
+struct MemoInner<T> {
+    graph: OnceCell<MemoGraph>,
+    weak_self: Weak<MemoInner<T>>,
+    observer_id: u64,
     value: RefCell<Option<T>>,
     compute: Box<dyn Fn() -> T>,
     equal: Box<Equal<T>>,
@@ -63,17 +70,33 @@ struct MemoInner<T> {
 
 impl<T> Drop for MemoInner<T> {
     fn drop(&mut self) {
-        self.observer.unsubscribe();
+        if let Some(graph) = self.graph.get() {
+            graph.observer.unsubscribe();
+        }
         // Releasing the last handle may happen inside another computation.
         // A cached value's destructor is not a dependency of that caller.
-        untrack(|| drop(self.value.get_mut().take()));
+        if let Some(value) = self.value.get_mut().take() {
+            untrack(|| drop(value));
+        }
+    }
+}
+
+impl<T: 'static> MemoInner<T> {
+    fn graph(&self) -> &MemoGraph {
+        // Publish the complete graph before user computation can recurse or panic.
+        self.graph.get_or_init(|| MemoGraph {
+            source: Rc::new(Source::new(Some(self.weak_self.clone()))),
+            observer: Observer::with_id(
+                self.observer_id,
+                ObserverKind::Memo(self.weak_self.clone()),
+            ),
+        })
     }
 }
 
 pub(super) trait MemoNode {
     fn refresh(&self);
-    fn invalidate(&self);
-    fn source(&self) -> &Source;
+    fn invalidate(&self) -> &Source;
 }
 
 struct EvaluationGuard<'a>(&'a Cell<bool>);
@@ -97,16 +120,17 @@ impl<T: 'static> MemoNode for MemoInner<T> {
         self.running.set(true);
         COMPUTING.with(|depth| depth.set(depth.get() + 1));
         let _evaluation = EvaluationGuard(&self.running);
-        if !self.needs_compute.get() && !untrack(|| self.observer.changed()) {
+        let graph = self.graph();
+        if !self.needs_compute.get() && !untrack(|| graph.observer.changed()) {
             self.stale.set(false);
             return;
         }
         // Until publication succeeds, partial dependencies cannot validate the
         // previous cache. In particular, retry after a caught native panic.
         self.needs_compute.set(true);
-        self.observer.unsubscribe();
         let next = {
-            let _tracking = TrackingGuard::replace(Some(Rc::downgrade(&self.observer)));
+            let _run = graph.observer.begin();
+            let _tracking = TrackingGuard::replace(Some(Rc::downgrade(&graph.observer)));
             (self.compute)()
         };
         let equal = untrack(|| {
@@ -119,7 +143,7 @@ impl<T: 'static> MemoNode for MemoInner<T> {
             untrack(|| drop(next));
         } else {
             let old = self.value.replace(Some(next));
-            self.source.advance();
+            graph.source.advance();
             // No reactive borrows are held while cached payloads are destroyed.
             untrack(|| drop(old));
         }
@@ -127,11 +151,10 @@ impl<T: 'static> MemoNode for MemoInner<T> {
         self.stale.set(false);
     }
 
-    fn invalidate(&self) {
+    fn invalidate(&self) -> &Source {
         self.stale.set(true);
-    }
-    fn source(&self) -> &Source {
-        &self.source
+        // Only an initialized graph's observer can propagate invalidation here.
+        &self.graph.get().expect("memo graph initialized").source
     }
 }
 
@@ -140,7 +163,8 @@ impl<T: 'static> Memo<T> {
     /// Do not change dependencies while this callback borrows the cache.
     pub fn with<R>(&self, read: impl FnOnce(&T) -> R) -> R {
         self.0.refresh();
-        track(&self.0.source);
+        // A successful refresh always initialized the graph before computation.
+        track(&self.0.graph.get().expect("memo graph initialized").source);
         read(self.0.value.borrow().as_ref().expect("memo evaluated"))
     }
 

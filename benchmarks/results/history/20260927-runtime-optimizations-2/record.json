@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "20260927-runtime-optimizations-2",
+  "title": "Runtime optimizations, second pass",
+  "createdAt": "2026-09-27T20:35:19.162Z",
+  "status": "complete",
+  "selection": {
+    "name": "full",
+    "reason": "Single full run selected before measurement; publication is a separate explicit command.",
+    "selectedAt": "2026-09-27T20:35:19.164Z"
+  },
+  "notes": [
+    {
+      "kind": "decision",
+      "title": "Fusor runtime optimizations, second pass, at b6e93a3",
+      "body": "This run measures the second round of Fusor runtime optimizations on branch perf/runtime-optimizations, at commit b6e93a3, with no uncommitted source changes. The ten performance commits since 20260927-runtime-optimizations (which measured fdbac71) change:\n\n- keyed reconciliation,\n- the certified template mount,\n- the host calls for mounting, hydration, attributes, row moves and listeners.\n\nThe six other framework applications, their dependencies and the harness are unchanged.\n\nBuild: release profile, Binaryen 132 -O3, wasm-bindgen 0.2.117, stripped Wasm names, installed Chrome 153.0.8010.53, and BENCH_SEED=20261004. These are the same settings, framework order, rustc and Node as the previous published run. All 133 timing metrics, seven memory profiles, and 21 bundle fixtures passed the evaluator. Source and production artifact receipts matched before and after measurement.\n\nThe machine was busy during this run: see Limits. Most timings for every framework are higher than in the previous run.\n\nRecorded 2026-09-27T20:35:22.289Z on Apple M4 Pro, darwin 24.5.0, browser 153.0.8010.53, 15 samples after 3 warmups.\n\nMedian milliseconds:\n\n| Metric | fusor | react | svelte | solid | vue | preact | leptos |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n| ssr-1000 | 0.31 | 0.94 | 0.39 | 0.28 | 1.01 | 1.64 | 0.89 |\n| ssr-10000 | 3.00 | 14.66 | 5.41 | 3.33 | 11.35 | 16.54 | 6.13 |\n| initial-1000 | 1.90 | 1.90 | 4.00 | 1.20 | 4.00 | 2.90 | 3.30 |\n| initial-10000 | 18.80 | 18.80 | 130.40 | 10.40 | 39.30 | 32.20 | 34.10 |\n| single | <0.10 | 0.90 | 0.80 | <0.10 | <0.10 | <0.10 | <0.10 |\n| bulk-1000 | 0.40 | 1.90 | 1.40 | 0.40 | 2.00 | 1.70 | 0.60 |\n| bulk-10000 | 2.70 | 10.50 | 10.80 | 4.10 | 20.10 | 17.40 | 5.20 |\n| insert | 0.30 | 2.60 | 13.70 | 0.30 | 8.30 | 3.40 | 0.50 |\n| delete | 0.20 | 2.30 | 14.00 | 0.30 | 8.50 | 3.00 | 0.50 |\n| swap | 0.30 | 114.90 | 13.50 | 0.70 | 6.00 | 3.10 | 0.30 |\n| computed | <0.10 | 0.80 | 0.70 | <0.10 | <0.10 | <0.10 | <0.10 |\n| fanout-1000 | 0.20 | 0.90 | 0.20 | 0.20 | 1.80 | 1.40 | 2.30 |\n| fanout-10000 | 3.10 | 9.20 | 3.50 | 3.50 | 29.10 | 17.70 | 216.00 |\n| fanin | 0.30 | 0.10 | 4.10 | 0.50 | 4.10 | 0.10 | 0.90 |\n| unmount | 5.90 | 4.10 | 2.70 | 1.20 | 7.20 | 2.20 | 7.20 |\n| events | 15.70 | 48.40 | 28.10 | 20.40 | 37.90 | 30.90 | 16.10 |\n| hydration-1000 | 7.90 | 6.80 | 10.30 | 3.80 | 9.50 | 7.00 | 5.90 |\n| hydration-10000 | 34.20 | 119.30 | 126.80 | 21.30 | 43.10 | 85.60 | 31.20 |\n| startup | 17.80 | 23.10 | 18.90 | 10.00 | 18.40 | 12.50 | 26.80 |\n\nGzip KiB per fixture:\n\n| Fixture | fusor | react | svelte | solid | vue | preact | leptos |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n| benchmark workload | 113.5 | 67.4 | 14.5 | 6.1 | 26.3 | 8.5 | 68.8 |\n| hello | 57.0 | 66.3 | 9.2 | 4.0 | 23.2 | 4.9 | 25.5 |\n| todo | 111.4 | 67.1 | 13.9 | 6.8 | 25.2 | 6.3 | 63.3 |\n\nAgainst 20260927-runtime-optimizations, compare reports no environment differences. The other six frameworks' medians moved by up to +80% without code changes. Examples: Svelte swap went from 7.50 to 13.50 ms, and Leptos startup from 18.80 to 26.80 ms.\n\nThese Fusor rows moved in the opposite direction to the others, which mostly got slower:\n\n- insert: 0.50 → 0.30 ms (−40%). The others moved 0% to +52%.\n- delete: 0.40 → 0.20 ms (−50%). The others moved −8% to +69%.\n- swap: 0.70 → 0.30 ms (−57%). The others moved −2% to +80%.\n- initial-1000: 2.20 → 1.90 ms (−14%). The others moved 0% to +25%.\n- initial-10000: 21.30 → 18.80 ms (−12%). The others moved −17% (Solid) to +8%.\n\nThese Fusor rows got slower:\n\n- hydration-1000: 7.30 → 7.90 ms (+8%). The other frameworks moved −1% to +5%. A separate same-session paired comparison against the previous published code measured hydration-1000 1.7% slower.\n- unmount: 4.70 → 5.90 ms (+26%). Vue moved +31% and Solid +20% without code changes. The same paired comparison measured unmount 2.9% faster.\n\nOther Fusor rows are not clearly outside the noise:\n\n- bulk-1000, bulk-10000, fanout-1000 and fanin are unchanged.\n- fanout-10000: 2.90 → 3.10 ms. Solid moved +30% and Vue +27%.\n- events: 15.50 → 15.70 ms.\n- hydration-10000: 34.70 → 34.20 ms.\n- startup: 18.00 → 17.80 ms.\n- ssr-1000 changed by 0.05 ms, below the 0.10 ms threshold. ssr-10000 (+4%) moved within the other frameworks' range.\n- single and computed remain below the clock floor.\n\nMemory:\n\n- **JS heap growth:** 1.44 MiB with 10,000 rows (previously 1.38 MiB), and 16.60 MiB with 100,000 rows (previously 18.11 MiB).\n- **Retained heap:** after the large allocation and repeated cycles, Fusor retained 2.15 MiB above its idle page (previously 3.75 MiB).\n- **Wasm capacity:** 18.75 MiB with 10,000 rows and 166.56 MiB after the large allocation (previously 18.88 and 169.00 MiB).\n- **DOM nodes:** they returned to the idle count after every cycle. The idle page holds five more nodes than before. They are the inert mounted form cached for the certified row template.\n\nFusor's gzip fixtures grew from 110.1 to 113.5 KiB (benchmark), 56.3 to 57.0 KiB (Hello), and 108.2 to 111.4 KiB (Todo). Other frameworks' fixtures are unchanged.\n\nLimits:\n\n- The machine was not idle. Two Codex sessions working in unrelated projects, several development servers, Chrome, Slack and other desktop applications were running. The load average was about 5 on 14 logical CPUs. This run overstates most timings, including Fusor's, and the comparison above is only indicative.\n- One local Apple M4 Pro, with no CPU or network throttling and no thermal controls.\n- Chromium timing results only.\n- 15 samples, with the maximum as P95.\n- Startup uses fresh browser contexts with a reused browser process.\n- Values below 0.10 ms are below the browser clock floor.\n- The full `just check` and browser gate were not run on this commit. Each change had its own suites run.",
+      "format": "markdown",
+      "recordedAt": "2026-09-27T20:44:26.774Z"
+    }
+  ],
+  "events": [],
+  "evidence": [
+    {
+      "name": "full",
+      "kind": "measurement",
+      "protocol": "full",
+      "path": "data/full.json",
+      "bytes": 153000,
+      "sha256": "44762d94fed608050e694cc5d8150d654ffc5cde00cc1d60065fa5c363458ac6",
+      "sourceSha256": "61adf1ec6735b703b7746af38883b9cb1c0012dde1a9f511047095965cd6d980",
+      "recordedAt": "2026-09-27T20:40:19.195Z"
+    },
+    {
+      "name": "receipt",
+      "kind": "receipt",
+      "path": "data/receipt.json",
+      "bytes": 18089,
+      "sha256": "97a19f434ee9900b9eae9d55abd169c1fcb741f3281418ed9cc019fe4436533b"
+    }
+  ],
+  "completedAt": "2026-09-27T20:44:26.827Z"
+}

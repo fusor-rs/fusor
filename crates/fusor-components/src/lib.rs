@@ -62,6 +62,33 @@ pub struct Entry<T> {
     pub position: usize,
 }
 
+/// One collection value of a row proven never to read its index. Without a
+/// position, moving the row leaves its source unchanged. Compiler/runtime protocol.
+#[doc(hidden)]
+#[derive(Clone, PartialEq)]
+pub struct Value<T>(pub T);
+
+/// The collection value a row source carries. Compiler/runtime protocol.
+#[doc(hidden)]
+pub trait RowValue {
+    type Item;
+    fn item(&self) -> &Self::Item;
+}
+
+impl<T> RowValue for Entry<T> {
+    type Item = T;
+    fn item(&self) -> &T {
+        &self.value
+    }
+}
+
+impl<T> RowValue for Value<T> {
+    type Item = T;
+    fn item(&self) -> &T {
+        &self.0
+    }
+}
+
 /// Lexical environment of an inline row. `parent` preserves the caller's scope.
 #[doc(hidden)]
 pub struct Row<P, T> {
@@ -94,6 +121,17 @@ impl ForEach {
             .collect()
     }
 
+    /// Values for rows proven never to read their index: a move is not an input.
+    #[doc(hidden)]
+    pub fn values<T>(items: Vec<T>) -> Vec<Value<T>> {
+        items.into_iter().map(Value).collect()
+    }
+
+    #[doc(hidden)]
+    pub fn value_key<T, K>(value: &Value<T>, key: impl FnOnce(&T) -> K) -> K {
+        key(&value.0)
+    }
+
     /// Native compiler path for an entry whose collection snapshot cannot change.
     /// Keep the ordinary lazy Memo API while avoiding an unexposed source signal.
     #[cfg(not(target_arch = "wasm32"))]
@@ -124,13 +162,13 @@ impl ForEach {
     /// Compiler-only live projection; reads still use the ordinary Memo path,
     /// including speculative coherent values and equality suppression.
     #[doc(hidden)]
-    pub fn item_row<P, T: Clone + PartialEq + 'static>(
-        parent: P,
-        source: Signal<Entry<T>>,
-    ) -> ItemRow<P, T> {
+    pub fn item_row<P, E: RowValue + 'static>(parent: P, source: Signal<E>) -> ItemRow<P, E::Item>
+    where
+        E::Item: Clone + PartialEq + 'static,
+    {
         ItemRow {
             parent,
-            item: memo(move || source.with(|entry| entry.value.clone())),
+            item: memo(move || source.with(|entry| entry.item().clone())),
         }
     }
 
@@ -406,6 +444,52 @@ mod tests {
         drop(subscription);
         nested.set(4);
         assert_eq!(*values.borrow(), [1, 2, 3]);
+    }
+
+    #[test]
+    fn value_rows_republish_only_changed_values_and_keep_nested_tracking() {
+        #[derive(Clone)]
+        struct Item {
+            id: u32,
+            value: Signal<u32>,
+        }
+        impl PartialEq for Item {
+            fn eq(&self, other: &Self) -> bool {
+                self.id == other.id
+            }
+        }
+        let nested = signal(1_u32);
+        let items = vec![
+            Item {
+                id: 7,
+                value: nested.clone(),
+            },
+            Item {
+                id: 9,
+                value: signal(5),
+            },
+        ];
+        let values = ForEach::values(items.clone());
+        assert_eq!(values.len(), 2);
+        assert_eq!(ForEach::value_key(&values[1], |item| item.id), 9);
+        let source = signal(values[0].clone());
+        let row = ForEach::item_row((), source.clone());
+        let observed = Rc::new(std::cell::RefCell::new(Vec::new()));
+        let seen = observed.clone();
+        let item = row.item.clone();
+        let subscription = effect(move || {
+            let value = item.with(|item| item.value.get());
+            seen.borrow_mut().push(value);
+        });
+        source.set(Value(items[0].clone()));
+        assert_eq!(*observed.borrow(), [1], "an equal value must not republish");
+        nested.set(2);
+        assert_eq!(*observed.borrow(), [1, 2]);
+        source.set(Value(items[1].clone()));
+        assert_eq!(*observed.borrow(), [1, 2, 5]);
+        drop(subscription);
+        nested.set(4);
+        assert_eq!(*observed.borrow(), [1, 2, 5]);
     }
 
     #[test]

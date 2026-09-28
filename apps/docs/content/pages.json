@@ -138,7 +138,7 @@
       {
         "id": "ship",
         "title": "Check and preview a release build",
-        "body": "In another terminal inside `my-app`, run `fusor check`, then build the optimized release with `fusor build`.\n\nThe generated `dist/` directory contains HTML, public assets, JavaScript glue, and Wasm. Use `fusor preview` to preview those files locally. To deploy, publish the contents of `dist/` at your configured base path.",
+        "body": "In another terminal inside `my-app`, run `fusor check`, then build the optimized release with `fusor build`.\n\nThe generated `dist/` directory contains HTML, public assets, JavaScript glue, and Wasm. Its HTML preloads the JavaScript modules and Wasm, so the browser fetches them together. Use `fusor preview` to preview those files locally. To deploy, publish the contents of `dist/` at your configured base path.",
         "code": "# In my-app:\nfusor check\nfusor build --locked\nfusor preview --port 8092",
         "language": "Terminal",
         "note": "Open http://127.0.0.1:8092/ for the release preview. Project creation writes Cargo.lock; `--locked` prevents later builds from changing dependency resolution.",
@@ -3354,7 +3354,7 @@
       {
         "id": "dev",
         "title": "Develop with live refresh",
-        "body": "`fusor dev` prepares any missing tools, builds into `.fusor/dev`, serves the result and rebuilds when you save. Your `dist/` directory is not touched.\n\nAn HTML or CSS change that leaves the generated Rust the same is patched into the open page, which keeps its state. Any other change rebuilds and reloads the page. A failed build keeps the last working one served and prints the error in the terminal.\n\nIn a workspace that declares a site, `fusor dev --site` does the same for every mounted application at once, served from one address.",
+        "body": "`fusor dev` prepares any missing tools, builds into `.fusor/dev`, serves the result and rebuilds when you save. Your `dist/` directory is not touched.\n\nAn HTML or CSS change that leaves the generated Rust the same is patched into the open page, which keeps its state. Any other change rebuilds and reloads the page. A failed build keeps the last working one served and prints the error in the terminal.\n\nA literal `include_str!` or `include_bytes!` can keep live refresh enabled when it reads a watched file outside the app's HTML templates and public assets. Editing that file rebuilds the app. Embedding a template or public asset, custom Rust file includes, and include paths the CLI cannot resolve keep refresh disabled.\n\nIn a workspace that declares a site, `fusor dev --site` does the same for every mounted application at once, served from one address.",
         "code": "fusor dev\nfusor dev --port 8090 --open\nfusor dev --site",
         "language": "Terminal",
         "note": "Set `dev-refresh = false` when custom build logic reads your HTML or assets."

@@ -34,12 +34,7 @@ pub use range::{Anchors, MountPoint};
 pub use target::{ElementTarget, InputTarget};
 
 use crate::{Effect, Owner, OwnerHandle, batch};
-use std::{
-    cell::{Cell, RefCell},
-    collections::VecDeque,
-    rc::Rc,
-    thread::LocalKey,
-};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc, thread::LocalKey};
 pub use wasm_bindgen::JsValue;
 use wasm_bindgen::{JsCast, closure::Closure};
 use web_sys::{Document, Element, Event, EventTarget, HtmlTemplateElement};
@@ -89,7 +84,6 @@ pub trait Component: Sized + 'static {
             scope.hydration_ownership = HydrationOwnership::Preserved(owned);
         }
         scope.owner = owner;
-        scope.mount_ready = Rc::new(Cell::new(false));
         scope.prepare_queue(parent);
         Ok(scope)
     }
@@ -213,11 +207,70 @@ fn remove_tree(root: &Element) {
     root.remove();
 }
 
+type Handler = Rc<dyn Fn(Event)>;
+
+/// Listener handlers, reached from native listeners through one dispatcher.
+/// Releasing a slot advances its generation, so a stale native listener
+/// cannot reach a later handler that reuses the slot.
+#[derive(Default)]
+struct Handlers {
+    slots: Vec<(u32, Option<Handler>)>,
+    free: Vec<u32>,
+}
+
+impl Handlers {
+    fn insert(&mut self, handler: Handler) -> (u32, u32) {
+        if let Some(slot) = self.free.pop() {
+            let entry = &mut self.slots[slot as usize];
+            entry.1 = Some(handler);
+            return (slot, entry.0);
+        }
+        self.slots.push((0, Some(handler)));
+        ((self.slots.len() - 1) as u32, 0)
+    }
+
+    fn get(&self, slot: u32, generation: u32) -> Option<Handler> {
+        let (current, handler) = self.slots.get(slot as usize)?;
+        (*current == generation).then(|| handler.clone())?
+    }
+
+    /// The caller drops the handler after releasing the registry borrow.
+    fn remove(&mut self, slot: u32, generation: u32) -> Option<Handler> {
+        let entry = self
+            .slots
+            .get_mut(slot as usize)
+            .filter(|(current, _)| *current == generation)?;
+        entry.0 = entry.0.wrapping_add(1);
+        self.free.push(slot);
+        entry.1.take()
+    }
+}
+
+thread_local! {
+    static HANDLERS: RefCell<Handlers> = RefCell::new(Handlers::default());
+    // No registry borrow is held while a handler runs: it may add, remove or
+    // dispatch listeners, including its own.
+    static DISPATCH: Closure<dyn Fn(u32, u32, Event)> = Closure::new(|slot, generation, event| {
+        let handler = HANDLERS.with_borrow(|handlers| handlers.get(slot, generation));
+        if let Some(handler) = handler {
+            handler(event);
+        }
+    });
+}
+
+/// Where a listener is attached: a native target, or an entry of a validated
+/// binding bundle, which keeps its original node.
+enum ListenerTarget {
+    Node(EventTarget),
+    Bundle(Rc<JsValue>, u32),
+}
+
 /// A DOM event listener, removed when dropped.
 pub struct Listener {
-    target: EventTarget,
+    target: ListenerTarget,
     event: strings::EventName,
-    callback: Closure<dyn Fn(Event)>,
+    slot: u32,
+    generation: u32,
 }
 
 impl Listener {
@@ -228,27 +281,50 @@ impl Listener {
         event: &str,
         handler: impl FnMut(Event) + 'static,
     ) -> Result<Self, JsValue> {
+        Self::attach(ListenerTarget::Node(target), event, handler)
+    }
+
+    fn attach(
+        target: ListenerTarget,
+        event: &str,
+        handler: impl FnMut(Event) + 'static,
+    ) -> Result<Self, JsValue> {
         let handler = RefCell::new(handler);
-        let callback = Closure::wrap(
-            Box::new(move |event| (handler.borrow_mut())(event)) as Box<dyn Fn(Event)>
-        );
+        let handler: Handler = Rc::new(move |event| (handler.borrow_mut())(event));
+        let (slot, generation) = HANDLERS.with_borrow_mut(|handlers| handlers.insert(handler));
         let event = strings::EventName::from(event);
-        strings::add(&target, &event, callback.as_ref())?;
-        Ok(Self {
-            target,
-            event,
-            callback,
-        })
+        let listening = DISPATCH.with(|dispatch| match &target {
+            ListenerTarget::Node(node) => {
+                strings::listen(node, &event, dispatch.as_ref(), slot, generation)
+            }
+            ListenerTarget::Bundle(nodes, index) => {
+                strings::listen_bundle(nodes, *index, &event, dispatch.as_ref(), slot, generation)
+            }
+        });
+        match listening {
+            Ok(()) => Ok(Self {
+                target,
+                event,
+                slot,
+                generation,
+            }),
+            Err(error) => {
+                let handler =
+                    HANDLERS.with_borrow_mut(|handlers| handlers.remove(slot, generation));
+                drop(handler);
+                Err(error)
+            }
+        }
     }
 
     /// Batch the handler's signal writes; skip events while `active` is false.
     fn batched(
-        target: EventTarget,
+        target: ListenerTarget,
         event: &str,
         active: impl Fn() -> bool + 'static,
         mut handler: impl FnMut(Event) + 'static,
     ) -> Result<Self, JsValue> {
-        Self::new(target, event, move |event| {
+        Self::attach(target, event, move |event| {
             if active() {
                 batch(|| handler(event));
             }
@@ -258,7 +334,15 @@ impl Listener {
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        let _ = strings::remove(&self.target, &self.event, self.callback.as_ref());
+        let _ = match &self.target {
+            ListenerTarget::Node(node) => strings::remove(node, &self.event, self.slot),
+            ListenerTarget::Bundle(nodes, index) => {
+                strings::unlisten_bundle(nodes, *index, &self.event, self.slot)
+            }
+        };
+        let handler =
+            HANDLERS.with_borrow_mut(|handlers| handlers.remove(self.slot, self.generation));
+        drop(handler);
     }
 }
 
@@ -276,7 +360,6 @@ pub struct Scope {
     retained: Vec<Box<dyn std::any::Any>>,
     mount_queue: Option<Rc<commit::CommitQueue>>,
     mount_parent: Option<OwnerHandle>,
-    mount_ready: Rc<Cell<bool>>,
     remove_on_drop: bool,
     render_tree: Option<Rc<coherent::Tree>>,
     hydrating: bool,
@@ -347,7 +430,6 @@ impl Scope {
             retained: Vec::new(),
             mount_queue: None,
             mount_parent: None,
-            mount_ready: Rc::new(Cell::new(false)),
             remove_on_drop: false,
             render_tree: None,
             hydrating: false,
@@ -432,9 +514,8 @@ impl Scope {
 
     #[doc(hidden)]
     pub fn prepare_owner(&mut self, parent: Option<&OwnerHandle>) {
+        // A fresh owner resets readiness and invalidates any previous queued setup.
         self.owner = parent.map(Owner::child).unwrap_or_default();
-        // Repreparing a legacy scope must expire its previous readiness token.
-        self.mount_ready = Rc::new(Cell::new(false));
         self.finish_owner_preparation(parent);
     }
 
@@ -499,5 +580,39 @@ impl Scope {
         self.root
             .query_selector(selector)?
             .ok_or_else(|| missing(selector))
+    }
+}
+
+#[cfg(test)]
+mod handler_tests {
+    use super::*;
+
+    fn handler() -> Handler {
+        Rc::new(|_| {})
+    }
+
+    #[test]
+    fn released_slots_reject_stale_generations_and_are_reused() {
+        let mut handlers = Handlers::default();
+        let first = handler();
+        let (slot, generation) = handlers.insert(first.clone());
+        assert!(Rc::ptr_eq(&handlers.get(slot, generation).unwrap(), &first));
+        assert!(handlers.get(slot, generation + 1).is_none());
+        assert!(Rc::ptr_eq(
+            &handlers.remove(slot, generation).unwrap(),
+            &first
+        ));
+        assert!(handlers.get(slot, generation).is_none());
+        assert!(handlers.remove(slot, generation).is_none());
+        let second = handler();
+        let (reused, next) = handlers.insert(second.clone());
+        assert_eq!(reused, slot);
+        assert_ne!(next, generation);
+        assert!(handlers.get(slot, generation).is_none(), "stale listener");
+        assert!(handlers.remove(slot, generation).is_none(), "stale removal");
+        assert!(Rc::ptr_eq(&handlers.get(slot, next).unwrap(), &second));
+        let (other, _) = handlers.insert(handler());
+        assert_ne!(other, slot);
+        assert!(handlers.get(99, 0).is_none());
     }
 }

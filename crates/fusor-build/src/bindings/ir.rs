@@ -157,6 +157,19 @@ impl InterpolatedString {
             .collect()
     }
 
+    /// The expression, when the value is exactly one interpolation.
+    pub fn as_expression(&self) -> Option<&Rust> {
+        match self.0.as_slice() {
+            [StringPart::Expression(expression)] => Some(expression),
+            [
+                StringPart::Literal(before),
+                StringPart::Expression(expression),
+                StringPart::Literal(after),
+            ] if before.is_empty() && after.is_empty() => Some(expression),
+            _ => None,
+        }
+    }
+
     pub fn expressions(&self) -> impl Iterator<Item = &Rust> {
         self.0.iter().filter_map(|part| match part {
             StringPart::Expression(expression) => Some(expression),

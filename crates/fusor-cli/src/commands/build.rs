@@ -124,6 +124,12 @@ fn application(cx: &Context, project: &Project, debug: bool, dev: bool) -> Resul
             generated,
         )?,
     )?;
+    // Development pages keep the loader's own discovery order.
+    let modules = if dev {
+        Vec::new()
+    } else {
+        pipeline::html::entry_modules(&package)?
+    };
     fs::write(
         publication.staging().join("index.html"),
         pipeline::html::render(
@@ -131,6 +137,7 @@ fn application(cx: &Context, project: &Project, debug: bool, dev: bool) -> Resul
             &prefix,
             dev.then_some(0),
             &bundle.styles,
+            &modules,
         )?,
     )?;
 

@@ -118,6 +118,17 @@ fn invalid(message: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&format!("fusor: template mismatch: {message}"))
 }
 
+impl TemplateNodes {
+    fn bundle(binding_bundle: JsValue) -> Self {
+        Self {
+            binding_bundle: Some(Rc::new(binding_bundle)),
+            elements: Handles::new(),
+            texts: Nodes::new(),
+            mounts: Mounts::new(),
+        }
+    }
+}
+
 /// Generated code moves each validated handle out exactly once.
 #[doc(hidden)]
 impl TemplateNodes {
@@ -253,6 +264,14 @@ impl TemplateDescriptor {
         #[cfg(feature = "islands")]
         {
             if let Some(root) = super::hydration::take_root() {
+                if mode.bundled() && mounts.is_empty() && self.is_flat() {
+                    // The same identity checks and resolution as below, in one
+                    // native call.
+                    let binding_bundle = flat::hydrate_root(self, &root)?;
+                    let mut scope = mode.scope(root);
+                    scope.hydrating = true;
+                    return Ok((scope, TemplateNodes::bundle(binding_bundle)));
+                }
                 let metadata = strings::descriptor(self.component, self.version);
                 if !metadata.version_matches(&root) || !metadata.component_matches(&root) {
                     return Err(invalid(
@@ -325,12 +344,27 @@ impl TemplateDescriptor {
         Ok((scope, nodes))
     }
 
+    /// No managed child regions or form controls: a native bundle binds it.
+    fn is_flat(&self) -> bool {
+        let form = |tag| matches!(tag, "input" | "textarea" | "select");
+        self.elements
+            .iter()
+            .all(|element| element.children == ChildPolicy::Static && !form(element.tag))
+            && self.text_elements.iter().all(|element| !form(element.tag))
+    }
+
     /// Mount the single document root marked with this component's identity.
     fn mount_document_root(
         &self,
         mounts: &'static [MountId],
         mode: MountMode<'_>,
     ) -> Result<Mounted, JsValue> {
+        if mode.bundled() && mounts.is_empty() && self.kind == RootKind::Template && self.is_flat()
+        {
+            // The same lookup, checks and resolution as below, in one native call.
+            let (root, binding_bundle) = flat::mount_document_template(self)?;
+            return Ok((mode.scope(root), TemplateNodes::bundle(binding_bundle)));
+        }
         let document = document()?;
         let metadata = strings::descriptor(self.component, self.version);
         let roots = metadata.roots(&document)?;
@@ -375,28 +409,11 @@ impl TemplateDescriptor {
                 "unsupported descriptor version; rebuild the application",
             ));
         }
-        let form = |tag| matches!(tag, "input" | "textarea" | "select");
         let cached = self.kind == RootKind::Template && !scope.hydrating;
-        if bundled
-            && expected_mounts.is_empty()
-            && scope.fragment.is_none()
-            && self
-                .elements
-                .iter()
-                .all(|element| element.children == ChildPolicy::Static && !form(element.tag))
-            && self.text_elements.iter().all(|element| !form(element.tag))
-        {
+        if bundled && expected_mounts.is_empty() && scope.fragment.is_none() && self.is_flat() {
             let binding_bundle = flat::resolve_bundle(self, scope.root(), cached)?;
             strings::descriptor(self.component, self.version).mark_instance(scope.root())?;
-            return Ok((
-                scope,
-                TemplateNodes {
-                    binding_bundle: Some(Rc::new(binding_bundle)),
-                    elements: Handles::new(),
-                    texts: Nodes::new(),
-                    mounts: Mounts::new(),
-                },
-            ));
+            return Ok((scope, TemplateNodes::bundle(binding_bundle)));
         }
         #[cfg(feature = "islands")]
         if scope.hydrating
