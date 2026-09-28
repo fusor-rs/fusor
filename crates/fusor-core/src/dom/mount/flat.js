@@ -390,13 +390,4 @@ export function bindingRemoveAttributeOk(nodes, index, name) {
     return false;
   }
 }
-export function bindingSetAttribute(nodes, index, name, value) {
-  nodes[index].setAttribute(name, value);
-}
-export function bindingSetIntegerAttribute(nodes, index, name, number) {
-  nodes[index].setAttribute(name, "" + number);
-}
-export function bindingRemoveAttribute(nodes, index, name) {
-  nodes[index].removeAttribute(name);
-}
 export function bindingElement(nodes, index) { return nodes[index]; }

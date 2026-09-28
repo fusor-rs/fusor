@@ -2,6 +2,7 @@ use crate::reporter::elapsed_text;
 use crate::{
     context::Context,
     error::{Error, Result},
+    layout,
     pipeline::{
         self, Publication,
         cargo::{Mode, compile},
@@ -102,20 +103,20 @@ fn application(cx: &Context, project: &Project, debug: bool, dev: bool) -> Resul
         .as_ref()
         .ok_or_else(|| Error::project("Cargo emitted no WebAssembly library"))?;
     let generated = publication.generated();
-    let package = generated.join("pkg");
-    wasm::bindgen(&bindgen, wasm_path, &package, "app", debug, dev)?;
-    wasm::optimize(&package.join("app_bg.wasm"), debug, dev)?;
+    let package = generated.join(layout::PACKAGE);
+    wasm::bindgen(&bindgen, wasm_path, &package, layout::APP_NAME, debug, dev)?;
+    wasm::optimize(&package.join(layout::APP_WASM), debug, dev)?;
 
     let prefix = publication.url_prefix();
     let bundle: Javascript = serde_json::from_value(fusor_npm::bundle(
         &project.root,
-        &package.join("app.js"),
+        &package.join(layout::APP_MODULE),
         &serde_json::to_value(&compilation.manifest.javascript)?,
-        &format!("{prefix}/pkg"),
+        &format!("{prefix}/{}", layout::PACKAGE),
         !debug,
     )?)?;
     fs::write(
-        generated.join("boot.js"),
+        generated.join(layout::BOOT_MODULE),
         boot_script(
             project,
             &compilation.manifest,
@@ -180,9 +181,13 @@ fn boot_script(
     generated: &std::path::Path,
 ) -> Result<String> {
     let reload = if dev {
-        fs::write(generated.join("refresh.js"), crate::dev::refresh::CLIENT)?;
+        fs::write(
+            generated.join(layout::REFRESH_MODULE),
+            crate::dev::refresh::CLIENT,
+        )?;
         format!(
-            "import {{ watch }} from './refresh.js';\nwatch({generation:?}, {:?});\n",
+            "import {{ watch }} from './{}';\nwatch({generation:?}, {:?});\n",
+            layout::REFRESH_MODULE,
             project.config.base_path
         )
     } else {
@@ -203,6 +208,8 @@ fn boot_script(
         String::new()
     };
     Ok(format!(
-        "{reload}\ntry {{\n  const client = await import('./pkg/app.js');\n{startup_check}  await client.default();\n}} catch (error) {{\n  console.error('fusor failed to initialize:', error);\n  document.dispatchEvent(new CustomEvent('fusor:error', {{ detail: error }}));\n}}\n"
+        "{reload}\ntry {{\n  const client = await import('./{}/{}');\n{startup_check}  await client.default();\n}} catch (error) {{\n  console.error('fusor failed to initialize:', error);\n  document.dispatchEvent(new CustomEvent('fusor:error', {{ detail: error }}));\n}}\n",
+        layout::PACKAGE,
+        layout::APP_MODULE
     ))
 }

@@ -1,2 +1,8 @@
-# Experiment receipts hash exact bytes, including captured tool output and patches.
-benchmarks/results/optimization-*/** -text -whitespace
+# Evidence receipts hash exact bytes, including line endings.
+benchmarks/results/history/**/data/*.json -text -whitespace
+
+# Collapse generated evidence in reviews; keep notes and validation summaries visible.
+benchmarks/results/history/**/data/full.json linguist-generated=true
+benchmarks/results/history/**/data/receipt.json linguist-generated=true
+benchmarks/results/history/**/data/paired-*.json linguist-generated=true
+benchmarks/results/history/**/data/comparison.json linguist-generated=true

@@ -1,12 +1,9 @@
 import { test, expect } from "@playwright/test";
+import { collectBrowserErrors } from "./errors.js";
 
 let browserErrors = [];
 test.beforeEach(async ({ page }) => {
-  browserErrors = [];
-  page.on("pageerror", (error) => browserErrors.push(error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") browserErrors.push(message.text());
-  });
+  browserErrors = collectBrowserErrors(page);
 });
 
 test.afterEach(() => expect(browserErrors).toEqual([]));
@@ -39,5 +36,5 @@ test("a module load failure is reported in the page", async ({ page }) => {
     name: error.name,
     message: error.message,
   }))).toEqual({ name: "Error", message: "expected module load failure" });
-  browserErrors = []; // The deliberately injected load failure was handled.
+  browserErrors.length = 0; // The deliberately injected load failure was handled.
 });

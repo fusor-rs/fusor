@@ -9,7 +9,7 @@ use super::{
 use crate::{
     context::Context,
     error::{Error, Result},
-    toolchain,
+    layout, toolchain,
     workspace::Project,
 };
 use fusor_islands::{DeliveryManifest, Unit, UnitWitness};
@@ -200,13 +200,17 @@ fn write_runtime(
         format!("{prefix}/manifest.json")
     );
     if dev {
-        fs::write(generated.join("refresh.js"), crate::dev::refresh::CLIENT)?;
+        fs::write(
+            generated.join(layout::REFRESH_MODULE),
+            crate::dev::refresh::CLIENT,
+        )?;
         boot = format!(
-            "import {{ watch }} from './refresh.js';\nwatch({generation:?}, {:?});\n{boot}",
+            "import {{ watch }} from './{}';\nwatch({generation:?}, {:?});\n{boot}",
+            layout::REFRESH_MODULE,
             project.config.base_path
         );
     }
-    fs::write(generated.join("boot.js"), boot)?;
+    fs::write(generated.join(layout::BOOT_MODULE), boot)?;
     Ok(())
 }
 
@@ -222,7 +226,8 @@ fn render_document(executable: &Path, manifest: &Path, staging: &Path, prefix: &
     )?;
     let mut html = fs::read_to_string(&path)?;
     let scripts = format!(
-        "<script src=\"{prefix}/composition.js\"></script><script type=\"module\" src=\"{prefix}/boot.js\"></script>"
+        "<script src=\"{prefix}/composition.js\"></script><script type=\"module\" src=\"{prefix}/{}\"></script>",
+        layout::BOOT_MODULE
     );
     html.insert_str(head_start(&html)?, &scripts);
     fs::write(path, html)?;

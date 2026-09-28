@@ -1,5 +1,8 @@
 //! The compiler records the loader's byte offset; nothing here parses HTML.
-use crate::error::{Error, Result};
+use crate::{
+    error::{Error, Result},
+    layout,
+};
 use fusor_build::app::ArtifactManifest;
 use std::{fs, path::Path};
 
@@ -7,8 +10,8 @@ use std::{fs, path::Path};
 /// to the package. Without these hints the browser discovers them one import
 /// level at a time, after the boot module runs.
 pub(crate) fn entry_modules(package: &Path) -> Result<Vec<String>> {
-    let entry = fs::read_to_string(package.join("app.js"))?;
-    let mut modules = vec!["app.js".to_owned()];
+    let entry = fs::read_to_string(package.join(layout::APP_MODULE))?;
+    let mut modules = vec![layout::APP_MODULE.to_owned()];
     for specifier in entry.lines().filter_map(static_import) {
         let module = specifier.trim_start_matches("./").to_owned();
         if !modules.contains(&module) {
@@ -36,13 +39,17 @@ fn preloads(url_prefix: &str, modules: &[String]) -> String {
     if modules.is_empty() {
         return String::new();
     }
+    let package = layout::PACKAGE;
     let mut links: String = modules
         .iter()
-        .map(|module| format!("<link rel=\"modulepreload\" href=\"{url_prefix}/pkg/{module}\">"))
+        .map(|module| {
+            format!("<link rel=\"modulepreload\" href=\"{url_prefix}/{package}/{module}\">")
+        })
         .collect();
     // wasm-bindgen fetches the module in CORS mode with same-origin credentials.
     links.push_str(&format!(
-        "<link rel=\"preload\" href=\"{url_prefix}/pkg/app_bg.wasm\" as=\"fetch\" type=\"application/wasm\" crossorigin>"
+        "<link rel=\"preload\" href=\"{url_prefix}/{package}/{}\" as=\"fetch\" type=\"application/wasm\" crossorigin>",
+        layout::APP_WASM
     ));
     links
 }
@@ -66,18 +73,20 @@ pub(crate) fn render(
     let marker = revision
         .map(|revision| format!(" data-fusor-revision=\"{revision}\""))
         .unwrap_or_default();
+    let package = layout::PACKAGE;
     let stylesheets = styles
         .iter()
         .map(|style| {
             let style = style.replace('&', "&amp;").replace('"', "&quot;");
-            format!("<link rel=\"stylesheet\" href=\"{url_prefix}/pkg/{style}\">")
+            format!("<link rel=\"stylesheet\" href=\"{url_prefix}/{package}/{style}\">")
         })
         .collect::<String>();
     let preloads = preloads(url_prefix, modules);
     html.insert_str(
         offset,
         &format!(
-            "{stylesheets}{preloads}<script type=\"module\"{marker} src=\"{url_prefix}/boot.js\"></script>"
+            "{stylesheets}{preloads}<script type=\"module\"{marker} src=\"{url_prefix}/{}\"></script>",
+            layout::BOOT_MODULE
         ),
     );
     Ok(html)

@@ -123,19 +123,6 @@ fn outcome(ok: bool) -> Result<(), JsValue> {
     if ok { Ok(()) } else { Err(take_outcome()) }
 }
 
-#[cfg(feature = "islands")]
-fn hydrate_native_root(
-    plan: &JsValue,
-    root: &Element,
-    schema: &JsValue,
-    identity: &JsValue,
-    version_ok: bool,
-) -> Result<JsValue, JsValue> {
-    let hydrated = hydrate_root_ok(plan, root, schema, identity, version_ok);
-    let nodes = take_outcome();
-    if hydrated { Ok(nodes) } else { Err(nodes) }
-}
-
 fn binding_set_attribute(
     nodes: &JsValue,
     index: u32,
@@ -189,7 +176,9 @@ pub(super) fn hydrate_root(
     let metadata = strings::descriptor(descriptor.component, descriptor.version);
     let (_, schema, identity) = metadata.native();
     let version_ok = descriptor.version == crate::template::VERSION;
-    hydrate_native_root(&plan.native, root, schema, identity, version_ok)
+    let hydrated = hydrate_root_ok(&plan.native, root, schema, identity, version_ok);
+    let nodes = take_outcome();
+    if hydrated { Ok(nodes) } else { Err(nodes) }
 }
 
 #[cfg(feature = "islands")]
