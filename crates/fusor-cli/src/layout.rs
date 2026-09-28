@@ -4,6 +4,14 @@ use std::path::{Path, PathBuf};
 /// Immutable per-generation output inside the published site.
 pub(crate) const GENERATED: &str = "__fusor";
 
+/// Application modules inside each immutable generation.
+pub(crate) const PACKAGE: &str = "pkg";
+pub(crate) const APP_NAME: &str = "app";
+pub(crate) const APP_MODULE: &str = "app.js";
+pub(crate) const APP_WASM: &str = "app_bg.wasm";
+pub(crate) const BOOT_MODULE: &str = "boot.js";
+pub(crate) const REFRESH_MODULE: &str = "refresh.js";
+
 /// Output metadata. Its presence also marks a directory as fusor-owned, which
 /// is what makes replacing it safe.
 pub(crate) const OUTPUT_MANIFEST: &str = ".fusor-output.json";

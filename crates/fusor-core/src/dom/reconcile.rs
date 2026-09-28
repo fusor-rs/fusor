@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 /// The previous position of a row that was just rendered and is not yet in
 /// the list. Such a row is never stationary: it always needs an insertion.
 pub(super) const NEW: usize = usize::MAX;
@@ -51,22 +53,22 @@ pub(super) fn stationary(positions: &[usize]) -> Vec<bool> {
     stationary
 }
 
-/// The index of each `next` key in `previous`, or [`NEW`]. `previous` holds
-/// distinct keys. Keys that keep their index, including an unchanged prefix
-/// and suffix, match without a search; the remaining previous keys are looked
-/// up among the next keys.
-pub(super) fn previous_positions<K: Ord>(previous: &[K], next: &SortedKeys<'_, K>) -> Vec<usize> {
-    let keys = next.all;
-    let (old, new) = (previous.len(), keys.len());
+/// Initialize positions for matching ends, leaving both middle ranges unresolved.
+#[inline(always)]
+fn matching_edges<K: PartialEq>(
+    previous: &[K],
+    next: &[K],
+) -> (Vec<usize>, Range<usize>, Range<usize>) {
+    let (old, new) = (previous.len(), next.len());
     let prefix = previous
         .iter()
-        .zip(keys)
+        .zip(next)
         .take_while(|(a, b)| a == b)
         .count();
     let suffix = previous[prefix..]
         .iter()
         .rev()
-        .zip(keys[prefix..].iter().rev())
+        .zip(next[prefix..].iter().rev())
         .take_while(|(a, b)| a == b)
         .count();
     let mut positions = vec![NEW; new];
@@ -76,7 +78,16 @@ pub(super) fn previous_positions<K: Ord>(previous: &[K], next: &SortedKeys<'_, K
     for offset in 1..=suffix {
         positions[new - offset] = old - offset;
     }
-    let (next_middle, previous_middle) = (prefix..new - suffix, prefix..old - suffix);
+    (positions, prefix..old - suffix, prefix..new - suffix)
+}
+
+/// The index of each `next` key in `previous`, or [`NEW`]. `previous` holds
+/// distinct keys. Keys that keep their index, including an unchanged prefix
+/// and suffix, match without a search; the remaining previous keys are looked
+/// up among the next keys.
+pub(super) fn previous_positions<K: Ord>(previous: &[K], next: &SortedKeys<'_, K>) -> Vec<usize> {
+    let keys = next.all;
+    let (mut positions, previous_middle, next_middle) = matching_edges(previous, keys);
     let kept = |index: usize| {
         next_middle.contains(&index)
             && previous_middle.contains(&index)
@@ -111,27 +122,8 @@ pub(super) fn small_edit<K: Ord>(
     next: &[K],
     known: impl Fn(&K) -> bool,
 ) -> Option<Result<(Vec<usize>, Vec<usize>), ()>> {
-    let (old, new) = (previous.len(), next.len());
-    let prefix = previous
-        .iter()
-        .zip(next)
-        .take_while(|(a, b)| a == b)
-        .count();
-    let suffix = previous[prefix..]
-        .iter()
-        .rev()
-        .zip(next[prefix..].iter().rev())
-        .take_while(|(a, b)| a == b)
-        .count();
-    let (next_middle, previous_middle) = (prefix..new - suffix, prefix..old - suffix);
+    let (mut positions, previous_middle, next_middle) = matching_edges(previous, next);
     let kept = |index: usize| previous_middle.contains(&index) && previous[index] == next[index];
-    let mut positions = vec![NEW; new];
-    for (index, position) in positions.iter_mut().enumerate().take(prefix) {
-        *position = index;
-    }
-    for offset in 1..=suffix {
-        positions[new - offset] = old - offset;
-    }
     let mut unmatched = Vec::new();
     for index in next_middle.clone() {
         if kept(index) {
@@ -353,8 +345,7 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn previous_positions_match_a_full_search_for_every_small_change() {
+    fn distinct_lists() -> Vec<Vec<u8>> {
         let mut lists: Vec<Vec<u8>> = Vec::new();
         for size in 0..=5 {
             permutations(&mut (0..size).collect::<Vec<_>>(), 0, &mut |order| {
@@ -369,6 +360,12 @@ mod tests {
             lists.push(keys);
             lists.push(reversed);
         }
+        lists
+    }
+
+    #[test]
+    fn previous_positions_match_a_full_search_for_every_small_change() {
+        let lists = distinct_lists();
         for previous in &lists {
             for next in &lists {
                 assert_eq!(
@@ -399,19 +396,7 @@ mod tests {
 
     #[test]
     fn small_edits_match_a_full_search_and_reject_every_duplicate() {
-        let mut lists: Vec<Vec<u8>> = Vec::new();
-        for size in 0..=5 {
-            permutations(&mut (0..size).collect::<Vec<_>>(), 0, &mut |order| {
-                lists.push(order.iter().map(|&key| key as u8).collect());
-            });
-        }
-        for mask in 0u32..128 {
-            let keys: Vec<u8> = (0..7).filter(|bit| mask & (1 << bit) != 0).collect();
-            let mut reversed = keys.clone();
-            reversed.reverse();
-            lists.push(keys);
-            lists.push(reversed);
-        }
+        let lists = distinct_lists();
         // Every list with one existing key repeated at every position.
         let mut duplicated = Vec::new();
         for list in lists.iter().filter(|list| list.len() <= 4) {

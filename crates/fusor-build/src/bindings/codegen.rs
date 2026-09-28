@@ -207,7 +207,7 @@ fn shared_list(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> Brows
     let read = indexed("list_read", slot);
     let key_fn = indexed("list_key", slot);
     let prepare = indexed("list_prepare", slot);
-    let row = foreach_row(span, ctx, *body, "__fusor_row_state");
+    let (values, value_key, row) = foreach_parts(span, ctx, *body, "__fusor_row_state");
     let ready_capture = ctx.ready.then(|| {
         quote! {
             let __fusor_read_ready = ::std::rc::Rc::clone(&ready);
@@ -225,7 +225,6 @@ fn shared_list(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> Brows
         .ready
         .then(|| quote! { let ready = &__fusor_row_ready; });
     let clones = clone_locals(locals);
-    let (values, value_key) = row_values(ctx, *body);
     let ordinary_row = quote! { move |entry| #prepare(entry, &__fusor_parent) };
     let mount = if shared {
         quote! { __fusor_scope.keyed_hydrated(&#node, #read, #key_fn, #ordinary_row, |key| ::fusor_islands::encode(key).map_err(|error| ::fusor::dom::JsValue::from_str(&error.to_string())))?; }
@@ -615,26 +614,19 @@ fn scoped(binding: &Binding, bundle: Option<&Bundle>) -> Option<TokenStream> {
     let span = binding.span();
     let anchor = binding.anchor();
     let (method, arguments) = match binding {
-        Binding::Text { value, .. } if typed_text_eligible(value) => (
-            "text_node_value",
-            quote_spanned! {span=> move || {
-                use ::fusor::dom::text_value::Convert as _;
-                (&::fusor::dom::text_value::Value(&(#value))).__fusor_into_text()
-            }},
-        ),
+        Binding::Text { value, .. } if typed_text_eligible(value) => {
+            ("text_node_value", typed_text_closure(span, value))
+        }
         Binding::Text { value, .. } => (
             "text_node_string",
             quote_spanned! {span=> move || ::std::string::ToString::to_string(&(#value)) },
         ),
         // A lone interpolation shares the text path's exact-integer conversion.
         Binding::Attribute { name, value, .. } => match value.as_expression() {
-            Some(expression) if typed_text_eligible(expression) => (
-                "attr_value",
-                quote_spanned! {span=> #name, move || {
-                    use ::fusor::dom::text_value::Convert as _;
-                    (&::fusor::dom::text_value::Value(&(#expression))).__fusor_into_text()
-                }},
-            ),
+            Some(expression) if typed_text_eligible(expression) => {
+                let read = typed_text_closure(span, expression);
+                ("attr_value", quote_spanned! {span=> #name, #read })
+            }
             _ => {
                 let value = string(value);
                 (
@@ -650,6 +642,13 @@ fn scoped(binding: &Binding, bundle: Option<&Bundle>) -> Option<TokenStream> {
         _ => return None,
     };
     Some(scope_call(span, anchor, bundle, method, arguments))
+}
+
+fn typed_text_closure(span: Span, value: &Rust) -> TokenStream {
+    quote_spanned! {span=> move || {
+        use ::fusor::dom::text_value::Convert as _;
+        (&::fusor::dom::text_value::Value(&(#value))).__fusor_into_text()
+    }}
 }
 
 fn component(component: &Component, ctx: Ctx) -> TokenStream {
@@ -942,35 +941,34 @@ fn branch_dispatch(
     }
 }
 
-/// Prepare one ForEach row, whose state wraps the parent's state held in `state`.
 /// A row proven never to read its index receives bare values, so that moving
 /// it does not change its source. Other rows receive values with positions.
-fn row_values(ctx: Ctx, body: usize) -> (TokenStream, TokenStream) {
-    if ctx.components[body].item_only_row {
+fn foreach_parts(
+    span: Span,
+    ctx: Ctx,
+    body: usize,
+    state: &str,
+) -> (TokenStream, TokenStream, TokenStream) {
+    let (values, value_key, constructor) = if ctx.components[body].item_only_row {
         (
             quote! { ::fusor_components::ForEach::values },
             quote! { ::fusor_components::ForEach::value_key },
+            quote! { ::fusor_components::ForEach::item_row },
         )
     } else {
         (
             quote! { ::fusor_components::ForEach::entries },
             quote! { ::fusor_components::ForEach::key },
+            quote! { ::fusor_components::ForEach::row },
         )
-    }
-}
-
-fn foreach_row(span: Span, ctx: Ctx, body: usize, state: &str) -> TokenStream {
-    let state = Ident::new(state, span);
-    let constructor = if ctx.components[body].item_only_row {
-        quote! { ::fusor_components::ForEach::item_row }
-    } else {
-        quote! { ::fusor_components::ForEach::row }
     };
+    let state = Ident::new(state, span);
     let row = ctx.component(body);
-    quote_spanned! {span=>
+    let prepare = quote_spanned! {span=>
         let state = #constructor(::std::rc::Rc::clone(&#state), entry);
         #row
-    }
+    };
+    (values, value_key, prepare)
 }
 
 fn coherent_binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream {
@@ -1005,8 +1003,7 @@ fn coherent_binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream
         } => {
             let slot = node.index();
             let node = element(*node);
-            let row = foreach_row(span, ctx, *body, "state");
-            let (values, value_key) = row_values(ctx, *body);
+            let (values, value_key, row) = foreach_parts(span, ctx, *body, "state");
             quote_spanned! {span=> __fusor_frame.keyed(#slot, #node.as_ref(), || #values({ #items }),
             |entry| #value_key(entry, #key), |entry, __fusor_parent| {
                 #row

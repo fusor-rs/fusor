@@ -1,12 +1,9 @@
 import { test, expect } from "@playwright/test";
+import { collectBrowserErrors } from "./errors.js";
 
 let browserErrors = [];
 test.beforeEach(async ({ page }) => {
-  browserErrors = [];
-  page.on("pageerror", (error) => browserErrors.push(error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") browserErrors.push(message.text());
-  });
+  browserErrors = collectBrowserErrors(page);
   await page.goto("/");
   await expect(page.locator("#playground")).toHaveAttribute(
     "data-ready",

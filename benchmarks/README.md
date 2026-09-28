@@ -19,6 +19,26 @@ thresholds are not CI assertions; correctness and evidence integrity are.
 | `target/benchmarks/` (repository root) | Disposable exports, logs and profiling output |
 | `.cache/benchmarks/cli.lock` (repository root) | Writer lock held while a command changes records |
 
+## Retaining evidence
+
+Keep recorded raw samples, memory snapshots, bundle hashes, build receipts and
+decision notes. Different runs remain separate observations even when their
+sources match. Completed records and their evidence are immutable: reformatting
+JSON changes its recorded byte length and checksum. Historical downloads and
+the published report are generated from this archive.
+
+Use one investigation with multiple candidates for a related comparison, as
+shown below. Preserve rejected candidates and failed diagnostics alongside the
+decision. Keep scratch exports, logs and profiles under `target/benchmarks/`;
+attach the evidence needed to support a decision before publishing it.
+
+Generate future comparison tables from retained reports with the shared tools;
+record the input reports and tool revision when citing them. Existing attached
+comparisons remain part of their immutable records. Generated results and history
+under `apps/benchmarks/public/` are disposable and stay ignored. Generated evidence
+JSON is marked in `.gitattributes` to reduce review noise while notes and
+validation summaries remain visible.
+
 ## Record a full run
 
 From the repository root, install dependencies and build once:
@@ -104,6 +124,14 @@ initial render, bulk updates and fan-out with full value/identity/native-event
 checks. The profiler is instrumented diagnostic work, never publication timing.
 Native controls record executable hashes and alternate process order. Comparisons
 retain environment differences and do not claim statistical significance.
+
+For new paired diagnostics, record the exact producer command and source revision,
+and attach build receipts for both frozen variants. A local checkout hash does
+not identify the builds served at two URLs. Preserve the producer in shared tools
+so another contributor can repeat its protocol. The all-metric and isolated paired
+reports in `20260927-runtime-optimizations-3` used a different producer from the
+current three-metric `paired-browser.mjs`; that command cannot reproduce their
+protocol. Keep those historical observations with this limitation.
 
 The CLI refuses collisions and serializes catalog writers with an exclusive lock.
 After an interrupted process, inspect `.cache/benchmarks/cli.lock/owner.json` and
