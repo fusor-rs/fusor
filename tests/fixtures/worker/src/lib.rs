@@ -85,6 +85,7 @@ impl Counter {
 }
 #[wasm_bindgen]
 pub async fn exercise() {
+    std::panic::set_hook(Box::new(|info| panic_message(&info.to_string())));
     let owner = fusor::Owner::new();
     owner.commit();
     let handle = owner.handle();
@@ -212,6 +213,11 @@ extern "C" {
     fn delay(ms: u32) -> js_sys::Promise;
     fn realm() -> String;
     fn stage(name: &str);
+}
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console, js_name = error)]
+    fn panic_message(message: &str);
 }
 async fn pause(ms: u32) {
     wasm_bindgen_futures::JsFuture::from(delay(ms))

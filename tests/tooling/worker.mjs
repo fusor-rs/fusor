@@ -46,7 +46,12 @@ try {
       deadline = setTimeout(() => { console.error(engine + ': worker suite stalled', errors); browser.close(); }, 90000);
       page.on('pageerror', error => page.evaluate(() => globalThis.workerStage).then(stage => { console.error(engine + ': ' + stage + ': ' + error.message); return browser.close(); }).catch(() => {}));
       page.on('pageerror', error => errors.push(error.message));
-      page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+      page.on('console', message => {
+        if (message.type() === 'error') {
+          errors.push(message.text());
+          console.error(engine + ': ' + message.text());
+        }
+      });
       await page.goto(`http://127.0.0.1:${server.address().port}/workers/`);
       await page.getByText('UI mounted', {exact: true}).waitFor();
       assert.equal(await page.evaluate(() => window.workerFixtureUiLoads), 1);

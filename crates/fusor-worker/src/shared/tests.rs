@@ -38,3 +38,44 @@ fn pool_generation_and_type_are_validated_and_failed_replies_release() {
     assert_eq!(codec.resolve(&value).unwrap_err(), WorkerError::StaleShared);
     assert_eq!(*reference, 7);
 }
+
+#[test]
+fn shared_handles_round_trip_across_compiler_type_names() {
+    let local = Codec::local("pool".into(), "generation".into());
+    let remote = Codec::remote(Arc::new(RemoteLeases {
+        pool: "pool".into(),
+        generation: "generation".into(),
+        alive: true.into(),
+    }));
+    let original = local.share(AtomicUsize::new(7)).unwrap();
+    let mut packet = original.encode(1024, &local).unwrap();
+    let Payload::Shared(id) = &mut packet else {
+        panic!("expected a shared handle");
+    };
+    // Stable and the pinned worker nightly can spell the same type differently.
+    id.ty = "a different compiler's name for AtomicUsize".into();
+    let received = Shared::<AtomicUsize>::decode(packet, &remote).unwrap();
+    let returned =
+        Shared::<AtomicUsize>::decode(received.encode(1024, &remote).unwrap(), &local).unwrap();
+    let allocation = local.resolve(&returned).unwrap();
+    assert!(Arc::ptr_eq(&allocation, &local.resolve(&original).unwrap()));
+    assert_eq!(allocation.load(Ordering::SeqCst), 7);
+}
+
+#[test]
+fn shared_type_validation_uses_the_allocation_and_releases_failed_transfers() {
+    let dropped = Arc::new(AtomicUsize::new(0));
+    let codec = Codec::local("pool".into(), "generation".into());
+    let original = codec.share(AllocationProbe(Arc::clone(&dropped))).unwrap();
+    let mut packet = original.encode(1024, &codec).unwrap();
+    let Payload::Shared(id) = &mut packet else {
+        panic!("expected a shared handle");
+    };
+    id.ty = std::any::type_name::<String>().into();
+    drop(original);
+    assert_eq!(
+        Shared::<String>::decode(packet, &codec).unwrap_err(),
+        WorkerError::SharedTypeMismatch
+    );
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+}

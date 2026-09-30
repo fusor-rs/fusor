@@ -49,8 +49,10 @@ owned by `Pool` and its fusor owner; clients cannot keep it logically alive.
 
 Protocol version 1 carries JSON values or explicit shared leases. Ordinary values
 are encoded with a bounded writer (16 MiB); `Shared<T>` has no Serde implementation.
-A shared token names a pool, generation, allocation and type, never a Rust pointer.
-A safe `Any` registry holds `Arc<T>` allocations. Transfers retain before sending;
+A shared token names a pool, generation and allocation, never a Rust pointer.
+Its type name is diagnostic only: the UI and worker compilers can spell the same
+type differently. A safe `Any` registry holds `Arc<T>` allocations and checks their
+concrete types when handles return to the pool. Transfers retain before sending;
 failed encoding/delivery and ignored results release provisional leases. Local
 clones share an endpoint lease, and in-flight `Arc`s independently retain data.
 

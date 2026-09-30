@@ -14,6 +14,7 @@ pub struct SharedId {
     pub pool: String,
     pub generation: String,
     pub allocation: u64,
+    // Diagnostic only: the UI and threaded worker may use different compilers.
     pub ty: String,
 }
 #[derive(Debug, Serialize, Deserialize)]
@@ -64,9 +65,9 @@ impl<T: Send + Sync + 'static> Sealed for Shared<T> {
             return Err(WorkerError::SharedTypeMismatch);
         };
         codec.validate(&id)?;
-        if id.ty != std::any::type_name::<T>() {
+        if let Err(error) = codec.validate_type::<T>(&id) {
             codec.release(&id);
-            return Err(WorkerError::SharedTypeMismatch);
+            return Err(error);
         }
         Ok(Self {
             lease: Arc::new(Lease {

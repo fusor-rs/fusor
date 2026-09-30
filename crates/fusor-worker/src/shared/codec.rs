@@ -103,6 +103,23 @@ impl Codec {
         }
         Ok(())
     }
+    pub(super) fn validate_type<T: 'static>(&self, id: &SharedId) -> Result<(), WorkerError> {
+        // Only the originating pool can check the concrete allocation. Remote
+        // handles are opaque; type_name is neither unique nor compiler-stable.
+        let Some(registry) = &self.registry else {
+            return Ok(());
+        };
+        let registry = registry.lock().unwrap();
+        let allocation = registry
+            .allocations
+            .get(&id.allocation)
+            .ok_or(WorkerError::StaleShared)?;
+        if allocation.value.is::<T>() {
+            Ok(())
+        } else {
+            Err(WorkerError::SharedTypeMismatch)
+        }
+    }
     pub(crate) fn release(&self, id: &SharedId) {
         if let Some(registry) = &self.registry {
             let removed = {
