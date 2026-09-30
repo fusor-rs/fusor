@@ -47,7 +47,12 @@ pub(crate) fn copy_assets(project: &Project, staging: &Path) -> Result {
         ))
         .remedy("create it, or change assets in [package.metadata.fusor]"));
     }
-    for name in ["index.html", layout::GENERATED, layout::OUTPUT_MANIFEST] {
+    for name in [
+        "index.html",
+        layout::GENERATED,
+        layout::OUTPUT_MANIFEST,
+        layout::WORKER_HEADERS,
+    ] {
         if assets.join(name).exists() {
             return Err(Error::project(format!(
                 "the asset named {name:?} would be overwritten by generated output"

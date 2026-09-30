@@ -3,7 +3,8 @@ use crate::{
     content::{DEMOS, DemoData},
     demos::{
         chartjs::ChartJs, coherent::Coherent, comparison::Comparison, context::Context,
-        keyed::Keyed, lifecycle::Lifecycle, loading::Loading, reactive::Reactive, threejs::ThreeJs,
+        fractal::Fractal, game::Game, keyed::Keyed, lifecycle::Lifecycle, loading::Loading,
+        reactive::Reactive, search::Search, threejs::ThreeJs,
     },
 };
 use fusor::{Signal, dom::Content, signal};
@@ -42,6 +43,9 @@ impl DemoPage {
             "context" => Content::try_new(Context::new),
             "chartjs" => Content::new(|_| ChartJs::new()),
             "threejs" => Content::new(|_| ThreeJs::new()),
+            "search" => Content::new(Search::new),
+            "game" => Content::new(Game::new),
+            "fractal" => Content::new(Fractal::new),
             _ => unreachable!("showcase metadata must name a registered demo"),
         };
         Self {

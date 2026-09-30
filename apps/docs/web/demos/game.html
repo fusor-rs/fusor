@@ -1,0 +1,63 @@
+<template rust:component="Game">
+  <section class="demo-game" aria-label="Four in a row against an engine in a worker">
+    <div class="game-head">
+      <p class="game-status" class:thinking="state.thinking.get()" aria-live="polite">
+        <span class="game-pulse" aria-hidden="true"></span>{{ state.status() }}
+      </p>
+      <div class="game-actions">
+        <button
+          class="game-now"
+          on:click="state.move_now()"
+          disabled="{{ !state.thinking.get() }}"
+        >
+          Move now</button
+        ><button on:click="state.undo()" disabled="{{ !state.can_undo() }}">Undo</button
+        ><button on:click="state.new_game(false)">New game</button
+        ><button on:click="state.new_game(true)">Engine starts</button>
+      </div>
+    </div>
+    <div class="game-stage">
+      <div class="game-ratings" aria-hidden="true"><ForEach items="{{ state.columns() }}" key="{{ |column| column.column }}" item="column">
+<span
+  class="rating"
+  data-tone="{{ column.get().tone }}"
+  class:best="column.get().best"
+  class:known="column.get().known"
+><span class="rating-track"><span class="rating-bar" style="{{ column.get().bar }}"></span></span
+><small>{{ column.get().label }}</small></span>
+</ForEach></div>
+      <div class="game-board">
+        <div class="game-cells"><ForEach items="{{ state.cells() }}" key="{{ |cell| cell.id }}" item="cell">
+<span
+  class="cell"
+  class:you="cell.get().you"
+  class:engine="cell.get().engine"
+  class:winning="cell.get().winning"
+  class:last="cell.get().last"
+></span>
+</ForEach></div>
+        <div class="game-drops"><ForEach items="{{ state.columns() }}" key="{{ |column| column.column }}" item="column">
+<button
+  class="drop"
+  aria-label='{{ format!("Drop a disc in column {}", column.get().column + 1) }}'
+  disabled="{{ !column.get().playable }}"
+  on:click="state.drop_disc(column.get().column)"
+></button>
+</ForEach></div>
+      </div>
+      <div class="game-legend" aria-hidden="true">
+        <span><i class="disc you"></i> You</span>
+        <span><i class="disc engine"></i> Engine, in a worker</span>
+      </div>
+    </div>
+    <div class="game-foot">
+      <fieldset class="game-budget">
+        <legend>Think time</legend>
+        <label><input type="radio" value="500" bind="state.budget" /> Quick</label>
+        <label><input type="radio" value="1500" bind="state.budget" /> Normal</label>
+        <label><input type="radio" value="4000" bind="state.budget" /> Deep</label>
+      </fieldset>
+      <p class="game-stats">{{ state.stats() }}</p>
+    </div>
+  </section>
+</template>

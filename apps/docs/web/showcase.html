@@ -76,12 +76,12 @@
       <h1>{{ state.demo.title }}</h1>
       <p class="lead">{{ state.demo.description }}</p>
     </div>
-    <div class="demo-layout" class:demo-layout-wide="state.demo.javascript.is_some()">
+    <div class="demo-layout" class:demo-layout-wide="state.demo.javascript.is_some() || state.demo.workers">
       <section class="demo-stage" aria-label="Live demo">
         <div class="demo-stage-bar">
           <span
             ><span class="status-dot"></span> LIVE DEMO
-            <small>{{ if state.demo.javascript.is_some() { "Rust + HTML + JS" } else { "Rust + HTML" } }}</small></span
+            <small>{{ if state.demo.javascript.is_some() { "Rust + HTML + JS" } else if state.demo.workers { "Rust + HTML · workers" } else { "Rust + HTML" } }}</small></span
           ><button
             class="reset-demo"
             on:click="state.generation.update(|n| *n += 1)"
@@ -147,7 +147,9 @@
         their libraries from <code>apps/docs/package.json</code>. Their JavaScript
         file sits beside the HTML. Older examples use explicit template metadata.
         Timer examples also use <code>gloo-timers</code>; async examples use
-        <code>fusor-async</code> and <code>public/demo-data</code>.
+        <code>fusor-async</code> and <code>public/demo-data</code>. Worker examples
+        use <code>fusor-worker</code> and Serde, and keep their worker code and
+        page code in the one Rust file.
       </p>
       <a
         class="text-link"

@@ -45,7 +45,7 @@ pub(crate) fn respond(
     let immutable = relative
         .strip_prefix(&format!("{}/", layout::GENERATED))
         .is_some_and(|path| path.contains('/'));
-    match read_file(directory, relative) {
+    let mut response = match read_file(directory, relative) {
         Some((path, body)) => build_response(200, mime(&path), body, immutable),
         None if document_fallback(relative, accept, history_fallback) => {
             match fs::read(directory.join("index.html")) {
@@ -54,7 +54,17 @@ pub(crate) fn respond(
             }
         }
         None => build_response(404, "text/plain", b"Not found".to_vec(), false),
+    };
+    if directory.join(layout::WORKER_HEADERS).is_file() {
+        response
+            .headers_mut()
+            .insert("Cross-Origin-Opener-Policy", "same-origin".parse().unwrap());
+        response.headers_mut().insert(
+            "Cross-Origin-Embedder-Policy",
+            "require-corp".parse().unwrap(),
+        );
     }
+    response
 }
 
 fn development_endpoint(relative: &str, directory: &Path) -> Option<Body> {

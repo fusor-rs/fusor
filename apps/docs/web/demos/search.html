@@ -1,0 +1,69 @@
+<template rust:component="Search">
+  <section class="demo-search" aria-label="Search a million books">
+    <div class="search-building" hidden="{{ state.ready() || state.failure.get().is_some() }}">
+      <span class="eyebrow">STARTING A WORKER</span>
+      <h3>Building a million books…</h3>
+      <div class="search-progress" aria-hidden="true"><span style="{{ state.building() }}"></span></div>
+      <p>{{ state.built_label() }}, generated off the page so it stays yours.</p>
+    </div>
+    <p class="search-failure" role="alert" hidden="{{ state.failure.get().is_none() }}">
+      The worker couldn’t start: {{ state.failure_text() }}
+    </p>
+    <div class="search-ready" hidden="{{ !state.ready() }}">
+      <dl class="search-facts">
+        <div><dt>In the worker</dt><dd>1,000,000 books</dd></div>
+        <div><dt>Kept there</dt><dd>{{ state.kept() }}</dd></div>
+        <div><dt>Sent per keystroke</dt><dd>{{ state.sent() }}</dd></div>
+        <div><dt>Round trip</dt><dd>{{ state.round_trip() }}</dd></div>
+      </dl>
+      <label class="book-search">
+        <span class="sr-only">Search a million books</span>
+        <input
+          type="search"
+          bind="state.text"
+          placeholder="Search titles and authors…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
+      <div class="search-suggestions">
+        <span>Try</span
+        ><span class="search-chips"><ForEach items="{{ state.suggestions() }}" key="{{ |word| *word }}">
+<button on:click="state.choose(item.get())">{{ item.get() }}</button>
+</ForEach></span>
+      </div>
+      <div class="search-meta" class:busy="state.busy()" aria-live="polite">
+        <strong>{{ state.summary() }}</strong>
+        <span>{{ state.timing() }}</span>
+      </div>
+      <div class="search-body">
+        <ol class="search-results"><ForEach items="{{ state.books() }}" key="{{ |book| book.id }}" item="book">
+<li>
+  <strong class="search-title"><ForEach items="{{ book.get().title }}" key="{{ |part| part.id }}" item="part"><span class:hit="part.get().hit">{{ part.get().text }}</span></ForEach></strong>
+  <span class="search-byline">{{ book.get().author }} · {{ book.get().year }}</span>
+  <span class="search-genre">{{ book.get().genre }}</span>
+</li>
+</ForEach></ol>
+        <p class="search-none" hidden="{{ !state.books().is_empty() || state.busy() }}">
+          No books match. Try fewer words.
+        </p>
+        <aside class="search-facets" aria-label="Matches by genre and decade">
+          <h4>By genre</h4>
+          <ul class="search-genres"><ForEach items="{{ state.genre_rows() }}" key="{{ |row| row.id }}" item="row">
+<li><button
+    aria-pressed="{{ row.get().selected }}"
+    on:click="state.toggle_genre(row.get().id)"
+  ><span class="genre-name">{{ row.get().name }}</span
+  ><span class="genre-count">{{ row.get().count }}</span
+  ><span class="genre-bar" style="{{ row.get().width }}"></span></button></li>
+</ForEach></ul>
+          <h4>By decade</h4>
+          <div class="search-decades"><ForEach items="{{ state.decade_bars() }}" key="{{ |bar| bar.id }}" item="bar">
+<span class="decade" title="{{ bar.get().title }}"><span class="decade-bar" style="{{ bar.get().height }}"></span><small>{{ bar.get().label }}</small></span>
+</ForEach></div>
+        </aside>
+      </div>
+      <p class="search-footnote">{{ state.footnote() }}</p>
+    </div>
+  </section>
+</template>

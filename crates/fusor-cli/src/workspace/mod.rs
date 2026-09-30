@@ -32,6 +32,8 @@ const COHORT: &[&str] = &[
     "fusor-islands",
     "fusor-server",
     "fusor-npm",
+    "fusor-worker",
+    "fusor-worker-macros",
 ];
 
 #[derive(Clone)]

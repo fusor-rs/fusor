@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/fusor-core", "crates/fusor-npm", "crates/fusor-components", "crates/fusor-macros", "crates/fusor-async", "crates/fusor-router", "crates/fusor-build", "crates/fusor-cli", "crates/fusor-release", "crates/fusor-test", "crates/fusor-query", "crates/fusor-std", "crates/fusor-islands", "crates/fusor-server", "examples/control-flow", "examples/children", "examples/async-components", "examples/foreach", "examples/playground", "examples/navigation", "examples/router", "examples/composition", "examples/integrations", "examples/editor", "examples/coherent", "examples/islands/*", "apps/landing", "apps/docs", "apps/benchmarks", "benchmarks/workloads/fusor", "benchmarks/workloads/fusor-hello", "benchmarks/workloads/fusor-todo"]
+members = ["crates/fusor-worker", "crates/fusor-worker-macros", "crates/fusor-core", "crates/fusor-npm", "crates/fusor-components", "crates/fusor-macros", "crates/fusor-async", "crates/fusor-router", "crates/fusor-build", "crates/fusor-cli", "crates/fusor-release", "crates/fusor-test", "crates/fusor-query", "crates/fusor-std", "crates/fusor-islands", "crates/fusor-server", "examples/workers", "examples/control-flow", "examples/children", "examples/async-components", "examples/foreach", "examples/playground", "examples/navigation", "examples/router", "examples/composition", "examples/integrations", "examples/editor", "examples/coherent", "examples/islands/*", "apps/landing", "apps/docs", "apps/benchmarks", "benchmarks/workloads/fusor", "benchmarks/workloads/fusor-hello", "benchmarks/workloads/fusor-todo"]
 exclude = ["examples/npm"]
 resolver = "2"
 
@@ -20,6 +20,8 @@ license = "MIT"
 repository = "https://github.com/fusor-rs/fusor"
 
 [workspace.dependencies]
+fusor-worker = { path = "crates/fusor-worker", version = "=0.1.1" }
+fusor-worker-macros = { path = "crates/fusor-worker-macros", version = "=0.1.1" }
 fusor-npm = { path = "crates/fusor-npm", version = "=0.1.1" }
 fusor-components = { path = "crates/fusor-components", version = "=0.1.1" }
 fusor-macros = { path = "crates/fusor-macros", version = "=0.1.1" }

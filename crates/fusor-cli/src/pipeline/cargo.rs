@@ -9,8 +9,10 @@ use crate::{
     workspace::Project,
 };
 use fusor_build::app::ArtifactManifest;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
+    collections::BTreeMap,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
     process::{Child, ChildStdout, Stdio},
@@ -30,22 +32,25 @@ pub(crate) struct Compilation {
 }
 
 pub(crate) fn compile(cx: &Context, project: &Project, mode: Mode) -> Result<Compilation> {
-    let mut command = cargo();
-    command.current_dir(&project.workspace).arg(match mode {
-        Mode::Check => "check",
-        Mode::Build { .. } => "build",
-    });
-    if let Some(delivery) = &project.config.delivery {
-        command.args(["--bin", delivery.binary.as_deref().unwrap_or(&project.name)]);
-    } else {
-        command.args(["--lib", "--target", layout::TARGET]);
-    }
-    command.arg("--message-format=json");
-    if matches!(mode, Mode::Build { release: true }) {
-        command.arg("--release");
-    }
-    project.flags(cx, &mut command);
+    compile_target(cx, project, mode, None)
+}
 
+pub(crate) fn compile_worker(
+    cx: &Context,
+    project: &Project,
+    mode: Mode,
+    threaded: bool,
+) -> Result<Compilation> {
+    compile_target(cx, project, mode, Some(threaded))
+}
+
+fn compile_target(
+    cx: &Context,
+    project: &Project,
+    mode: Mode,
+    worker: Option<bool>,
+) -> Result<Compilation> {
+    let mut command = compilation_command(cx, project, mode, worker)?;
     let mut child = command.stdout(Stdio::piped()).spawn().map_err(|error| {
         Error::tooling(format!("could not run cargo: {error}"))
             .remedy("install Rust from https://rustup.rs")
@@ -79,6 +84,152 @@ struct Streamed {
     artifact: Option<ArtifactManifest>,
     wasm: Option<PathBuf>,
     executable: Option<PathBuf>,
+}
+
+fn compilation_command(
+    cx: &Context,
+    project: &Project,
+    mode: Mode,
+    worker: Option<bool>,
+) -> Result<std::process::Command> {
+    let mut command = if worker == Some(true) {
+        let mut command = crate::process::rustup("rustup");
+        command.args(["run", layout::WORKER_TOOLCHAIN, "cargo"]);
+        command
+    } else {
+        cargo()
+    };
+    if let Some(threaded) = worker {
+        command.env("FUSOR_WORKER_BUILD", "1");
+        if threaded {
+            worker_rustflags(&mut command, &project.workspace)?;
+        }
+    } else {
+        command.env_remove("FUSOR_WORKER_BUILD");
+    }
+    command.current_dir(&project.workspace).arg(match mode {
+        Mode::Check => "check",
+        Mode::Build { .. } => "build",
+    });
+    if let Some(delivery) = &project.config.delivery {
+        command.args(["--bin", delivery.binary.as_deref().unwrap_or(&project.name)]);
+    } else {
+        command.args(["--lib", "--target", layout::TARGET]);
+    }
+    if let Some(threaded) = worker {
+        command
+            .arg("--target-dir")
+            .arg(project.target.join(if threaded {
+                layout::THREADED_TARGET
+            } else {
+                layout::WORKER_TARGET
+            }));
+        if threaded {
+            command.args(["-Z", "build-std=std,panic_abort"]);
+        }
+    }
+    command.arg("--message-format=json");
+    if matches!(mode, Mode::Build { release: true }) {
+        command.arg("--release");
+    }
+    project.flags(cx, &mut command);
+
+    Ok(command)
+}
+
+#[derive(Default, Deserialize)]
+struct CargoFlags {
+    #[serde(default)]
+    build: FlagConfig,
+    #[serde(default)]
+    target: BTreeMap<String, FlagConfig>,
+}
+
+#[derive(Default, Deserialize)]
+struct FlagConfig {
+    rustflags: Option<Flags>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(untagged)]
+enum Flags {
+    String(String),
+    Array(Vec<String>),
+}
+
+fn worker_rustflags(command: &mut std::process::Command, workspace: &Path) -> Result {
+    for (key, separator) in [("CARGO_ENCODED_RUSTFLAGS", "\x1f"), ("RUSTFLAGS", " ")] {
+        if let Ok(mut flags) = std::env::var(key) {
+            if !flags.is_empty() {
+                flags.push_str(separator);
+            }
+            flags.push_str(&layout::WORKER_RUSTFLAGS.replace('\x1f', separator));
+            command.env(key, flags);
+            return Ok(());
+        }
+    }
+    let output = crate::process::rustup("rustup")
+        .args([
+            "run",
+            layout::WORKER_TOOLCHAIN,
+            "cargo",
+            "-Z",
+            "unstable-options",
+            "config",
+            "get",
+            "--format",
+            "json",
+        ])
+        .current_dir(workspace)
+        .output()?;
+    if !output.status.success() {
+        return Err(Error::tooling(format!(
+            "could not read worker Cargo configuration: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    let mut config: CargoFlags = serde_json::from_slice(&output.stdout)?;
+    if std::env::var_os("CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS").is_some() {
+        config
+            .target
+            .entry(layout::TARGET.into())
+            .or_default()
+            .rustflags
+            .get_or_insert_with(|| Flags::Array(Vec::new()));
+    }
+    // Extend each existing source; Cargo still chooses matching target rules or
+    // the build fallback. Adding a new target rule would hide build.rustflags.
+    append_flags(command, "build.rustflags", config.build.rustflags)?;
+    for (target, flags) in config.target {
+        if flags.rustflags.is_some() {
+            append_flags(
+                command,
+                &format!("target.{target:?}.rustflags"),
+                flags.rustflags,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn append_flags(command: &mut std::process::Command, key: &str, flags: Option<Flags>) -> Result {
+    let flags = match flags {
+        Some(Flags::String(flags)) => Flags::String(format!(
+            "{flags} {}",
+            layout::WORKER_RUSTFLAGS.replace('\x1f', " ")
+        )),
+        // Cargo concatenates arrays, so only append the additional flags.
+        _ => Flags::Array(
+            layout::WORKER_RUSTFLAGS
+                .split('\x1f')
+                .map(str::to_owned)
+                .collect(),
+        ),
+    };
+    command
+        .arg("--config")
+        .arg(format!("{key}={}", serde_json::to_string(&flags)?));
+    Ok(())
 }
 
 fn read_messages(

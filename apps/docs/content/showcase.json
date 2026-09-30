@@ -28,6 +28,48 @@
     "javascript": true
   },
   {
+    "slug": "fractal",
+    "title": "One picture, several threads",
+    "category": "Worker pools",
+    "description": "Paint a fractal with a pool of up to 16 compute threads, and see which thread painted each tile.",
+    "try_it": "Press Race to compare painting one tile at a time with painting tiles across the pool. Click anywhere on the picture to zoom in and cancel the previous view. Turn on the thread colors to see who painted what.",
+    "explanation": "The pool provides up to 16 compute threads, bounded by the browser’s hardware hint. One streaming task hands tiles to the compute threads and sends each finished tile back as it is ready. Zooming cancels the previous stream. Without shared memory the same picture is painted by one ordinary worker.",
+    "guide": "/docs/workers/pools",
+    "guide_label": "Pools and compute threads",
+    "preview_title": "POOL · STREAMED TILES",
+    "preview_value": "160",
+    "preview_detail": "tiles streamed from a worker",
+    "workers": true
+  },
+  {
+    "slug": "game",
+    "title": "Four in a row",
+    "category": "Stateful workers",
+    "description": "Play against an engine that thinks on another thread. Watch it weigh every column while the board stays yours.",
+    "try_it": "Drop a disc. While the engine thinks, the bars above the board show how it rates each column, sharpening as it looks further ahead. Press Move now to make it decide early, or choose Deep and try to beat it.",
+    "explanation": "The engine is a stateful worker that remembers positions between moves. Each move is one call that reports progress after every column it weighs. Move now cancels that call, and the page plays the best move reported so far. The rules are one Rust module shared by the page and the worker.",
+    "guide": "/docs/workers/tasks#progress",
+    "guide_label": "Progress and cancellation",
+    "preview_title": "ENGINE · LIVE PROGRESS",
+    "preview_value": "4 in a row",
+    "preview_detail": "state kept between moves",
+    "workers": true
+  },
+  {
+    "slug": "search",
+    "title": "A million books in a worker",
+    "category": "Stateful workers",
+    "description": "Search a million generated books kept inside a worker. Each query sends only the search text and filter.",
+    "try_it": "Type a word such as “moon” or a name such as “ada”, and watch the counts change. Pick a genre to filter. Type quickly: older replies cannot replace your latest results.",
+    "explanation": "The worker builds the million books once, when the demo starts, and keeps them. Each keystroke calls one method on its typed client with a tiny query. A Resource cancels the previous call when the query changes, so a stale answer never replaces a newer one.",
+    "guide": "/docs/workers/services",
+    "guide_label": "Stateful workers",
+    "preview_title": "1,000,000 BOOKS",
+    "preview_value": "Typed queries",
+    "preview_detail": "search a dataset kept in a worker",
+    "workers": true
+  },
+  {
     "slug": "comparison",
     "title": "Async and coherent async",
     "category": "Side-by-side comparison",

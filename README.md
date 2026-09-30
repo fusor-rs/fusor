@@ -99,7 +99,7 @@ fusor keeps the boundaries visible:
 - **Updates follow signal reads.** A binding tracks the signals it reads and updates its own DOM target when they change. There is no virtual DOM.
 - **Ownership handles cleanup.** Removing a component disposes its listeners, subscriptions, and owned children.
 
-The default application is a client side WebAssembly app. Optional packages add routing, async resources, shared queries, native JavaScript integrations, and server rendered islands. See the [guides](apps/docs/) for their setup and current limits.
+The default application is a client side WebAssembly app. Optional packages add routing, async resources, shared queries, background workers, native JavaScript integrations, and server rendered islands. See the [guides](apps/docs/) for their setup and current limits.
 
 ## Examples
 
@@ -108,6 +108,7 @@ The default application is a client side WebAssembly app. Optional packages add 
 - [Reader](examples/navigation/) — typed navigation and async data across owned views.
 - [Editor](examples/editor/README.md) — typed fields, explicit saves, and state shared across views.
 - [Integrations](examples/integrations/) — CodeMirror and Chart.js connected to Rust state.
+- [Workers](examples/workers/) — background Rust tasks connected to async resources.
 
 The [documentation showcase](apps/docs/) has more runnable examples. Performance measurements and their methodology live in [benchmarks](benchmarks/README.md).
 

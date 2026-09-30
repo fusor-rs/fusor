@@ -20,10 +20,16 @@ products shows the previous complete view until both new results are available.
 This package declares its own Cargo workspace to verify the public application
 setup. It uses local path dependencies because fusor is not yet published.
 
-Each directory under `lessons/` contains the exact files applied to a freshly
-generated application in the corresponding guide. They are not modules of this
-companion app. `just test docs-examples` performs those setups, builds the
-resulting applications, and verifies the observable behavior in a browser.
+The directories under `lessons/` contain the exact files used by the guides.
+They are not modules of this companion app. For the application lessons,
+`just test docs-examples` applies them to freshly generated applications, builds
+the results, and verifies the observable behavior in a browser.
+
+The worker lessons in `lessons/workers/` are included directly by the independent
+consumer in `tests/fixtures/worker`. `just test worker` exercises tasks, services,
+progress, cancellation, Fetch, and streams; `just test worker-pool` also exercises
+the documented compute and shared-data examples. Keeping the pool lessons in
+that consumer avoids making the tutorial app require a threaded build.
 
 The Reusable HTML lesson uses the generated counter files directly. Nested content
 adds the files under `lessons/content` to that app. The test copies the published

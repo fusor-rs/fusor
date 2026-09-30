@@ -7,6 +7,14 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{RequestInit, Response};
 
+#[wasm_bindgen::prelude::wasm_bindgen(
+    inline_js = "export async function fusorFetch(url, options) { const base = globalThis.__fusor_worker_base_url; return globalThis.fetch(base ? new URL(url, base).href : url, options); }"
+)]
+extern "C" {
+    #[wasm_bindgen::prelude::wasm_bindgen(js_name = fusorFetch)]
+    fn fetch(url: &str, options: &RequestInit) -> js_sys::Promise;
+}
+
 /// Why [`get_text`] failed.
 #[derive(Debug)]
 pub enum FetchError {
@@ -40,13 +48,9 @@ impl std::error::Error for FetchError {}
 /// `cancel` aborts the Fetch at any point, including while the body is read.
 pub async fn get_text(url: &str, cancel: &CancellationToken) -> Result<String, FetchError> {
     let result: Result<String, FetchError> = async {
-        let window =
-            web_sys::window().ok_or_else(|| JsValue::from_str("Fetch requires a browser"))?;
         let options = RequestInit::new();
         options.set_signal(Some(&cancel.abort_signal()?));
-        let response: Response = JsFuture::from(window.fetch_with_str_and_init(url, &options))
-            .await?
-            .dyn_into()?;
+        let response: Response = JsFuture::from(fetch(url, &options)).await?.dyn_into()?;
         if !response.ok() {
             return Err(FetchError::Status {
                 url: url.to_owned(),

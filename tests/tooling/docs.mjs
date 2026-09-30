@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { readFile, mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { resolve, extname, sep } from "node:path";
 import { chromium, firefox, webkit, expect } from "@playwright/test";
 import assert from "node:assert/strict";
@@ -25,10 +26,56 @@ for (const reference of referenceIndex) {
   const [slug, id] = reference.href.slice("/docs/".length).split("#");
   assert(guides.find(guide => guide.slug === slug)?.sections.some(section => section.id === id), `unknown reference target: ${reference.href}`);
 }
+const workerOverview = guides.find(guide => guide.slug === "workers");
+assert(workerOverview, "missing worker overview");
+const workerSlugs = ["tasks", "services", "pools", "shared", "streams", "lifecycle", "deployment", "api"]
+  .map(slug => `workers/${slug}`);
+assert.deepEqual(guides.filter(guide => guide.parent === "workers").map(guide => guide.slug),
+  workerSlugs, "worker subpages must remain discoverable in reading order");
+for (const slug of workerSlugs) {
+  assert.equal(guides.find(guide => guide.slug === slug).group, workerOverview.group);
+}
+for (const id of ["tasks", "messages", "lifetime", "services", "pools", "shared", "streams", "shutdown", "hosting"]) {
+  assert(workerOverview.sections.some(section => section.id === id), `broken existing worker anchor: ${id}`);
+}
+for (const [target, tokens] of [
+  ["api#task-result", ["TaskResult", "NoError"]],
+  ["api#job-error", ["JobError"]],
+  ["api#worker-error", ["WorkerError"]],
+  ["api#pool", ["Pool"]],
+  ["api#pool-init", ["PoolInit"]],
+  ["api#compute-context", ["ComputeContext"]],
+  ["api#task-context", ["TaskContext"]],
+  ["api#job", ["Job"]],
+  ["api#placement", ["Bound", "Unbound"]],
+  ["api#spawn", ["Spawn", "Worker", "fusor_worker::spawn"]],
+  ["api#shared", ["Shared"]],
+  ["api#result-stream", ["ResultStream"]],
+  ["api#stream-sender", ["StreamSender"]],
+  ["api#cancellation-handle", ["CancellationHandle"]],
+  ["api#close", ["Close"]],
+  ["api#message", ["Message"]],
+  ["api#capabilities", ["Capability", "Capabilities", "capabilities"]],
+  ["tasks#task", ["fusor_worker"]],
+]) {
+  for (const token of tokens) {
+    assert.equal(referenceIndex.find(reference => reference.token === token)?.href,
+      `/docs/workers/${target}`, `worker API reference: ${token}`);
+  }
+}
+const workerApi = guides.find(guide => guide.slug === "workers/api");
+assert.equal(workerApi.reference, true, "worker API must be a lookup page");
 const demos = JSON.parse(
   await readFile("apps/docs/content/showcase.json", "utf8"),
 );
+// Like `fusor preview` and the production host: a threaded build is served
+// cross-origin isolated, so the docs' worker pool can use shared memory.
+const isolated = existsSync(resolve(root, ".fusor-worker-headers.json"));
 const server = createServer(async (req, res) => {
+  if (isolated) {
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+    res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+  }
   const url = new URL(req.url, "http://localhost");
   if (url.pathname === "/favicon.ico") {
     res.writeHead(204);
@@ -161,6 +208,40 @@ try {
     await expect(sidebar.getByRole("button", { name: "Toggle Async data loading subpages", exact: true })).toHaveAttribute("aria-expanded", "true");
     await page.goBack();
     await expect(page.locator("h1")).toHaveText("Async data loading");
+    const workerBranch = sidebar.getByRole("button", {
+      name: `Toggle ${workerOverview.title} subpages`, exact: true,
+    });
+    const streamGuide = guides.find(guide => guide.slug === "workers/streams");
+    const streamLink = sidebar.getByRole("link", { name: streamGuide.title, exact: true });
+    await page.goto(origin + streamGuide.slug);
+    await expect(page.locator("h1")).toHaveText(streamGuide.title);
+    await expect(workerBranch).toHaveAttribute("aria-expanded", "true");
+    await page.getByRole("navigation", { name: "Breadcrumb" })
+      .getByRole("link", { name: workerOverview.title, exact: true }).click();
+    await expect(page.locator("h1")).toHaveText(workerOverview.title);
+    await workerBranch.focus();
+    await page.keyboard.press("Enter");
+    await expect(streamLink).not.toBeVisible();
+    await page.getByRole("searchbox").fill("StreamSender");
+    await expect(workerBranch).toHaveAttribute("aria-expanded", "true");
+    await expect(streamLink).toBeVisible();
+    await streamLink.click();
+    await expect(page.locator("h1")).toHaveText(streamGuide.title);
+    await expect(page.getByRole("searchbox")).toHaveValue("");
+    await expect(streamLink).toHaveAttribute("aria-current", "page");
+    await page.getByRole("navigation", { name: "Breadcrumb" })
+      .getByRole("link", { name: workerOverview.title, exact: true }).click();
+    await expect(page.locator("h1")).toHaveText(workerOverview.title);
+    await page.goto(origin + "workers/tasks");
+    await page.locator("#task .api-references summary").click();
+    await page.locator('#task .api-references a[href="/docs/workers/api#task-result"]').click();
+    await expect(page.locator("h1")).toHaveText(workerApi.title);
+    assert(page.url().endsWith("/workers/api#task-result"));
+    await page.goto(origin + "workers/tasks#progress");
+    await page.locator("#progress .api-references summary").click();
+    await page.locator('#progress .api-references a[href="/docs/workers/api#compute-context"]').click();
+    await expect(page.locator("h1")).toHaveText(workerApi.title);
+    assert(page.url().endsWith("/workers/api#compute-context"));
     for (const guide of guides) {
       await page.goto(origin + guide.slug);
       await expect(page.locator("h1")).toHaveText(guide.title);
@@ -168,6 +249,13 @@ try {
         name: guide.slug === "" ? "Introduction" : guide.title,
         exact: true,
       })).toHaveAttribute("href", `/docs/${guide.slug}`);
+      if (guide.parent === "workers") {
+        await expect(sidebar.getByRole("link", { name: guide.title, exact: true }))
+          .toHaveAttribute("aria-current", "page");
+        await expect(workerBranch).toHaveAttribute("aria-expanded", "true");
+        await expect(page.getByRole("navigation", { name: "Breadcrumb" })
+          .getByRole("link", { name: workerOverview.title, exact: true })).toBeVisible();
+      }
       await page.goto(origin + guide.slug);
       await expect(page.locator("h1")).toHaveText(guide.title);
       for (const reference of await page.locator(".api-references a").evaluateAll(nodes => nodes.map(node => node.getAttribute("href")))) {
@@ -175,9 +263,14 @@ try {
         assert(guides.find(guide => guide.slug === slug)?.sections.some(section => section.id === id), `broken contextual reference ${reference}`);
       }
       async function checkProse(locator, source = "") {
-        const paragraphs = source.split("\n\n").map(text => text.trim()).filter(Boolean);
-        assert.deepEqual(await locator.locator(".prose > p").allTextContents(),
-          paragraphs.map(text => text.replaceAll("`", "")), "prose text and paragraph boundaries");
+        const blocks = source.split("\n\n").map(text => text.trim()).filter(Boolean);
+        const list = block => block.split("\n").every(line => line.trim().startsWith("- "));
+        assert.deepEqual(await locator.locator(".prose > .prose-block > p").allTextContents(),
+          blocks.filter(block => !list(block)).map(text => text.replaceAll("`", "")),
+          "prose text and paragraph boundaries");
+        assert.deepEqual(await locator.locator(".prose > .prose-block > ul > li").allTextContents(),
+          blocks.filter(list).flatMap(block => block.split("\n").map(line => line.trim().slice(2).replaceAll("`", ""))),
+          "prose list items");
         assert.deepEqual(await locator.locator("code.inline-code").allTextContents(),
           [...source.matchAll(/`([^`]+)`/g)].map(match => match[1]), "inline code is literal text");
         assert.equal(await locator.locator("script").count(), 0);
@@ -192,12 +285,34 @@ try {
             ? await readFile(resolve("apps/docs", section.source), "utf8")
             : section.code;
           assert.equal(
-            await page.locator(`#${section.id} pre code`).textContent(),
+            await page.locator(`#${section.id} > .section-code pre code`).textContent(),
             authored,
           );
         }
+        const section$ = page.locator(`#${section.id}`);
+        await expect(section$.locator(".callout")).toHaveCount(section.callouts?.length ?? 0);
+        await expect(section$.locator(":scope > .terms .term")).toHaveCount(section.terms?.length ?? 0);
+        await expect(section$.locator(".map-card")).toHaveCount(
+          (section.map || []).reduce((count, group) => count + group.cards.length, 0));
+        for (const card of (section.map || []).flatMap(group => group.cards)) {
+          await expect(section$.locator(`.map-card[href="${card.href}"]`)).toContainText(card.name);
+        }
+        if (section.api) {
+          await expect(section$.locator(".api-kind")).toHaveText(section.api.kind);
+          const members = (section.api.groups || []).flatMap(group => group.members);
+          assert.deepEqual(await section$.locator(".member-name code").allTextContents(),
+            members.map(member => member.name), `members of ${section.id}`);
+          for (const member of members.filter(member => member.signature)) {
+            assert((await section$.locator(".member .signature").allTextContents()).includes(member.signature),
+              `signature text for ${section.id} ${member.name}`);
+          }
+        }
         for (const link of section.links || []) {
           const url = new URL(link.href, origin);
+          if (url.origin !== new URL(origin).origin) {
+            assert.equal(url.protocol, "https:", `external guide link must use HTTPS: ${link.href}`);
+            continue;
+          }
           if (url.pathname.startsWith("/docs/source/")) {
             const response = await page.request.get(url.href);
             assert.equal(response.status(), 200, link.href);

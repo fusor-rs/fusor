@@ -1,7 +1,7 @@
 import { root, env as buildEnv, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject } from "../../scripts/build.mjs";
 // Compile edits made inside HTML and verify the development loop in isolation.
 import assert from "node:assert/strict";
-import { readFile, writeFile, rm } from "node:fs/promises";
+import { readFile, writeFile, rename, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
@@ -57,12 +57,20 @@ try {
   await page.waitForTimeout(900); // Establish the development client's version.
 
   const path = join(scratch, "examples/playground/web/index.html");
+  // An in-place write exposes a truncated file to the watcher. If generation
+  // then reads the completed save, the stale snapshot queues another refresh
+  // after the browser has already shown that edit. Publish complete saves only.
+  const saveHtml = async html => {
+    const pending = join(scratch, ".fusor-dev-edit");
+    await writeFile(pending, html);
+    await rename(pending, path);
+  };
   const source = await readFile(path, "utf8");
   const edited = source.replace("let count = signal(0_i32);", "let count = signal(7_i32);");
   assert.notEqual(edited, source);
   const firstVersion = await version();
   const reload = page.waitForEvent("load");
-  await writeFile(path, edited);
+  await saveHtml(edited);
   await waitFor(async () => (await version()) !== firstVersion, "HTML Rust edit to rebuild");
   await reload;
   await page.waitForSelector('[data-ready="true"]');
@@ -78,13 +86,13 @@ try {
   const beforeStatic = await version(), staticWasm = await hashWasm();
   const staticEdit = edited.replace('<h1 id="hero-title">', '<h1 id="hero-title" title="Refreshed">');
   assert.notEqual(staticEdit, edited);
-  await writeFile(path, staticEdit);
+  await saveHtml(staticEdit);
   await waitFor(async () => await page.locator("#hero-title").getAttribute("title") === "Refreshed", "playground static refresh");
   assert.equal((await version()).split(":")[0], beforeStatic.split(":")[0]);
   assert.equal(await hashWasm(), staticWasm);
   assert.equal(await page.locator("#count").textContent(), "8", reloadReasons.join("\n"));
   assert(await page.evaluate(() => retainedCounter === document.querySelector("#count")));
-  await writeFile(path, edited);
+  await saveHtml(edited);
   await waitFor(async () => await page.locator("#hero-title").getAttribute("title") === null, "restoring static HTML");
   assert.equal(await page.locator("#count").textContent(), "8");
   console.log("PASS: playground static HTML refresh preserves Wasm, state and native node identity");
@@ -99,7 +107,8 @@ try {
     + '\nconst EXPECTED_HTML_FAILURE: i32 = "not an integer";\n'
     + edited.slice(bodyStart);
   const errorLine = broken.slice(0, broken.indexOf("const EXPECTED_HTML_FAILURE")).split("\n").length;
-  await writeFile(path, broken);
+  server.output = "";
+  await saveHtml(broken);
   await waitFor(() => server.output.includes("Keeping the last successful build."), "expected compiler failure");
   assert.equal(await version(), goodVersion);
   assert.equal(await hashWasm(), goodWasm);
@@ -107,7 +116,7 @@ try {
   assert.ok(server.output.includes("mismatched types"), server.output);
   console.log("PASS: rustc errors report the HTML line and preserve the last working build");
 
-  await writeFile(path, edited);
+  await saveHtml(edited);
   await waitFor(async () => (await version()) !== goodVersion, "recovery after fixing HTML Rust");
   console.log("PASS: fixing the Rust inside HTML recovers the development server");
 
@@ -119,7 +128,7 @@ try {
   assert.notEqual(badBinding, edited);
   const bindingLine = badBinding.slice(0, badBinding.indexOf("state.missing_field")).split("\n").length;
   server.output = "";
-  await writeFile(path, badBinding);
+  await saveHtml(badBinding);
   await waitFor(() => server.output.includes("Keeping the last successful build."), "binding expression compiler error");
   assert.equal(await version(), beforeBindingError);
   assert.equal(await hashWasm(), bindingWasm);
@@ -129,7 +138,7 @@ try {
 
   const changedBinding = edited.replace(outputBinding,
     '<output id="doubled">{{ state.doubled.get() + 1 }}</output>');
-  await writeFile(path, changedBinding);
+  await saveHtml(changedBinding);
   await waitFor(async () => (await version()) !== beforeBindingError, "HTML interpolation edit to rebuild");
   await waitForPublishedPage();
   await page.waitForSelector('[data-ready="true"]');
@@ -159,7 +168,7 @@ struct Counter {
   </body>
 </html>`;
   const beforeMinimal = await version();
-  await writeFile(path, minimal);
+  await saveHtml(minimal);
   await waitFor(async () => (await version()) !== beforeMinimal, "minimal HTML example to compile");
   await waitForPublishedPage();
   await mounted("#counter output", "0");
@@ -174,7 +183,7 @@ struct Counter {
       <button id="reset" disabled="{{ state.count.get() == 0 }}" on:click="state.count.set(0)">Reset</button>
     </section>`);
   const beforeFixture = await version();
-  await writeFile(path, fixture);
+  await saveHtml(fixture);
   await waitFor(async () => (await version()) !== beforeFixture, "binding semantics fixture");
   await waitForPublishedPage();
   await mounted("#counter output", "0");
@@ -198,7 +207,7 @@ struct Counter {
     <body><App state="{{ App }}"><div id="host"><Counter></Counter></div></App><template rust:component="Counter">
     ${templateMarkup}${templateScript}</template></body></html>`;
   const beforeTemplate = await version();
-  await writeFile(path, templatePage);
+  await saveHtml(templatePage);
   await waitFor(async () => (await version()) !== beforeTemplate, "Rust authored inside a template");
   await waitForPublishedPage();
   await mounted("#host output", "0");
@@ -209,13 +218,16 @@ struct Counter {
 
   const beforeTypeError = await version();
   server.output = "";
-  await writeFile(path, fixture.replace('disabled="{{ state.count.get() == 0 }}"', 'disabled="{{ state.count.get() }}"'));
+  await saveHtml(fixture.replace('disabled="{{ state.count.get() == 0 }}"', 'disabled="{{ state.count.get() }}"'));
   await waitFor(() => server.output.includes("Keeping the last successful build."), "boolean binding type error");
   assert.equal(await version(), beforeTypeError);
   assert.ok(server.output.includes("expected `bool`, found `i32`"), server.output);
   assert.ok(server.output.includes("HTML binding at examples/playground/web/index.html:"), server.output);
   assert.deepEqual(errors, []);
   console.log("PASS: HTML boolean properties reject non-boolean Rust expressions at compile time");
+} catch (error) {
+  console.error(server?.output || "Development server did not start");
+  throw error;
 } finally {
   if (browser) await browser.close();
   await stopProcess(server);

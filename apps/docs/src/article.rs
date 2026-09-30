@@ -1,6 +1,9 @@
 use crate::{
-    code::{CodeBlock, CodeData},
-    content::{InlineData, LinkData, PAGES, PageData, ParagraphData, SectionData, ancestors},
+    code::{CodeBlock, CodeData, Signature},
+    content::{
+        ApiData, CalloutData, InlineData, LinkData, MapGroupData, MemberData, PAGES, PageData,
+        ParagraphData, SectionData, TermData, ancestors,
+    },
     routes::href,
 };
 use fusor::prelude::*;
@@ -18,6 +21,7 @@ static MISSING: PageData = PageData {
             code: false,
             text: "That page is not in this edition of the docs. Choose a topic in the sidebar or return to the introduction.",
         }],
+        items: &[],
     }],
     sections: &[],
 };
@@ -62,6 +66,16 @@ struct Prose {
     #[input]
     paragraphs: &'static [ParagraphData],
 }
+#[derive(FromInputs)]
+struct Spans {
+    #[input]
+    spans: &'static [InlineData],
+}
+#[derive(FromInputs)]
+struct Terms {
+    #[input]
+    items: &'static [TermData],
+}
 
 struct Breadcrumb {
     item: fusor::Memo<LinkData>,
@@ -75,7 +89,32 @@ struct Toc {
 struct RelatedLink {
     item: fusor::Memo<LinkData>,
 }
+struct Callout {
+    item: fusor::Memo<CalloutData>,
+}
+struct MapGroup {
+    item: fusor::Memo<MapGroupData>,
+}
+struct ApiBody {
+    item: fusor::Memo<ApiData>,
+}
+struct Member {
+    item: fusor::Memo<MemberData>,
+}
 fusor::bindings!(article);
+
+// Keyed rows receive their item as the whole input.
+macro_rules! row_inputs {
+    ($($row:ty),*) => {$(
+        impl fusor::dom::FromInputs for $row {
+            type Inputs = Self;
+            fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
+                Ok(inputs)
+            }
+        }
+    )*};
+}
+row_inputs!(Callout, MapGroup, ApiBody, Member);
 
 impl fusor::dom::FromInputs for Breadcrumb {
     type Inputs = Self;

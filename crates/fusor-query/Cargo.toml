@@ -11,15 +11,15 @@ categories = ["wasm", "web-programming", "caching"]
 
 [features]
 default = []
-browser = ["dep:wasm-bindgen-futures", "dep:web-sys"]
+browser = ["dep:wasm-bindgen-futures", "dep:wasm-bindgen"]
 
 [dependencies]
 derive-where.workspace = true
 fusor-core.workspace = true
 fusor-async.workspace = true
 futures-util = { workspace = true, features = ["std"] }
+wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
-web-sys = { workspace = true, optional = true, features = ["Window", "Performance"] }
 
 [dev-dependencies]
 fusor-test.workspace = true

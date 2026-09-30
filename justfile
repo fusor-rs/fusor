@@ -21,6 +21,7 @@ setup-browser:
     cargo fusor install -p fusor-playground
     cargo fetch --locked --manifest-path tests/fixtures/component-tags/Cargo.toml
     cargo fetch --locked --manifest-path tests/fixtures/native-javascript/Cargo.toml
+    cargo fusor install --manifest-path tests/fixtures/worker/Cargo.toml --features pool
     npm ci
     npm ci --prefix examples/npm --cache {{npm_cache}} --ignore-scripts
     npx playwright install chromium firefox webkit
@@ -32,6 +33,7 @@ setup-examples:
     cargo fetch --locked --manifest-path apps/docs/tutorial/Cargo.toml
     npm ci --prefix examples/integrations --cache {{npm_cache}} --ignore-scripts
     npm ci --prefix apps/docs --cache {{npm_cache}} --ignore-scripts
+    cargo fusor install -p fusor-docs
 
 # The CLI runs from its own target directory because `cargo test` relinks
 # target/debug/fusor, which Windows refuses while that binary is running.
@@ -49,6 +51,7 @@ lock:
     cargo fetch --manifest-path tests/fixtures/application/Cargo.toml
     cargo fetch --manifest-path tests/fixtures/component-tags/Cargo.toml
     cargo fetch --manifest-path tests/fixtures/native-javascript/Cargo.toml
+    cargo fetch --manifest-path tests/fixtures/worker/Cargo.toml
     cargo fetch --manifest-path examples/npm/Cargo.toml
     cargo fetch --manifest-path apps/docs/tutorial/Cargo.toml
 
@@ -120,6 +123,9 @@ ci-browser:
     just test javascript-build
     just test javascript-dev
     just test native-javascript
+    just test worker
+    just test worker-pool
+    just test worker-dev
     just test consumer
     just test authoring
     just test async-components

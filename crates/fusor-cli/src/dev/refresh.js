@@ -118,7 +118,7 @@ export function watch(generation, base) {
       if (!response.ok) return;
       const update = await response.json();
       if (update.generation !== generation || update.reload_after > revision) {
-        location.reload(); return;
+        document.dispatchEvent(new Event("fusor:reload")); location.reload(); return;
       }
       const next = new DOMParser().parseFromString(update.html, "text/html");
       try {
@@ -133,7 +133,7 @@ export function watch(generation, base) {
         }
         document.dispatchEvent(new CustomEvent("fusor:refresh", { detail: { revision, changed } }));
       } catch (error) {
-        console.info("fusor reload:", error.message); location.reload();
+        console.info("fusor reload:", error.message); document.dispatchEvent(new Event("fusor:reload")); location.reload();
       }
     } catch { /* The server may be restarting. Retry without losing the live app. */ }
     finally { busy = false; }

@@ -228,5 +228,135 @@
     "token": "Case",
     "href": "/docs/html-and-rust/built-in-components#match",
     "label": "Case · a branch with reactive captures"
+  },
+  {
+    "token": "TaskResult",
+    "href": "/docs/workers/api#task-result",
+    "label": "TaskResult · API reference"
+  },
+  {
+    "token": "JobError",
+    "href": "/docs/workers/api#job-error",
+    "label": "JobError · API reference"
+  },
+  {
+    "token": "WorkerError",
+    "href": "/docs/workers/api#worker-error",
+    "label": "WorkerError · API reference"
+  },
+  {
+    "token": "NoError",
+    "href": "/docs/workers/api#task-result",
+    "label": "NoError · API reference"
+  },
+  {
+    "token": "Pool",
+    "href": "/docs/workers/api#pool",
+    "label": "Pool · API reference"
+  },
+  {
+    "token": "PoolInit",
+    "href": "/docs/workers/api#pool-init",
+    "label": "PoolInit · API reference"
+  },
+  {
+    "token": "ComputeContext",
+    "href": "/docs/workers/api#compute-context",
+    "label": "ComputeContext · API reference"
+  },
+  {
+    "token": "TaskContext",
+    "href": "/docs/workers/api#task-context",
+    "label": "TaskContext · API reference"
+  },
+  {
+    "token": "Shared",
+    "href": "/docs/workers/api#shared",
+    "label": "Shared · API reference"
+  },
+  {
+    "token": "ResultStream",
+    "href": "/docs/workers/api#result-stream",
+    "label": "ResultStream · API reference"
+  },
+  {
+    "token": "StreamSender",
+    "href": "/docs/workers/api#stream-sender",
+    "label": "StreamSender · API reference"
+  },
+  {
+    "token": "Job",
+    "href": "/docs/workers/api#job",
+    "label": "Job · API reference"
+  },
+  {
+    "token": "Bound",
+    "href": "/docs/workers/api#placement",
+    "label": "Bound · API reference"
+  },
+  {
+    "token": "Unbound",
+    "href": "/docs/workers/api#placement",
+    "label": "Unbound · API reference"
+  },
+  {
+    "token": "Spawn",
+    "href": "/docs/workers/api#spawn",
+    "label": "Spawn · API reference"
+  },
+  {
+    "token": "Worker",
+    "href": "/docs/workers/api#spawn",
+    "label": "Worker · API reference"
+  },
+  {
+    "token": "fusor_worker::spawn",
+    "href": "/docs/workers/api#spawn",
+    "label": "fusor_worker::spawn · API reference"
+  },
+  {
+    "token": "CancellationHandle",
+    "href": "/docs/workers/api#cancellation-handle",
+    "label": "CancellationHandle · API reference"
+  },
+  {
+    "token": "Capability",
+    "href": "/docs/workers/api#capabilities",
+    "label": "Capability · API reference"
+  },
+  {
+    "token": "Capabilities",
+    "href": "/docs/workers/api#capabilities",
+    "label": "Capabilities · API reference"
+  },
+  {
+    "token": "capabilities",
+    "href": "/docs/workers/api#capabilities",
+    "label": "capabilities · API reference"
+  },
+  {
+    "token": "Close",
+    "href": "/docs/workers/api#close",
+    "label": "Close · API reference"
+  },
+  {
+    "token": "fusor_worker",
+    "href": "/docs/workers/tasks#task",
+    "label": "fusor_worker · declare a background task"
+  },
+  {
+    "token": "fusor_worker::task",
+    "href": "/docs/workers/tasks#task",
+    "label": "fusor_worker::task · declare a background task"
+  },
+  {
+    "token": "fusor_worker::worker",
+    "href": "/docs/workers/services#worker",
+    "label": "fusor_worker::worker · declare a stateful worker"
+  },
+  {
+    "token": "Message",
+    "href": "/docs/workers/api#message",
+    "label": "Message · worker data requirements"
   }
 ]

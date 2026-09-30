@@ -1,0 +1,1 @@
+worker fetch from app base

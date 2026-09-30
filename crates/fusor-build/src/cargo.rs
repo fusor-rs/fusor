@@ -7,10 +7,19 @@ use crate::{
 use quote::quote;
 use std::{env, error::Error, fs, path::Path};
 
+fn worker_build_mode() {
+    println!("cargo::rustc-check-cfg=cfg(fusor_worker)");
+    println!("cargo::rerun-if-env-changed=FUSOR_WORKER_BUILD");
+    if env::var_os("FUSOR_WORKER_BUILD").is_some_and(|value| value == "1") {
+        println!("cargo::rustc-cfg=fusor_worker");
+    }
+}
+
 /// Compile the entry and component files in `[package.metadata.fusor]`.
 /// Include `FUSOR_MODULE` in lib.rs to expose inline `crate::ui` modules and
 /// verify external native modules registered with [`fusor::bindings!`].
 pub fn compile_app() -> Result<(), Box<dyn Error>> {
+    worker_build_mode();
     let root = env::var_os("CARGO_MANIFEST_DIR").ok_or("compile_app must run from build.rs")?;
     let manifest = Path::new(&root).join("Cargo.toml");
     println!("cargo::rerun-if-changed={}", manifest.display());
@@ -60,6 +69,7 @@ pub fn compile_app() -> Result<(), Box<dyn Error>> {
 /// The package's lib.rs only needs `include!(env!("FUSOR_MODULE"));`.
 /// This helper writes exclusively to Cargo's OUT_DIR.
 pub fn compile(path: impl AsRef<Path>) -> Result<(), Box<dyn Error>> {
+    worker_build_mode();
     let manifest = env::var_os("CARGO_MANIFEST_DIR").ok_or("compile must run from build.rs")?;
     let source_path = Path::new(&manifest).join(path).canonicalize()?;
     println!("cargo::rerun-if-changed={}", source_path.display());

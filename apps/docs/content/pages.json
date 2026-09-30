@@ -183,7 +183,7 @@
         "id": "configuration",
         "title": "Read the manifest",
         "body": "The generated manifest pins the framework crates to the CLI’s release version and downloads them from crates.io.\n\nThe `dom` feature enables browser bindings, and `fusor-components` supplies browser components. The default entry is `web/index.html`; reusable HTML is discovered under `web/components/`. One file may declare several component templates.\n\nThe core crate is published as `fusor-core`, and its library is named `fusor`, so your code writes `use fusor::...`.",
-        "code": "[package]\nname = \"my-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\n\n[workspace]\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n[dependencies]\nfusor-core = { version = \"=0.1.0\", features = [\"dom\"] }\nfusor-components = { version = \"=0.1.0\", features = [\"browser\"] }\nwasm-bindgen = \"=0.2.117\"\n\n[build-dependencies]\nfusor-build = { version = \"=0.1.0\" }\n\n[package.metadata.fusor]\nassets = \"public\"\noutput = \"dist\"\nbase-path = \"/\"\n\n[profile.release]\nopt-level = \"s\"\nlto = true\ncodegen-units = 1\npanic = \"abort\"",
+        "code": "[package]\nname = \"my-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\n\n[workspace]\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n[dependencies]\nfusor-core = { version = \"=0.1.1\", features = [\"dom\"] }\nfusor-components = { version = \"=0.1.1\", features = [\"browser\"] }\nwasm-bindgen = \"=0.2.117\"\n\n[build-dependencies]\nfusor-build = { version = \"=0.1.1\" }\n\n[package.metadata.fusor]\nassets = \"public\"\noutput = \"dist\"\nbase-path = \"/\"\n\n[profile.release]\nopt-level = \"s\"\nlto = true\ncodegen-units = 1\npanic = \"abort\"",
         "language": "Cargo.toml · generated",
         "note": "In `[package.metadata.fusor]`, set `templates = [\"ui/components\", \"ui/pages\"]` once for another directory layout, or [] to disable discovery. Paths are package-relative, bounded to this package, and cannot overlap output. Discovery rejects symlinks."
       },
@@ -1300,7 +1300,7 @@
         "id": "start",
         "title": "Start with a generated app",
         "body": "Follow Installation to generate and run an app. Replace `src/app.rs` and `web/index.html` with the two complete files below. Keep the generated `src/lib.rs`, `build.rs`, and `Cargo.toml`. Newly generated apps include the `fusor-components` dependency; an existing workspace app should add `fusor-components` using the same version or local path as its other fusor crates.",
-        "code": "[dependencies]\nfusor-components = { version = \"=0.1.0\", features = [\"browser\"] }",
+        "code": "[dependencies]\nfusor-components = { version = \"=0.1.1\", features = [\"browser\"] }",
         "language": "Cargo.toml",
         "note": "Apps created with `fusor new` already include this dependency. `<ForEach>` is a reserved built-in HTML tag; it needs no use import or template registration. Your own component tags still use normal Rust imports.",
         "links": [
@@ -2086,7 +2086,7 @@
         "id": "dependency",
         "title": "Add the async crate to your own app",
         "body": "The runnable companion already declares `fusor-async` with the browser feature.\n\nThe line below shows the dependency to add under `[dependencies]` if adapting this code in the `my-app` from Installation. It is only the dependency step: use the complete file-wiring checklist at the end of this page before copying the companion’s files.",
-        "code": "fusor-async = { version = \"=0.1.0\", features = [\"browser\"] }",
+        "code": "fusor-async = { version = \"=0.1.1\", features = [\"browser\"] }",
         "language": "Cargo.toml · add under [dependencies]",
         "note": ""
       },
@@ -2325,6 +2325,2298 @@
     ]
   },
   {
+    "slug": "workers",
+    "title": "Background tasks and workers",
+    "group": "Application guides",
+    "lead": "Workers run your Rust code on separate browser threads, so heavy computation, long-lived state, and parallel work don’t compete with the UI for time.",
+    "sections": [
+      {
+        "id": "map",
+        "title": "The types at a glance",
+        "body": "You mostly work with a few types. A `Job` is one operation’s pending result, and a `ResultStream` is a sequence of results. A `Pool` is a reusable set of threads that jobs can be placed on. A generated client is your stateful service as the page sees it. `Shared<T>` is a handle to data kept inside a pool.\n\nInside worker code, Fusor hands you a context (`TaskContext` or `ComputeContext`) for progress, cancellation, and shared data, and a `StreamSender` for producing stream items. The page never passes these.\n\nThe API reference lists every type with its methods and signatures. The guides below explain when to use each.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/api",
+            "label": "Worker API reference"
+          },
+          {
+            "href": "/docs/workers/api#types",
+            "label": "Which type is which"
+          }
+        ]
+      },
+      {
+        "id": "tasks",
+        "title": "Run work off the UI thread",
+        "body": "A browser page runs rendering, event handling, and your UI code on a single thread. Anything slow on that thread delays clicks and repaints. A worker is another browser thread that runs Rust compiled to WebAssembly (Wasm), so it can do the slow work while the page stays responsive. Workers run on the user’s device, not on your backend, and Fusor packages the worker’s Wasm and JavaScript together with your application.\n\nThe simplest way to use a worker is to annotate a Rust function with `#[fusor_worker::task]`. Fusor generates a `run` function that sends the arguments to a worker and returns a future for the result. Tasks suit any computation that would otherwise hold up the page, such as parsing, filtering, or image processing.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/tasks",
+            "label": "Write and call your first task"
+          }
+        ]
+      },
+      {
+        "id": "messages",
+        "title": "Data crosses threads as messages",
+        "body": "Arguments and results travel between the page and a worker as messages: owned values that Serde encodes on one side and decodes on the other. Things that only make sense on the page, such as signals, owners, DOM elements, and UI callbacks, stay on the page. A worker returns data, and page code applies it to the UI.\n\nWorkers can make network requests, but they have no direct access to the page’s DOM.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/tasks#messages",
+            "label": "Choose message types"
+          },
+          {
+            "href": "/docs/workers/tasks#fetch",
+            "label": "Make a request from a worker"
+          }
+        ]
+      },
+      {
+        "id": "lifetime",
+        "title": "Tie work to a component",
+        "body": "Every task and service is started with an `OwnerHandle`, the handle Fusor uses to track the lifetime of a component or view. When that owner is disposed, the work it started is cancelled. A running job can also report progress through callbacks, be cancelled with a token, and be tied to additional owners through scopes.\n\nCancelling stops the caller from waiting for a result. It does not undo anything the worker has already done.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle",
+            "label": "Understand ownership, cancellation, and errors"
+          },
+          {
+            "href": "/docs/ownership/mounting#owner-variable",
+            "label": "Where does owner come from?"
+          }
+        ]
+      },
+      {
+        "id": "services",
+        "title": "Keep state between calls",
+        "body": "The task API models independent function calls: each call starts from its arguments. When you want a Rust value to stay alive in a worker, because building it again for every call would be wasteful, annotate an `impl` block with `#[fusor_worker::worker]` and start it with `spawn`. The page receives a typed client whose methods all operate on the same retained value. Calls to one service run one at a time.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/services",
+            "label": "Create a stateful worker"
+          },
+          {
+            "href": "/docs/showcase/search",
+            "label": "See one search a million books"
+          }
+        ]
+      },
+      {
+        "id": "pools",
+        "title": "Use several compute threads",
+        "body": "A `Pool` is a fixed-size set of worker threads that share one Wasm memory. Select a pool with `.on(&pool)` to run synchronous tasks on those threads. Async worker code can hand CPU-heavy closures to the pool with `ctx.compute`. More threads let independent computations overlap, but a single sequential computation doesn’t become parallel by itself.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/pools",
+            "label": "Choose a pool and place work"
+          },
+          {
+            "href": "/docs/showcase/fractal",
+            "label": "Watch a pool paint a fractal"
+          }
+        ]
+      },
+      {
+        "id": "shared",
+        "title": "Reuse a large value",
+        "body": "`Shared<T>` keeps a value inside one pool and gives the page a small handle to it. The page can hold the handle and pass it to later operations on that pool. Worker code turns the handle into an `Arc<T>` when it needs the data, so the value doesn’t have to be encoded and copied on every call.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/shared",
+            "label": "Create and reuse shared data"
+          }
+        ]
+      },
+      {
+        "id": "streams",
+        "title": "Return results in batches",
+        "body": "A `ResultStream` delivers results as the worker produces them, without waiting for the whole operation to finish. It holds a limited number of undelivered items, and a producer that gets ahead of its consumer waits. Streams suit output that arrives in pieces, such as progressively parsed data, search results, or chunked output.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/streams",
+            "label": "Produce and consume result streams"
+          }
+        ]
+      },
+      {
+        "id": "shutdown",
+        "title": "Finish work deliberately",
+        "body": "Await `close()` on a service client or a pool to stop it accepting new calls and let the work it has already accepted finish. To stop an entire pool immediately, call `Pool::terminate()`.\n\nFailures are reported to the caller. Fusor never retries an operation on its own, because an operation that failed may already have changed state.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#close",
+            "label": "Close, terminate, and recover"
+          }
+        ]
+      },
+      {
+        "id": "hosting",
+        "title": "Build and deploy with the app",
+        "body": "In an application built around `<App>`, the annotations are all that ordinary workers need to be packaged. Pools additionally need a threaded build toolchain and a page served with cross-origin isolation, a browser security mode that enables shared memory. The deployment guide covers what Fusor sets up during development and which response headers your production host has to send.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/deployment",
+            "label": "Build and host workers"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "workers/tasks",
+    "title": "Tasks",
+    "parent": "workers",
+    "group": "Application guides",
+    "lead": "Annotate a function, call it from the page with owned arguments, and await the result while the page stays responsive.",
+    "sections": [
+      {
+        "id": "setup",
+        "title": "Add the package to your app",
+        "body": "Add `fusor-worker` to the dependencies of an existing Fusor app. Keep the `<App>` entry point and the usual `fusor_build::compile_app()` build script, and put annotated functions in ordinary Rust modules that your app includes.\n\nThen build as usual with `fusor dev` or `fusor build`. The CLI finds the annotated functions in the compiled code and generates the worker assets. You don’t write a worker entry point, register functions, supply worker URLs, or add a Cargo target.\n\nUse the same release for `fusor-worker` and any other optional Fusor packages as for your app’s core and CLI.",
+        "code": "[dependencies]\nfusor-worker = \"=0.1.1\"",
+        "language": "TOML · additions to Cargo.toml",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/installation",
+            "label": "Create an application first"
+          },
+          {
+            "href": "/docs/workers/deployment#packaging",
+            "label": "How automatic packaging works"
+          }
+        ]
+      },
+      {
+        "id": "task",
+        "title": "Define a task and call it",
+        "body": "`#[fusor_worker::task]` leaves your function usable as an ordinary function and also generates a companion `name::run(&owner, args...)` for calling it from the UI. Calling the original function directly runs it on the current thread. Awaiting the generated call runs it in a worker.\n\nThe arguments you give `run` are the ones you wrote in the function signature, minus any context or sender parameter that Fusor injects. Awaiting the call resolves to the function’s result. A task must be a nongeneric, safe function returning `TaskResult<T, E>`, where `T` is the success value and `E` is the application error type. Omit `E` when the task has no application error of its own. The example defines a task and an async helper that calls it; the helper takes the `OwnerHandle` of the component it belongs to.",
+        "code": "",
+        "language": "Rust · tasks.rs",
+        "note": "",
+        "source": "tutorial/lessons/workers/tasks.rs",
+        "links": [
+          {
+            "href": "/docs/ownership/mounting#owner-variable",
+            "label": "Find your component’s owner"
+          },
+          {
+            "href": "/docs/workers/lifecycle#errors",
+            "label": "Handle application and runtime errors"
+          }
+        ]
+      },
+      {
+        "id": "run",
+        "title": "Start a job with .await",
+        "body": "Jobs start when they are first polled. Using `.await` on the `Job` returned by `run` polls it, submits the work to a worker, and waits for the result without blocking the UI thread.\n\nWithout a pool, all of an owner’s tasks share one dedicated worker and run in first-in, first-out order, async tasks included. A slow task therefore delays the tasks queued behind it. This includes an async task that is only waiting on I/O: it occupies the dedicated worker’s single operation slot until it completes, so later tasks wait for it. `.on(&pool)` returns a job bound to a pool and can be called once. Choose a pool when you want a fixed budget of compute threads or want independent computations to overlap.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/pools#placement",
+            "label": "Choose where work executes"
+          },
+          {
+            "href": "/docs/workers/lifecycle#cancellation",
+            "label": "Cancel a job"
+          },
+          {
+            "href": "/docs/workers/api#job",
+            "label": "Job methods and signatures"
+          }
+        ]
+      },
+      {
+        "id": "contexts",
+        "title": "Contexts that Fusor supplies",
+        "body": "A task can ask Fusor for a context object by declaring it as its final parameter. Synchronous tasks take a `ComputeContext<P>` and async tasks take a `TaskContext<P>`. `P` is the type of progress update the task reports and defaults to `()`. Fusor supplies this argument itself, so the generated `run` call leaves it out.\n\nBoth contexts have `report(update)`, which sends a progress update and returns `()`, and `check_cancelled()`, which returns `Result<(), WorkerError>`. It returns `Err(WorkerError::Cancelled)` once cancellation has reached that context. A caller’s cancellation doesn’t reach a busy ordinary worker until the worker processes the cancellation message, so the check can succeed for a while after the caller has cancelled. Both also have `share(value)` and `resolve(&handle)` for shared data, which requires a pool. Only `TaskContext` has `cancellation_token()` and the async `compute(work)`, which moves CPU work onto a pool’s compute threads and also requires a pool. A `ComputeContext` can be cloned and moved into CPU work, while a `TaskContext` stays in the worker’s async context.",
+        "code": "// Authored synchronous task:\nfn calculate(input: Input, ctx: ComputeContext<Progress>) -> TaskResult<Output>\n// Authored asynchronous task:\nasync fn load(input: Input, ctx: TaskContext<Progress>) -> TaskResult<Output>\n\n// Generated UI calls omit ctx:\ncalculate::run(&owner, input)\nload::run(&owner, input)",
+        "language": "Rust · signature shapes; Input, Output, and Progress are your types",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/pools#compute",
+            "label": "Move CPU work out of an async operation"
+          },
+          {
+            "href": "/docs/workers/api#task-context",
+            "label": "TaskContext methods"
+          },
+          {
+            "href": "/docs/workers/api#compute-context",
+            "label": "ComputeContext methods"
+          }
+        ]
+      },
+      {
+        "id": "progress",
+        "title": "Report progress to a UI callback",
+        "body": "Choose an owned type for progress updates, call `ctx.report(update)` from inside the task, and install a UI callback with `on_progress` on the job. Progress is coalesced: if a newer update arrives before an older one has been delivered, the newer one replaces it. Treat progress as a status display rather than a complete log of events.\n\nA job also hands out a `CancellationHandle` through `cancellation_handle()`, which the page can keep so that something like a Cancel button can call `cancel()`. Holding the handle doesn’t keep the job alive. Progress display and cancellation controls belong to the UI, so they stay on the page rather than being sent to the worker. Cancellation reaches the task cooperatively. A busy synchronous task on an ordinary worker can’t process the cancellation message until it returns, while a computation on a pool can see cancellation through a flag it shares with the pool.",
+        "code": "",
+        "language": "Rust · progress.rs",
+        "note": "",
+        "source": "tutorial/lessons/workers/progress.rs",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#cancellation",
+            "label": "Cancellation and yielding"
+          },
+          {
+            "href": "/docs/showcase/game",
+            "label": "Play an engine that reports its progress"
+          }
+        ]
+      },
+      {
+        "id": "fetch",
+        "title": "Make network requests from async tasks",
+        "body": "An async task can await Fetch and other browser APIs that are available in workers. Passing `TaskContext::cancellation_token()` to a request ties it to the job’s cancellation. The example uses the `fusor_async::fetch::get_text` helper and converts its failure into a serializable application error. Relative URLs given to this helper resolve against the app’s base URL, including when the app is deployed under a subpath.\n\nThe helper requires `fusor-async = { version = \"=0.1.1\", features = [\"browser\"] }` in your dependencies. Being async doesn’t move synchronous code off the worker’s event loop: code between awaits still runs there. In a task placed on a pool, hand substantial CPU work to `ctx.compute`.",
+        "code": "",
+        "language": "Rust · fetch.rs",
+        "note": "",
+        "source": "tutorial/lessons/workers/fetch.rs",
+        "links": [
+          {
+            "href": "/docs/async-data/resource#request",
+            "label": "Fetch requests and cancellation"
+          },
+          {
+            "href": "/docs/workers/pools#compute",
+            "label": "Combine async work and CPU work"
+          }
+        ]
+      },
+      {
+        "id": "messages",
+        "title": "Use owned message types",
+        "body": "Task inputs, outputs, application errors, and progress updates are all messages. An ordinary type qualifies when it satisfies Serde’s serialization and deserialization requirements and is `Send + 'static`. Fusor then implements its `Message` trait for it automatically, and you can’t implement the trait by hand. `Shared<T>` is a supported exception: it is a message even though it has no Serde implementation. Use owned types such as `String`, `Vec<T>`, or your own structs deriving Serde’s traits, which requires `serde = { version = \"1\", features = [\"derive\"] }`.\n\nEach argument is encoded separately as JSON. Every encoded argument or value must be at most 16 MiB, and so must the complete encoded request or reply. Several large arguments, or the small overhead of encoding, can therefore exceed the overall limit even when each argument fits on its own. `PayloadTooLarge` reports which limit was exceeded. Borrowed data, owners, signals, callbacks, DOM objects, and closures can’t be sent. For data that should stay inside a pool instead of being sent repeatedly, use `Shared<T>`.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/shared",
+            "label": "Avoid repeatedly encoding a pool dataset"
+          },
+          {
+            "href": "/docs/workers/lifecycle#errors",
+            "label": "Choose an application error type"
+          }
+        ]
+      },
+      {
+        "id": "ui",
+        "title": "Connect a task to a resource",
+        "body": "A `Resource` is the usual way to feed a worker result into the UI. It loads data asynchronously for a component and exposes loading, ready, and error states that the template can render. To connect a task, keep the `Resource` in the component, whose owner you pass to the generated call. Have the resource’s loader return the job, and pass the resource’s cancellation token to the job’s `cancel_on`. When the resource’s key changes or the component is disposed, the old request is invalidated and cancelled, so a stale result is never published. Because the worker does the slow part, the page stays responsive while the resource is loading.\n\nTo run the example, execute `cargo fusor dev -p fusor-workers --port 8091` from the repository root and open `http://127.0.0.1:8091/`. The Rust and HTML shown here are the example’s actual source files.",
+        "code": "",
+        "language": "Rust · examples/workers/src/lib.rs",
+        "note": "",
+        "source": "../../examples/workers/src/lib.rs",
+        "links": [
+          {
+            "href": "/docs/async-data",
+            "label": "Understand Resource loading state"
+          },
+          {
+            "href": "/docs/workers/tasks#template",
+            "label": "See the matching HTML"
+          }
+        ]
+      },
+      {
+        "id": "template",
+        "title": "Render the worker result",
+        "body": "The template renders the resource’s state, so it needs a place to show each of loading, ready, and error, and a control that changes the key when a new request should start. The `<App>` element creates the component and passes it its owner, which is the owner the generated call is tied to. Any UI that doesn’t depend on the worker stays interactive while the job runs, because the worker does the slow work on another thread.",
+        "code": "",
+        "language": "HTML · examples/workers/web/index.html",
+        "note": "",
+        "source": "../../examples/workers/web/index.html"
+      }
+    ]
+  },
+  {
+    "slug": "workers/services",
+    "title": "Stateful workers",
+    "parent": "workers",
+    "group": "Application guides",
+    "lead": "Keep a Rust value alive in a worker, and call its methods from the page through a generated, typed client.",
+    "sections": [
+      {
+        "id": "worker",
+        "title": "Annotate the implementation",
+        "body": "A task starts from its arguments every time it runs. A stateful worker keeps a Rust value alive across calls, which is worthwhile when rebuilding that state for each call would be wasteful. `#[fusor_worker::worker]` on a nongeneric inherent `impl` block generates a client for the type.\n\nThe `impl` needs a constructor named `new` that takes one owned input and returns `TaskResult<Self, E>`. Each public method takes `&mut self` and one owned input: use `()` when there is nothing to pass, or a struct or tuple to carry several values. Private helper methods remain ordinary Rust methods and don’t appear on the client. The name `close` is reserved for the generated client’s shutdown method.",
+        "code": "",
+        "language": "Rust · services.rs",
+        "note": "",
+        "source": "tutorial/lessons/workers/services.rs"
+      },
+      {
+        "id": "spawn",
+        "title": "Spawn the service and get its client",
+        "body": "`spawn::<T>(&owner, input)`, where `T` is your annotated type, returns a lazy `Spawn<T>`. Awaiting it initializes the service by running the constructor with the input, and yields a cloneable typed client. By default the service gets its own dedicated worker, which is started for it. If you place the service on a pool, it uses that existing pool instead of starting a worker. You keep using your own type as the type parameter, and there is no separate client type to declare or import. When you need to name the client type explicitly, use `<T as fusor_worker::Worker>::Client`.\n\nEach public method on the client returns a job for that service instance. Clones of a client address the same state, and spawning again creates an independent instance. Before awaiting `Spawn`, you can set `on_progress`, `cancel_on`, or `scope` for initialization. Those settings apply only to initialization. The running service belongs to the owner that was passed to `spawn`.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#ownership",
+            "label": "Understand the service’s owner"
+          },
+          {
+            "href": "/docs/workers/api#spawn",
+            "label": "Spawn signatures"
+          },
+          {
+            "href": "/docs/workers/api#client",
+            "label": "Generated client methods"
+          }
+        ]
+      },
+      {
+        "id": "methods",
+        "title": "Methods run one at a time",
+        "body": "Constructors and methods can be synchronous or async. Either can declare a final `TaskContext<P>` parameter, which Fusor supplies, so callers leave it out. Documentation comments, deprecation attributes, and conditional compilation on public methods carry over to the generated client.\n\nCalls to one instance run serially, including across awaits inside a method. Cancelling a call doesn’t change that: a method that is already running finishes before the next call starts. If a cancellation is processed while a call is still queued, that call doesn’t run. A busy ordinary worker may start the call before it gets to the cancellation message, though, so a cancelled call can still occasionally run. A client method returns a `Job` that is already bound, so you can set progress, cancellation, and scopes on it per call. Pool placement is chosen when the service is spawned, not on individual method jobs.",
+        "code": "",
+        "language": "Rust",
+        "note": ""
+      },
+      {
+        "id": "placement",
+        "title": "Choose a dedicated worker or a pool",
+        "body": "By default, each service gets its own dedicated worker. To place a service in a pool, select the pool on the spawn: `spawn::<T>(&owner, input).on(&pool).await`. Writing `#[fusor_worker::worker(pool)]` makes that selection mandatory.\n\nOn a dedicated worker, a service’s constructor and methods run on that worker’s event loop, even when they are synchronous. In a pool, they run on the pool’s coordinator thread, the one that runs async code. Either way, long CPU work would hold up that thread, and only an explicit `ctx.compute` moves work elsewhere. So make the method async and call `ctx.compute(move |cpu| ...)` to run the work on the pool’s compute threads. `compute` needs a pool: on a service in an ordinary dedicated worker it returns `PoolRequired`. Move owned data into the closure instead of borrowing `self`, because the closure runs on another thread.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/pools#compute",
+            "label": "Use TaskContext::compute"
+          }
+        ]
+      },
+      {
+        "id": "close",
+        "title": "Release the service",
+        "body": "Await `client.close()` when you are done with a service, or let the owner that spawned it dispose it. Don’t rely on dropping client clones to stop a service. A dedicated service may end once nothing references its runtime any more, but a service on a live pool can be retained by the pool. Only `close()` or disposal of the owner shuts it down dependably. Closing one service in a pool leaves the pool’s other services and tasks running.\n\nA graceful close lets calls that were already admitted finish. If a close deadline passes while a pooled method is still running, callers stop waiting, but Fusor keeps the service’s state alive until that method returns.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#close",
+            "label": "Close deadlines and termination"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "workers/pools",
+    "title": "Pools and compute threads",
+    "parent": "workers",
+    "group": "Application guides",
+    "lead": "Run CPU-heavy work on a fixed set of threads while a separate coordinator thread keeps handling async operations.",
+    "sections": [
+      {
+        "id": "create",
+        "title": "Create and configure a pool",
+        "body": "`Pool::new(&owner)` returns a lazy `PoolInit`. Before awaiting it, you can set `max_threads` for the number of compute threads, `max_async_jobs` for how many async operations may be active at once, and `queue_capacity` for how many operations may wait. Awaiting it finishes once the coordinator and every compute thread are ready. You can cancel initialization with `cancel_on` or a cancellation handle.\n\nA pool consists of one coordinator thread, which runs async code, plus the compute threads, which run synchronous CPU work. By default it uses up to four compute threads, limited by the browser’s hardware concurrency hint, and allows four active coordinator operations with 64 more waiting. After initialization, `pool.threads()` reports how many compute threads were selected. Zero is not a valid thread or async limit. `queue_capacity(0)` is valid and means work is rejected whenever no execution slot is free.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/deployment#threads",
+            "label": "Prepare a threaded build"
+          },
+          {
+            "href": "/docs/workers/deployment#capabilities",
+            "label": "Check browser capabilities"
+          },
+          {
+            "href": "/docs/workers/api#pool-init",
+            "label": "PoolInit signatures"
+          },
+          {
+            "href": "/docs/workers/api#pool",
+            "label": "Pool methods"
+          }
+        ]
+      },
+      {
+        "id": "placement",
+        "title": "Choose where each operation runs",
+        "body": "Call `.on(&pool)` on a generated task job, a stream, or a `spawn` before polling it to run it in that pool. Annotations can make this mandatory: `#[task(pool)]` and `#[worker(pool)]` fail with `PoolRequired` when no pool has been selected. Fusor never falls back to running such work on the UI thread.\n\nWhere code runs inside the pool depends on the kind of operation. Synchronous tasks run on compute threads. Async tasks, stream producers, service constructors, and service methods run on the coordinator. Several async operations can be in flight at once while they wait on I/O, but their synchronous stretches still share that one coordinator thread. `max_async_jobs` limits how many coordinator operations are active at a time, and each service still handles its own calls one at a time.",
+        "code": "",
+        "language": "Rust",
+        "note": ""
+      },
+      {
+        "id": "compute",
+        "title": "Move CPU work to a compute thread",
+        "body": "Async code runs on the coordinator, so a long CPU loop there would delay everything else the coordinator is doing. `TaskContext::compute` hands such work to the pool’s compute threads. It takes an owned synchronous closure, `FnOnce(ComputeContext<P>) -> R + Send + 'static` with `R: Send + 'static`, and awaiting it returns `Result<R, WorkerError>`. The `ComputeContext` passed to the closure is thread-safe and provides cancellation checks, progress reporting, and shared data.\n\nWhen the closure itself returns a `Result`, awaiting `compute` produces two layers. The outer one reports scheduling and runtime failures, and the inner one is the closure’s own error, so you write `.await??` to unwrap both. A closure can instead return `TaskResult<T, E>` when it needs to report an application error.\n\nWaiting `compute` calls have their own allowance, which uses the same number as `queue_capacity` but is counted separately from the pool’s outer operation queue. If that allowance overflows, the call fails with `QueueFull { capacity }`.",
+        "code": "",
+        "language": "Rust · pools.rs",
+        "note": "",
+        "source": "tutorial/lessons/workers/pools.rs"
+      },
+      {
+        "id": "parallelism",
+        "title": "What a pool parallelizes",
+        "body": "A pool lets independent operations overlap. It doesn’t split up a single computation. Independent synchronous jobs run at the same time only when they are polled concurrently: creating several jobs and then awaiting each in turn submits them one after another. A single sequential loop occupies one compute thread, however many the pool has.\n\nTo parallelize an algorithm itself, use Rayon inside pool CPU work, and add Rayon as a direct dependency of your application because Fusor doesn’t re-export its internal copy. Ordinary browser requests usually need async I/O rather than more CPU threads. Two costs are worth separating. Starting worker threads is paid when a runtime is created, and existing runtimes are reused by later calls. Encoding and decoding messages is paid on every call. Measure whether the work per call is large enough to outweigh the per-call cost.",
+        "code": "",
+        "language": "Rust",
+        "note": ""
+      },
+      {
+        "id": "budget",
+        "title": "Queues, limits, and pool lifetime",
+        "body": "Operations waiting for a slot sit in a bounded admission queue, and an operation that overflows it fails with `QueueFull { capacity }`. `ctx.compute` has a separate waiting allowance that uses the same `queue_capacity` number, and it overflows with the same error. Cancelling a caller doesn’t free a running slot. The slot is released only when the remote computation actually stops.\n\nEach pool has its own Wasm memory and its own limits. Keep the `Pool` value for as long as you use it: dropping it, disposing its owner, or calling `terminate()` stops its runtime. A graceful `close().await` lets admitted work finish before the pool’s shared handles become invalid.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#close",
+            "label": "Close and failure behavior"
+          },
+          {
+            "href": "/docs/workers/shared",
+            "label": "Reuse allocations within one pool"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "workers/shared",
+    "title": "Shared data",
+    "parent": "workers",
+    "group": "Application guides",
+    "lead": "Keep a large value inside a pool, and pass a small typed handle to the operations that need it.",
+    "sections": [
+      {
+        "id": "handles",
+        "title": "What a handle refers to",
+        "body": "Passing a large value to a worker normally means encoding and copying it on every call. `Shared<T>` avoids that by keeping the value inside a pool and giving the page a handle to it. The handle is an opaque lease on the pool’s allocation, and `T` must be `Send + Sync + 'static`. `T` needs no Serde implementation, because the value itself never travels as a message.\n\nInside pool code, `ctx.share(value)` creates the allocation and returns a handle, and `ctx.resolve(&handle)` returns an `Arc<T>` for it. Both are available on either context type. The page can clone, hold, drop, and forward the handle, but it can’t dereference it or read the data. Despite the similar name, `Shared<T>` has nothing to do with the browser’s SharedWorker API: it belongs to one Fusor pool, not to a worker shared between tabs.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/api#shared",
+            "label": "Shared<T> reference"
+          }
+        ]
+      },
+      {
+        "id": "example",
+        "title": "Create once and reuse",
+        "body": "A typical setup has two kinds of task, both run on the same pool with `.on(&pool)`. One builds the value inside the pool and returns a `Shared<T>` handle. The other takes a handle as an argument and calls `ctx.resolve` to reach the data. Any number of later calls can resolve the same allocation from a retained handle.\n\nOnly the handle is encoded for each call, so reusing the value doesn’t re-encode it. If the initial data is owned by the page, those bytes still have to be sent once to create the allocation.",
+        "code": "",
+        "language": "Rust · shared.rs",
+        "note": "",
+        "source": "tutorial/lessons/workers/shared.rs"
+      },
+      {
+        "id": "messages",
+        "title": "Passing handles as arguments and results",
+        "body": "A shared handle can be a direct task argument, a direct result, or a stream item. It can’t be nested inside a Serde struct, tuple, or collection, because `Shared<T>` deliberately has no Serde implementation. When a task needs a handle together with ordinary settings, give it several direct parameters instead of bundling them into one value.\n\nAn `Arc<T>` gives read-only access to `T`. To mutate shared data, put a thread-safe type such as an atomic or a `Mutex` inside `T`, and avoid holding a lock across an await.",
+        "code": "",
+        "language": "Rust",
+        "note": ""
+      },
+      {
+        "id": "lifetime",
+        "title": "How handle lifetimes work",
+        "body": "The allocation stays retained for as long as any relevant handle or `Arc<T>` exists, provided the pool is still alive. Cloning a handle keeps that same allocation retained. Sending a handle also retains it until the transfer is delivered or fails. An `Arc<T>` held by a running computation keeps the allocation alive even if the page has dropped its handle.\n\nFusor validates a handle whenever it is used. A handle from a different pool fails with `WrongPool`, an expired handle with `StaleShared`, and a handle of a different type than expected with `SharedTypeMismatch`. Types are checked against the actual allocation when a handle is received or resolved inside its pool. The page holds an opaque handle, so it can use a different Rust toolchain from the threaded worker. Closing or terminating a pool invalidates its handles, and calls made afterwards may fail with `Closed`, `Terminated`, or `OwnerDisposed` before validation is reached. During a graceful close, admitted work can still finish using its data before the handles are invalidated.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#close",
+            "label": "Understand pool shutdown"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "workers/streams",
+    "title": "Result streams",
+    "parent": "workers",
+    "group": "Application guides",
+    "lead": "Deliver a sequence of results as they are produced, through a bounded buffer, instead of one large reply.",
+    "sections": [
+      {
+        "id": "producer",
+        "title": "Define an async producer",
+        "body": "A result stream comes from an async function annotated with `#[fusor_worker::task(stream)]` that returns `TaskResult<(), E>`. Its last parameter must be a `StreamSender<T>`, and an optional `TaskContext<P>` goes directly before it. Fusor supplies both, so the page passes only the ordinary arguments.\n\nThe generated entry point is `name::stream` rather than `name::run`. Each `send(item).await` submits one item of type `T` and returns `Result<(), WorkerError>`. It waits while the buffer has no capacity, and it fails if the stream has been cancelled, which includes the consumer dropping the stream. It can also fail because the item can’t be encoded, is too large, or contains an invalid shared handle. A successful `send` means the item was accepted for delivery, not that the consumer has already received it. Making `T` a `Vec` of some row type makes each item a batch of rows.",
+        "code": "",
+        "language": "Rust · streams.rs",
+        "note": "",
+        "source": "tutorial/lessons/workers/streams.rs"
+      },
+      {
+        "id": "consume",
+        "title": "Consume with next",
+        "body": "`ResultStream<T, E, P, M>` has an async `next(&mut self)` method. `T` is the item type, `E` is the application error type, and `P` is the progress update type. `M` is the same placement marker as on `Job`: a stream starts as `Unbound`, which lets you select a pool, and `.on(&pool)` changes it to `Bound`. An `Unbound` stream can still run with default placement. Awaiting `next()` gives an `Option<TaskResult<T, E>>`: `Some(Ok(value))` is an item, `Some(Err(error))` is a failure, and `None` means the stream has finished. `next` is an inherent method, so no extension-trait import is needed, and the stream also implements `futures_core::Stream`.\n\nLike any job, a stream starts on its first poll. Before consuming it, configure `on_progress`, `cancel_on`, `scope`, and optionally `.on(&pool)`. `#[task(pool, stream)]` makes the pool selection mandatory. Producers on a pool run on its coordinator, so a pooled producer should use `ctx.compute` for long CPU work.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/api#result-stream",
+            "label": "ResultStream reference"
+          },
+          {
+            "href": "/docs/workers/api#stream-sender",
+            "label": "StreamSender reference"
+          }
+        ]
+      },
+      {
+        "id": "buffer",
+        "title": "Limit outstanding batches",
+        "body": "By default a stream allows four outstanding batches, each up to 1 MiB once encoded. `.buffer(n)` changes the batch count and requires a nonzero value. `.max_batch_bytes(n)` accepts values from 1 byte to 16 MiB. The 16 MiB limit also applies to the complete encoded message that carries a batch, so a batch close to the maximum can still be rejected with `PayloadTooLarge`. Invalid values produce `InvalidConfiguration`.\n\nA batch counts against the capacity from the moment the producer’s `send` accepts it until the consumer’s `next` yields it. When the buffer is full, `send` waits, and it continues once `next` frees space. This bounds what is in transit, not the consumer’s total memory: a consumer that keeps every item holds all of them. With large data, process and drop each batch as it arrives.",
+        "code": "",
+        "language": "Rust",
+        "note": ""
+      },
+      {
+        "id": "completion",
+        "title": "Completion, errors, and cancellation",
+        "body": "When the producer finishes successfully, the consumer first receives every batch that was already accepted, then `None`. If the producer returns an error, the accepted batches are still delivered, then the error appears once, followed by `None`. Local cancellation, owner disposal, or a runtime failure discards pending output and yields a single error instead.\n\nDropping the stream cancels it and wakes any `send` that is waiting. Use progress for status updates that can be replaced, and stream items for data whose order matters.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#cancellation",
+            "label": "Cancellation and cleanup"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "workers/lifecycle",
+    "title": "Lifetimes and errors",
+    "parent": "workers",
+    "group": "Application guides",
+    "lead": "Decide what owns background work, how callers stop waiting on it, and how failures reach your UI.",
+    "sections": [
+      {
+        "id": "ownership",
+        "title": "Owners",
+        "body": "Every `run`, `stream`, and `spawn` call takes the `OwnerHandle` of the component starting the work. Disposing that owner cancels the operations it started and releases the runtimes it owns. `.scope(&another_owner)` adds a further lifetime condition to an operation without replacing the original owner. Extra scopes and cancellation tokens accumulate: adding one never removes another.\n\nA spawned service belongs to the owner passed to `spawn`. Scopes or tokens added to `Spawn` affect initialization only, so add them to later method jobs as well if you want them there. A pool has an owner of its own, and work placed on a pool can’t outlive it.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/ownership",
+            "label": "Owners and cleanup"
+          },
+          {
+            "href": "/docs/workers/services#spawn",
+            "label": "Service initialization and clients"
+          }
+        ]
+      },
+      {
+        "id": "cancellation",
+        "title": "Cancelling a job",
+        "body": "`cancel_on(&token)` connects a job to a `fusor_async::CancellationToken`. `cancellation_handle()` returns a cloneable handle with a `cancel()` method, which suits a Cancel button. Cancelling more than once is harmless. The handle doesn’t keep the job alive: it only lets you request cancellation while the job exists. Dropping a job that was never polled starts nothing, and dropping a pending job requests its cancellation.\n\nCancelling settles the caller promptly, but it is only a request. It can’t roll back network requests or state changes the worker has already made, and the worker’s capacity isn’t freed until execution actually stops. Configure a job with its builder methods before the first poll. Changing configuration after work has started produces `InvalidConfiguration`.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/tasks#progress",
+            "label": "Progress and a cancellation handle in code"
+          }
+        ]
+      },
+      {
+        "id": "cooperation",
+        "title": "Letting work observe cancellation",
+        "body": "Cancelling a job stops running code only if that code cooperates by checking for cancellation. In synchronous work, call `ctx.check_cancelled()` between chunks of CPU work. Computations on a pool can read a cancellation flag shared with the pool while they run. On an ordinary worker, a synchronous task can’t receive its queued cancellation message until it returns, so repeated checks alone don’t interrupt a busy loop there.\n\nAsync work has to yield to the worker’s event loop before cancellation can be seen, and an `await` that is immediately ready doesn’t guarantee a yield. Pass `ctx.cancellation_token()` to I/O that supports cancellation, since such I/O cooperates by stopping when the token fires. Terminating a whole runtime can stop work that has no explicit checks. A service method that is already running keeps the service busy until it finishes, even if its caller has cancelled.",
+        "code": "",
+        "language": "Rust",
+        "note": ""
+      },
+      {
+        "id": "errors",
+        "title": "Application errors and runtime errors",
+        "body": "A task returns `TaskResult<T, E = NoError>`, an alias for `Result<T, JobError<E>>`. `JobError` distinguishes two kinds of failure. `JobError::Application(E)` carries a failure from your own logic, and `JobError::Worker` carries a `WorkerError` from Fusor. Using `?` on a `WorkerError` produces the second one. `NoError` is a type with no values, for tasks that have no application error. Those tasks can still fail with a runtime error.\n\n`E` must be a `Message`, the same requirement that applies to other task values, but it doesn’t have to implement `std::error::Error`; `String` works. `JobError<E>` implements `Display` when `E` does, and implements `Error` when `E: Error + 'static`. `JobError` and `WorkerError` are both non-exhaustive, so a `match` outside the crate needs a fallback arm.",
+        "code": "",
+        "language": "Rust · errors.rs",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/tasks#fetch",
+            "label": "Map a Fetch error"
+          },
+          {
+            "href": "/docs/workers/api#job-error",
+            "label": "JobError reference"
+          }
+        ],
+        "source": "tutorial/lessons/workers/errors.rs"
+      },
+      {
+        "id": "runtime-errors",
+        "title": "WorkerError reference",
+        "body": "`Cancelled` and `OwnerDisposed` report that the caller cancelled or that the owner was disposed. They don’t prove that the remote work has ended. `Closed`, `Terminated`, and `CloseTimedOut` relate to shutdown. `QueueFull { capacity }`, `PayloadTooLarge { limit, actual }`, and `InvalidConfiguration { message }` report exceeded limits or invalid builder settings.\n\n`Unsupported { capability }` means the browser lacks a capability the operation needs, and `PoolRequired` means the operation needs a pool that wasn’t selected. Shared data can fail with `WrongPool`, `StaleShared`, or `SharedTypeMismatch`. `Encode`, `Decode`, `Load`, and `Crashed` carry a message. `IncompatibleArtifact` means the packaged worker code and the runtime use incompatible protocols, and the deployment guide covers load problems. Whether to retry is your application’s decision, since Fusor doesn’t replay operations that may have changed state.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/deployment#troubleshooting",
+            "label": "Diagnose startup and hosting failures"
+          },
+          {
+            "href": "/docs/workers/api#worker-error",
+            "label": "WorkerError variants"
+          }
+        ]
+      },
+      {
+        "id": "close",
+        "title": "Closing services and pools",
+        "body": "`client.close()` and `pool.close()` return a lazy `Close` future. When it is first polled, it stops admitting new calls and waits for the accepted operations to finish. Calling close again joins the same closure, and dropping the `Close` future doesn’t reopen the runtime. The wait has a five-second deadline by default, which you can change with `.timeout(Duration::from_secs(10))` before polling.\n\nWhen the deadline passes, affected callers receive `CloseTimedOut`. Closing a pooled service leaves its pool running, and if a method is still running, its state is kept alive until the method returns. Only `Pool` has `terminate()`, which stops the whole pool immediately and invalidates its shared handles. Dropping the `Pool` has the same abrupt effect.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/api#close",
+            "label": "Close reference"
+          }
+        ]
+      },
+      {
+        "id": "recovery",
+        "title": "Recovering from a crash",
+        "body": "A panic or Wasm trap invalidates the affected dedicated runtime, or the entire pool, and callers see `Crashed`. Rebuilding during development also terminates the old runtimes, and clients or shared handles created before the refresh don’t carry over to the new code.\n\nTo recover, create a new owner, pool, or service. Fusor doesn’t replay operations, because a caller whose operation failed can’t tell whether the worker had already changed state.",
+        "code": "",
+        "language": "Rust",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "slug": "workers/deployment",
+    "title": "Building and hosting workers",
+    "parent": "workers",
+    "group": "Application guides",
+    "lead": "The normal Fusor build packages annotated work automatically. Threaded pools additionally need a special toolchain and a hosting setup that enables browser shared memory.",
+    "sections": [
+      {
+        "id": "packaging",
+        "title": "Automatic packaging",
+        "body": "Use an `<App>` entry point and the usual `fusor_build::compile_app()` build script. The annotations leave registrations in the compiled code, which lets the CLI find the annotated tasks and services in your app and its dependencies and package them. Keep using `fusor dev`, `fusor build`, and `fusor preview`. You don’t need a worker entry file, manual registration, a JavaScript loader, worker URLs, or an extra Cargo target.\n\nThe worker bundle leaves out the generated UI startup code and unrelated JavaScript imports that depend on the DOM. Code that a worker actually calls must still be usable inside a worker. Calling an annotated Rust function directly doesn’t move it into a worker; only the generated `run`, `stream`, and `spawn` calls do.",
+        "code": "",
+        "language": "Rust",
+        "note": ""
+      },
+      {
+        "id": "threads",
+        "title": "Prepare the threaded toolchain",
+        "body": "Ordinary workers build with stable Rust and need no special headers. Pools need a threaded build, which Fusor selects automatically when the compiled code has a pool annotation or uses `Pool`. That build currently relies on `nightly-2025-11-15` with `rust-src`, Rayon 1.11.0, and wasm-bindgen-rayon 1.3.0.\n\nRun `fusor install` for your application to prepare the required tools. When online, `fusor dev` can install missing tools itself. `fusor build`, including a debug build, expects them to be installed already and reports the fix if they are missing. Offline builds need the toolchain and dependencies to be cached beforehand.",
+        "code": "fusor install\nfusor build\nfusor preview",
+        "language": "Terminal · run in your application directory",
+        "note": ""
+      },
+      {
+        "id": "headers",
+        "title": "Serve pools in a secure, isolated context",
+        "body": "Pools use shared memory, which browsers allow only in a secure context, such as HTTPS or localhost, that is also cross-origin isolated. Isolation is enabled by two response headers. `fusor dev` and `fusor preview` send them for threaded applications. In production, configure your host to send them on the document and on the worker assets, because page JavaScript can’t set them.\n\nDeploy the complete generated output, worker assets included, as one unit. The embedder policy also applies to external scripts, images, and other resources, which must satisfy the browser’s CORS or resource-policy rules.",
+        "code": "Cross-Origin-Opener-Policy: same-origin\nCross-Origin-Embedder-Policy: require-corp",
+        "language": "HTTP · production response headers",
+        "note": "",
+        "links": [
+          {
+            "href": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer",
+            "label": "MDN: shared memory requirements"
+          },
+          {
+            "href": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cross-Origin-Embedder-Policy",
+            "label": "MDN: cross-origin embedder policy"
+          }
+        ]
+      },
+      {
+        "id": "capabilities",
+        "title": "Check browser support",
+        "body": "`fusor_worker::capabilities()` returns `Capabilities { dedicated_workers, shared_memory, hardware_parallelism }`, describing what the current environment supports. The hardware count is a hint rather than a promise that those cores are free, and pool initialization limits its requested threads to it. On native targets both boolean fields are false, and background jobs do not silently run locally.\n\nYou can use these fields to tell the user why a feature is unavailable before attempting initialization. Still handle the initialization result, because the checks don’t guarantee that loading, memory allocation, or the page’s content security policy will allow startup. A page without cross-origin isolation produces `Unsupported { capability: Capability::SharedMemory }`.",
+        "code": "let support = fusor_worker::capabilities();\nif !support.shared_memory {\n    // Explain the pool requirement or offer a smaller ordinary task.\n}\n// After successful initialization, pool.threads() reports its thread count.",
+        "language": "Rust · inside UI code",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/api#capabilities",
+            "label": "capabilities() reference"
+          }
+        ]
+      },
+      {
+        "id": "network",
+        "title": "Networking in workers",
+        "body": "Workers can call Fetch, including through Fusor’s cancellation-aware helper. Relative URLs passed to Fusor’s helper resolve against the app’s base URL, while raw browser Fetch resolves them the way workers normally do, relative to the worker. The browser’s usual rules for CORS, credentials, and content security policy still apply. Workers have no access to the page’s DOM and shouldn’t assume a `window` global.\n\nWhen a request doesn’t feed substantial processing, an ordinary async request on the UI thread is usually enough. A worker helps when the requests feed expensive work or state that already lives there.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/tasks#fetch",
+            "label": "See a cancellation-aware request"
+          },
+          {
+            "href": "https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers",
+            "label": "MDN: APIs and restrictions in workers"
+          }
+        ]
+      },
+      {
+        "id": "troubleshooting",
+        "title": "Diagnose a failed startup",
+        "body": "`PoolRequired` means an operation needs a pool: add `.on(&pool)` to it, or use an ordinary task that doesn’t need pool capabilities. For `Unsupported`, check the capabilities, that the page is served over HTTPS, and that the document has the isolation headers. If the build fails with a toolchain error, run the installation command the CLI prints.\n\nFor `Load`, look at the browser’s network and console output. The worker and Wasm assets must exist at the generated URLs, and the content security policy must allow those resources and Wasm execution. `IncompatibleArtifact` means the deployed files come from mismatched builds, so rebuild and deploy one complete, matching generation of the application. If a worker crashes, create replacement state deliberately rather than blindly retrying an operation that changes state.",
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#runtime-errors",
+            "label": "Runtime error reference"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "workers/api",
+    "title": "Worker API reference",
+    "parent": "workers",
+    "group": "Application guides",
+    "reference": true,
+    "lead": "Every type you’ll meet when you move work off the page: what it’s for, where it comes from, and what you can do with it. Each entry starts with a short example, and the exact signatures are one click away.",
+    "sections": [
+      {
+        "id": "types",
+        "title": "Which type is which",
+        "body": "Background work happens in two places. Page code, meaning your components and event handlers, starts the work and gets the results back. Worker code, meaning the functions and methods you annotate, does the work on another thread.\n\nEvery type below belongs to one of those places. A blue dot marks page code, an orange dot marks worker code, and a split dot means you’ll use the type on both sides. Select a card to open its entry.",
+        "map": [
+          {
+            "title": "Start work from the page",
+            "side": "page",
+            "cards": [
+              {
+                "href": "#job",
+                "name": "Job",
+                "kind": "struct",
+                "text": "One background call. Await it for the result."
+              },
+              {
+                "href": "#result-stream",
+                "name": "ResultStream",
+                "kind": "struct",
+                "text": "A background call that sends results back in batches."
+              },
+              {
+                "href": "#spawn",
+                "name": "spawn",
+                "kind": "function",
+                "text": "Starts a worker that keeps its state between calls."
+              },
+              {
+                "href": "#client",
+                "name": "Client",
+                "kind": "generated type",
+                "text": "What you call a stateful worker’s methods on."
+              }
+            ]
+          },
+          {
+            "title": "Control it from the page",
+            "side": "page",
+            "cards": [
+              {
+                "href": "#pool-init",
+                "name": "Pool::new",
+                "kind": "function",
+                "text": "Starts a set of threads for heavy or parallel work."
+              },
+              {
+                "href": "#pool",
+                "name": "Pool",
+                "kind": "struct",
+                "text": "Running threads you can place work on."
+              },
+              {
+                "href": "#cancellation-handle",
+                "name": "CancellationHandle",
+                "kind": "struct",
+                "text": "Lets a Cancel button stop one call."
+              },
+              {
+                "href": "#close",
+                "name": "Close",
+                "kind": "struct",
+                "text": "Shuts a pool or a stateful worker down gracefully."
+              },
+              {
+                "href": "#capabilities",
+                "name": "capabilities",
+                "kind": "function",
+                "text": "Checks what the current browser supports."
+              }
+            ]
+          },
+          {
+            "title": "Receive in worker code",
+            "side": "worker",
+            "cards": [
+              {
+                "href": "#task-context",
+                "name": "TaskContext",
+                "kind": "struct",
+                "text": "Progress, cancellation and pool access for async code."
+              },
+              {
+                "href": "#compute-context",
+                "name": "ComputeContext",
+                "kind": "struct",
+                "text": "The same tools for heavy synchronous code."
+              },
+              {
+                "href": "#stream-sender",
+                "name": "StreamSender",
+                "kind": "struct",
+                "text": "Sends a stream’s results back to the page."
+              }
+            ]
+          },
+          {
+            "title": "Use on both sides",
+            "side": "both",
+            "cards": [
+              {
+                "href": "#task-result",
+                "name": "TaskResult",
+                "kind": "type alias",
+                "text": "What every task returns: a value or an error."
+              },
+              {
+                "href": "#job-error",
+                "name": "JobError",
+                "kind": "enum",
+                "text": "Tells you whether your code or Fusor failed."
+              },
+              {
+                "href": "#worker-error",
+                "name": "WorkerError",
+                "kind": "enum",
+                "text": "Every failure that comes from Fusor."
+              },
+              {
+                "href": "#shared",
+                "name": "Shared",
+                "kind": "struct",
+                "text": "A small handle to a large value kept in a pool."
+              },
+              {
+                "href": "#message",
+                "name": "Message",
+                "kind": "trait",
+                "text": "What a value needs in order to cross between threads."
+              }
+            ]
+          }
+        ],
+        "code": "",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers",
+            "label": "New to workers? Start with the overview"
+          },
+          {
+            "href": "/docs/workers/tasks",
+            "label": "Write your first task"
+          }
+        ]
+      },
+      {
+        "id": "glossary",
+        "title": "Words you’ll see",
+        "body": "These words come up throughout the entries. The guides explain each one in more depth.",
+        "terms": [
+          {
+            "term": "Page code",
+            "text": "Code that runs on the browser’s main thread: your components, templates and event handlers. It’s the only code that can touch the page’s DOM."
+          },
+          {
+            "term": "Worker",
+            "text": "A separate browser thread that runs your Rust, compiled to WebAssembly. It can’t touch the page, so it sends its results back as messages."
+          },
+          {
+            "term": "Owner",
+            "text": "The `OwnerHandle` that Fusor gives each component to track its lifetime. Work you start is tied to an owner, and it’s cancelled when that component goes away."
+          },
+          {
+            "term": "Lazy",
+            "text": "Creating a job, stream or spawn doesn’t start anything. It starts the first time you await it, and until then you can still configure it."
+          },
+          {
+            "term": "Poll",
+            "text": "What `.await` does behind the scenes. When an entry says “the first poll”, read it as “the first time you await it”."
+          },
+          {
+            "term": "Message",
+            "text": "A value that can be copied to another thread: owned data such as numbers, `String`, `Vec<T>` or your own Serde types. See `Message`."
+          },
+          {
+            "term": "Progress update",
+            "text": "A small value that worker code reports while it runs, such as a count or a percentage. If updates arrive faster than the page can use them, only the newest is kept."
+          },
+          {
+            "term": "Pool",
+            "text": "A group of threads that share memory. One coordinator thread runs async code, and the compute threads run heavy synchronous work."
+          },
+          {
+            "term": "Placement",
+            "text": "Where an operation runs. By default that’s its owner’s own worker. You can choose a pool instead with `.on(&pool)`."
+          },
+          {
+            "term": "Cancellation",
+            "text": "A request to stop waiting. Your `.await` finishes with `Cancelled` straight away, but the worker stops only when its code checks, and nothing it has already done is undone."
+          }
+        ],
+        "code": "",
+        "language": "Rust",
+        "note": ""
+      },
+      {
+        "id": "reading",
+        "title": "Reading the signatures",
+        "body": "Each entry begins with an example. The exact Rust signature for a method is one click away, under “Signature”. If Rust syntax is new to you, here’s what the common pieces mean.",
+        "terms": [
+          {
+            "term": "`self`",
+            "text": "The method takes the value and hands back a configured one, so you can chain calls: `job.cancel_on(&token).on_progress(show)`."
+          },
+          {
+            "term": "`&self`",
+            "text": "The method only borrows the value, so you can keep using it afterwards."
+          },
+          {
+            "term": "`&mut self`",
+            "text": "The method needs the value to itself for a moment, as `stream.next()` does."
+          },
+          {
+            "term": "`async fn … -> T`",
+            "text": "Returns a future. Nothing happens until you `.await` it, and awaiting gives you a `T`."
+          },
+          {
+            "term": "`Result<T, E>`",
+            "text": "Either `Ok(value)` or `Err(error)`. In a function that returns a `Result`, `?` passes an error straight back to the caller."
+          },
+          {
+            "term": "`impl FnMut(P) + 'static`",
+            "text": "Any closure that takes a `P`. `'static` means it can’t borrow local variables, so use a `move` closure with owned or cloned values."
+          },
+          {
+            "term": "`Send + 'static`",
+            "text": "Safe to move to another thread, and holding no borrowed references."
+          },
+          {
+            "term": "`Arc<T>`",
+            "text": "A shared, read-only pointer to a `T`. Cloning it doesn’t copy the `T`."
+          }
+        ],
+        "code": "",
+        "language": "Rust",
+        "note": "Worker types come from `fusor_worker`. `OwnerHandle` is `fusor::OwnerHandle`, `CancellationToken` is `fusor_async::CancellationToken`, and `Arc` is `std::sync::Arc`. Declarations leave out bodies and private fields: they’re for looking things up, not for copying into a file."
+      },
+      {
+        "id": "job",
+        "title": "Job",
+        "body": "A `Job` is one background call that hasn’t run yet. When you await it, Fusor sends the call to a worker and gives you the result.\n\nBefore you await it, you can ask for progress updates, connect a way to cancel, or choose a pool.",
+        "api": {
+          "kind": "struct",
+          "side": "page",
+          "from": "Call a task’s generated `run` function, such as `sum::run(&owner, 100)`. Methods on a service `Client` return jobs too.",
+          "params": [
+            {
+              "term": "`T`",
+              "text": "What you get when the job succeeds: the task’s `Ok` value."
+            },
+            {
+              "term": "`E`",
+              "text": "The task’s own error type, or `NoError` if it has none."
+            },
+            {
+              "term": "`P`",
+              "text": "The type of progress update, or `()` if the task doesn’t report progress."
+            },
+            {
+              "term": "`M`",
+              "text": "`Unbound` while you can still choose a pool, and `Bound` after that. See Bound and Unbound."
+            }
+          ],
+          "groups": [
+            {
+              "title": "Configure it before awaiting",
+              "members": [
+                {
+                  "name": ".on_progress(callback)",
+                  "returns": "Job",
+                  "text": "Runs `callback` on the page with each progress update. Show the latest value rather than counting calls, because an update can be skipped when a newer one arrives.",
+                  "details": "A second call replaces the first callback. The closure runs on the page, so it can capture signals, but it can’t borrow local variables.",
+                  "signature": "pub fn on_progress(self, callback: impl FnMut(P) + 'static) -> Self"
+                },
+                {
+                  "name": ".cancel_on(&token)",
+                  "returns": "Job",
+                  "text": "Cancels the job when `token` is cancelled. Your `.await` then gives you `WorkerError::Cancelled`.",
+                  "details": "Each call adds another way to cancel the job. It never replaces the owner or a token you added earlier.",
+                  "signature": "pub fn cancel_on(self, token: &CancellationToken) -> Self"
+                },
+                {
+                  "name": ".scope(&owner)",
+                  "returns": "Job",
+                  "text": "Also cancels the job when a second owner goes away, such as a dialog that started it. Your `.await` then gives you `WorkerError::OwnerDisposed`.",
+                  "details": "The owner you passed to `run` still applies. Scopes add up, like tokens do.",
+                  "signature": "pub fn scope(self, owner: &OwnerHandle) -> Self"
+                },
+                {
+                  "name": ".on(&pool)",
+                  "returns": "Job<…, Bound>",
+                  "text": "Runs the job on `pool` instead of on the owner’s own worker. You can choose a pool only once.",
+                  "details": "It’s available only while the job is `Unbound`, which is what `run` returns. It also ties the job to the pool owner’s lifetime.",
+                  "signature": "impl<T: Message, E: Message, P: Message> Job<T, E, P, Unbound> {\n    pub fn on(self, pool: &Pool) -> Job<T, E, P, Bound>;\n}"
+                }
+              ]
+            },
+            {
+              "title": "Cancel it later",
+              "members": [
+                {
+                  "name": ".cancellation_handle()",
+                  "returns": "CancellationHandle",
+                  "text": "Gives you a handle your UI can keep, for a Cancel button, say. Getting one doesn’t start the job.",
+                  "details": "It only borrows the job, so you can take a handle before or after you start awaiting.",
+                  "signature": "pub fn cancellation_handle(&self) -> CancellationHandle"
+                }
+              ]
+            },
+            {
+              "title": "Run it",
+              "members": [
+                {
+                  "name": ".await",
+                  "returns": "TaskResult<T, E>",
+                  "text": "Starts the job and waits for the result. You get `Ok(value)`, or an error that says whether your code or Fusor failed.",
+                  "details": "A job runs once. Dropping it before you await it runs nothing, and dropping it while it runs asks the worker to cancel. Once a result has arrived, a later cancel can’t replace it.\n\nA `Job` isn’t `Clone` or `Send`. Changing its settings after it has started fails with `InvalidConfiguration`.",
+                  "signature": "impl<T: Message, E: Message, P: Message, M> Future for Job<T, E, P, M> {\n    type Output = TaskResult<T, E>;\n}"
+                }
+              ]
+            }
+          ],
+          "declaration": "pub struct Job<T, E = NoError, P = (), M = Bound> { /* private fields */ }\n\nimpl<T: Message, E: Message, P: Message, M> Job<T, E, P, M> {\n    pub fn on_progress(self, callback: impl FnMut(P) + 'static) -> Self;\n    pub fn cancel_on(self, token: &CancellationToken) -> Self;\n    pub fn scope(self, owner: &OwnerHandle) -> Self;\n    pub fn cancellation_handle(&self) -> CancellationHandle;\n}\n\nimpl<T: Message, E: Message, P: Message> Job<T, E, P, Unbound> {\n    pub fn on(self, pool: &Pool) -> Job<T, E, P, Bound>;\n}\n\nimpl<T: Message, E: Message, P: Message, M> Future for Job<T, E, P, M> {\n    type Output = TaskResult<T, E>;\n}"
+        },
+        "callouts": [
+          {
+            "kind": "tip",
+            "body": "Nothing runs until you await. A job that you create and then drop never reaches a worker."
+          },
+          {
+            "kind": "warning",
+            "body": "Cancelling stops you waiting, not the work itself. The worker stops only when its code checks for cancellation, and anything it has already changed stays changed."
+          }
+        ],
+        "code": "// `sum` is a task that reports how many values it has added so far (a u32).\nlet total = sum::run(&owner, 100)                // creates the job; nothing runs yet\n    .on_progress(move |done| progress.set(done)) // configure it…\n    .cancel_on(&token)\n    .await?;                                     // …then await: it runs and gives you a u64",
+        "language": "Rust · page code",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/tasks#run",
+            "label": "When jobs start and where they run"
+          },
+          {
+            "href": "/docs/workers/lifecycle#cancellation",
+            "label": "Cancelling a job"
+          }
+        ]
+      },
+      {
+        "id": "placement",
+        "title": "Bound and Unbound",
+        "body": "`Job`, `ResultStream` and `Spawn` carry a marker type that answers one question: can you still choose a pool for this operation? You’ll rarely write these names yourself, but you’ll see them in signatures and compiler errors.",
+        "terms": [
+          {
+            "term": "`Unbound`",
+            "text": "Yes. `.on(&pool)` is available, and it gives you a `Bound` value. If you never choose, the work runs on the owner’s own worker. The exception is a task declared with `pool`, which fails with `PoolRequired` instead."
+          },
+          {
+            "term": "`Bound`",
+            "text": "No: placement is settled, so there’s no `.on`. Service method jobs are `Bound` because the service’s place was chosen when it was spawned, and that place might be a dedicated worker rather than a pool."
+          }
+        ],
+        "code": "Job<T, E, P, Unbound> // from name::run: a pool can still be chosen\nJob<T, E, P, Bound>   // after .on(&pool), or from a service client method\nJob<T>                // shorthand for Job<T, NoError, (), Bound>",
+        "language": "Rust · types",
+        "note": "The defaults differ: `Job` defaults to `Bound`, while `ResultStream` and `Spawn` default to `Unbound`. The marker doesn’t say whether an operation is running or finished.",
+        "links": [
+          {
+            "href": "/docs/workers/pools#placement",
+            "label": "Choose where each operation runs"
+          }
+        ]
+      },
+      {
+        "id": "task-context",
+        "title": "TaskContext",
+        "body": "`TaskContext` is what Fusor gives async worker code while it runs. Use it to report progress, notice cancellation, move heavy work onto a pool’s compute threads, and reach shared data.",
+        "api": {
+          "kind": "struct",
+          "side": "worker",
+          "from": "Add it as the last parameter of an async task, or of a service constructor or method (async or not). In a stream task it goes just before the `StreamSender`. Fusor fills it in, so callers never pass it.",
+          "params": [
+            {
+              "term": "`P`",
+              "text": "The type of progress update this code reports. It defaults to `()`, which means no progress."
+            }
+          ],
+          "groups": [
+            {
+              "title": "Report progress",
+              "members": [
+                {
+                  "name": ".report(update)",
+                  "returns": "()",
+                  "text": "Sends `update` to the page’s `on_progress` callback. It returns straight away and can’t fail, so there’s no `?` and no `.await`.",
+                  "details": "If an older update hasn’t been delivered yet, the new one replaces it. Updates sent after cancellation are dropped. If an update can’t be encoded, the operation reports that error when it finishes.",
+                  "signature": "pub fn report(&self, update: P)"
+                }
+              ]
+            },
+            {
+              "title": "Notice cancellation",
+              "members": [
+                {
+                  "name": ".check_cancelled()",
+                  "returns": "Result<(), WorkerError>",
+                  "text": "Returns `Err(WorkerError::Cancelled)` once the caller has cancelled. Call it between chunks of work, and pass the error on with `?`.",
+                  "details": "It only checks: stopping is up to your code. An ordinary worker receives the cancel message only when your code gives control back to it, so the check can keep returning `Ok` for a while after the caller has cancelled.",
+                  "signature": "pub fn check_cancelled(&self) -> Result<(), WorkerError>"
+                },
+                {
+                  "name": ".cancellation_token()",
+                  "returns": "CancellationToken",
+                  "text": "A token to pass to I/O that understands cancellation, such as `fusor_async::fetch::get_text`, so the request stops when this operation is cancelled.",
+                  "details": "It’s for listening only and can’t cancel anything itself. To cancel from the page, use a `CancellationHandle` or the token you gave to `cancel_on`. Only `TaskContext` has this method.",
+                  "signature": "pub fn cancellation_token(&self) -> CancellationToken"
+                }
+              ]
+            },
+            {
+              "title": "Use a pool’s compute threads",
+              "members": [
+                {
+                  "name": ".compute(work).await",
+                  "returns": "Result<R, WorkerError>",
+                  "text": "Runs the closure `work` on one of the pool’s compute threads and gives you what it returns. Use it for heavy loops, so the async code around them stays responsive.",
+                  "details": "It needs a pool, and fails with `PoolRequired` without one. The closure must own what it uses (a `move` closure), so it can’t borrow `self`, the `TaskContext`, or page-only values such as signals. It receives a `ComputeContext` for progress and cancellation.\n\nWhen the closure returns a `Result` of its own, you get two layers of `Result`, and `.await??` unwraps both. It can also fail with `Cancelled`, `QueueFull` or `Terminated`.",
+                  "signature": "pub async fn compute<R, F>(&self, work: F) -> Result<R, WorkerError>\nwhere\n    F: FnOnce(ComputeContext<P>) -> R + Send + 'static,\n    R: Send + 'static"
+                }
+              ]
+            },
+            {
+              "title": "Shared data (pools only)",
+              "members": [
+                {
+                  "name": ".share(value)",
+                  "returns": "Result<Shared<T>, WorkerError>",
+                  "text": "Stores `value` inside the pool and returns a small `Shared<T>` handle that you can send back to the page.",
+                  "details": "`T` must be `Send + Sync + 'static`. It doesn’t need Serde, because the value never leaves the pool. Outside a pool this fails with `PoolRequired`.",
+                  "signature": "pub fn share<T: Send + Sync + 'static>(&self, value: T) -> Result<Shared<T>, WorkerError>"
+                },
+                {
+                  "name": ".resolve(&handle)",
+                  "returns": "Result<Arc<T>, WorkerError>",
+                  "text": "Turns a handle back into the data, as a read-only `Arc<T>`.",
+                  "details": "It fails if the handle belongs to another pool, has expired, or holds a different type. See `WorkerError`.",
+                  "signature": "pub fn resolve<T: Send + Sync + 'static>(&self, value: &Shared<T>) -> Result<Arc<T>, WorkerError>"
+                }
+              ]
+            }
+          ],
+          "declaration": "pub struct TaskContext<P = ()> { /* private fields */ }\n\nimpl<P: Message> TaskContext<P> {\n    pub fn report(&self, update: P);\n    pub fn check_cancelled(&self) -> Result<(), WorkerError>;\n    pub fn cancellation_token(&self) -> CancellationToken;\n    pub async fn compute<R, F>(&self, work: F) -> Result<R, WorkerError>\n    where\n        F: FnOnce(ComputeContext<P>) -> R + Send + 'static,\n        R: Send + 'static;\n    pub fn share<T: Send + Sync + 'static>(&self, value: T) -> Result<Shared<T>, WorkerError>;\n    pub fn resolve<T: Send + Sync + 'static>(&self, value: &Shared<T>) -> Result<Arc<T>, WorkerError>;\n}"
+        },
+        "callouts": [
+          {
+            "kind": "note",
+            "body": "A `TaskContext` stays on the thread that runs your operation. You can’t clone it or move it into a closure. The `compute` closure gets its own `ComputeContext` instead."
+          }
+        ],
+        "code": "#[fusor_worker::task(pool)]\npub async fn summarize(values: Vec<u64>, ctx: TaskContext) -> TaskResult<u64> {\n    // A long loop would hold up the pool’s async thread, so hand it to a compute thread.\n    let total = ctx\n        .compute(move |cpu| -> Result<u64, WorkerError> {\n            let mut total = 0;\n            for value in values {\n                cpu.check_cancelled()?; // stop early if the caller cancelled\n                total += value;\n            }\n            Ok(total)\n        })\n        .await??; // outer ?: Fusor’s error, inner ?: the closure’s\n    Ok(total)\n}",
+        "language": "Rust · worker code",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/tasks#contexts",
+            "label": "Where contexts are declared"
+          },
+          {
+            "href": "/docs/workers/pools#compute",
+            "label": "Move CPU work to a compute thread"
+          }
+        ]
+      },
+      {
+        "id": "compute-context",
+        "title": "ComputeContext",
+        "body": "`ComputeContext` is the context for heavy synchronous code. It has the same progress, cancellation and shared-data tools as `TaskContext`, and you can clone it and hand the copies to other threads.",
+        "api": {
+          "kind": "struct",
+          "side": "worker",
+          "from": "Add it as the last parameter of a synchronous task, or take it as the argument of the closure you pass to `TaskContext::compute`.",
+          "params": [
+            {
+              "term": "`P`",
+              "text": "The type of progress update this code reports. It defaults to `()`."
+            }
+          ],
+          "groups": [
+            {
+              "title": "Methods",
+              "members": [
+                {
+                  "name": ".report(update)",
+                  "returns": "()",
+                  "text": "Sends a progress update to the page, just as on `TaskContext`.",
+                  "signature": "pub fn report(&self, update: P)"
+                },
+                {
+                  "name": ".check_cancelled()",
+                  "returns": "Result<(), WorkerError>",
+                  "text": "Returns `Err(WorkerError::Cancelled)` once the caller has cancelled.",
+                  "details": "On a pool’s compute threads, cancellation shows up straight away through a flag shared with the pool. There, checking between chunks really does stop the work early.",
+                  "signature": "pub fn check_cancelled(&self) -> Result<(), WorkerError>"
+                },
+                {
+                  "name": ".share(value)",
+                  "returns": "Result<Shared<T>, WorkerError>",
+                  "text": "Stores a value in the pool and returns its handle. Pools only.",
+                  "signature": "pub fn share<T: Send + Sync + 'static>(&self, value: T) -> Result<Shared<T>, WorkerError>"
+                },
+                {
+                  "name": ".resolve(&handle)",
+                  "returns": "Result<Arc<T>, WorkerError>",
+                  "text": "Reads a shared value. Pools only.",
+                  "signature": "pub fn resolve<T: Send + Sync + 'static>(&self, value: &Shared<T>) -> Result<Arc<T>, WorkerError>"
+                },
+                {
+                  "name": ".clone()",
+                  "returns": "ComputeContext<P>",
+                  "text": "Another context for the same operation, sharing its progress and cancellation. Move it into threads that do part of the work.",
+                  "signature": "impl<P: Message> Clone for ComputeContext<P>"
+                }
+              ]
+            }
+          ],
+          "declaration": "pub struct ComputeContext<P = ()> { /* private fields */ }\n\nimpl<P: Message> Clone for ComputeContext<P> { /* … */ }\n\nimpl<P: Message> ComputeContext<P> {\n    pub fn report(&self, update: P);\n    pub fn check_cancelled(&self) -> Result<(), WorkerError>;\n    pub fn share<T: Send + Sync + 'static>(&self, value: T) -> Result<Shared<T>, WorkerError>;\n    pub fn resolve<T: Send + Sync + 'static>(&self, value: &Shared<T>) -> Result<Arc<T>, WorkerError>;\n}"
+        },
+        "code": "#[fusor_worker::task]\npub fn sum(count: u32, ctx: ComputeContext<u32>) -> TaskResult<u64> {\n    let mut total = 0;\n    for value in 0..count {\n        ctx.check_cancelled()?; // stop early if the caller cancelled\n        total += u64::from(value);\n        ctx.report(value + 1);  // tell the page how far we’ve got\n    }\n    Ok(total)\n}",
+        "language": "Rust · worker code",
+        "note": "`ComputeContext` has no `cancellation_token()` and no `compute()`. A synchronous service method gets a `TaskContext`, not a `ComputeContext`.",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#cooperation",
+            "label": "Letting work notice cancellation"
+          }
+        ]
+      },
+      {
+        "id": "cancellation-handle",
+        "title": "CancellationHandle",
+        "body": "A `CancellationHandle` lets page code cancel one operation later, from a Cancel button for example. It’s small, you can clone it, and it doesn’t keep the operation alive.",
+        "api": {
+          "kind": "struct",
+          "side": "page",
+          "from": "Call `.cancellation_handle()` on a `Job`, `ResultStream` or `Spawn`. On a `PoolInit`, the handle cancels pool startup only.",
+          "groups": [
+            {
+              "title": "Methods",
+              "members": [
+                {
+                  "name": ".cancel()",
+                  "returns": "()",
+                  "text": "Cancels the operation. It returns straight away, and the caller’s `.await` finishes with `WorkerError::Cancelled`.",
+                  "details": "It asks the worker to stop, but doesn’t wait for it to do so. It works before the job has started, and calling it again is harmless.",
+                  "signature": "pub fn cancel(&self)"
+                },
+                {
+                  "name": ".clone()",
+                  "returns": "CancellationHandle",
+                  "text": "Another handle for the same operation.",
+                  "signature": "impl Clone for CancellationHandle"
+                }
+              ]
+            }
+          ],
+          "declaration": "pub struct CancellationHandle(/* private field */);\n\nimpl Clone for CancellationHandle { /* … */ }\n\nimpl CancellationHandle {\n    pub fn cancel(&self);\n}"
+        },
+        "callouts": [
+          {
+            "kind": "tip",
+            "body": "Dropping a handle cancels nothing, and holding one doesn’t keep the job alive. Once the job is gone, `cancel()` does nothing."
+          }
+        ],
+        "code": "let job = sum::run(&owner, 100);\n// Keep a handle where the Cancel button can reach it,\n// for example in a Signal<Option<CancellationHandle>>.\ncancel.set(Some(job.cancellation_handle()));\nlet result = job.await; // Err(Cancelled) if the button called cancel()",
+        "language": "Rust · page code",
+        "note": "Handles belong to the page: they aren’t `Send`.",
+        "links": [
+          {
+            "href": "/docs/workers/tasks#progress",
+            "label": "A cancellation handle in a full example"
+          }
+        ]
+      },
+      {
+        "id": "spawn",
+        "title": "spawn",
+        "body": "`spawn` starts a stateful worker: an instance of your own type that lives on a worker thread and keeps its state between calls.\n\nIt returns a `Spawn`. Await that to run your constructor and get a `Client`, which you call methods on.",
+        "api": {
+          "kind": "function",
+          "side": "page",
+          "from": "`fusor_worker::spawn::<Counter>(&owner, input)`, where `Counter` is your type, its `impl` block is annotated with `#[fusor_worker::worker]`, and `input` is what its `new` constructor takes.",
+          "params": [
+            {
+              "term": "`W`",
+              "text": "Your annotated type, such as `Counter`. Fusor works out the constructor’s input type (`W::Input`), error type (`W::InitError`) and progress type (`W::InitProgress`) from it."
+            },
+            {
+              "term": "`M`",
+              "text": "`Unbound` until you choose a pool with `.on(&pool)`, as on `Job`."
+            }
+          ],
+          "groups": [
+            {
+              "title": "Start",
+              "members": [
+                {
+                  "name": "spawn::<W>(&owner, input)",
+                  "returns": "Spawn<W>",
+                  "text": "Prepares a new instance, owned by `owner`. Nothing starts until you await.",
+                  "signature": "pub fn spawn<W: Worker>(owner: &OwnerHandle, input: W::Input) -> Spawn<W>"
+                }
+              ]
+            },
+            {
+              "title": "Configure startup before awaiting",
+              "members": [
+                {
+                  "name": ".on(&pool)",
+                  "returns": "Spawn<W, Bound>",
+                  "text": "Runs the instance on `pool` instead of starting a worker for it. You must choose a pool when the `impl` is annotated `#[worker(pool)]`.",
+                  "signature": "impl<W: Worker> Spawn<W, Unbound> {\n    pub fn on(self, pool: &Pool) -> Spawn<W, Bound>;\n}"
+                },
+                {
+                  "name": ".on_progress(callback)",
+                  "returns": "Spawn",
+                  "text": "Receives progress updates from your constructor, if it reports any.",
+                  "signature": "pub fn on_progress(self, callback: impl FnMut(W::InitProgress) + 'static) -> Self"
+                },
+                {
+                  "name": ".cancel_on(&token)",
+                  "returns": "Spawn",
+                  "text": "Cancels startup when `token` is cancelled.",
+                  "details": "This setting, like `scope` and `cancellation_handle`, affects startup only. Once running, the instance belongs to the owner you passed to `spawn`. To make individual method calls cancellable, configure the jobs they return.",
+                  "signature": "pub fn cancel_on(self, token: &CancellationToken) -> Self"
+                },
+                {
+                  "name": ".scope(&owner)",
+                  "returns": "Spawn",
+                  "text": "Cancels startup when a second owner goes away.",
+                  "signature": "pub fn scope(self, owner: &OwnerHandle) -> Self"
+                },
+                {
+                  "name": ".cancellation_handle()",
+                  "returns": "CancellationHandle",
+                  "text": "A handle that cancels startup.",
+                  "signature": "pub fn cancellation_handle(&self) -> CancellationHandle"
+                }
+              ]
+            },
+            {
+              "title": "Run",
+              "members": [
+                {
+                  "name": ".await",
+                  "returns": "TaskResult<W::Client, W::InitError>",
+                  "text": "Starts a worker (or uses the pool you chose), runs your `new`, and gives you the client.",
+                  "details": "Startup may have to wait for the worker to load, or for room in the pool, before your constructor runs."
+                }
+              ]
+            }
+          ],
+          "declaration": "pub fn spawn<W: Worker>(owner: &OwnerHandle, input: W::Input) -> Spawn<W>;\n\npub struct Spawn<W: Worker, M = Unbound> { /* private fields */ }\n\nimpl<W: Worker, M> Spawn<W, M> {\n    pub fn on_progress(self, callback: impl FnMut(W::InitProgress) + 'static) -> Self;\n    pub fn cancel_on(self, token: &CancellationToken) -> Self;\n    pub fn scope(self, owner: &OwnerHandle) -> Self;\n    pub fn cancellation_handle(&self) -> CancellationHandle;\n}\n\nimpl<W: Worker> Spawn<W, Unbound> {\n    pub fn on(self, pool: &Pool) -> Spawn<W, Bound>;\n}\n\n// Awaiting Spawn<W, M> gives TaskResult<W::Client, W::InitError>.\n// Generated by the annotation, never implemented by hand:\n//   W::Input, W::InitError, W::InitProgress: Message\n//   W::Client: Clone + 'static"
+        },
+        "callouts": [
+          {
+            "kind": "note",
+            "body": "Every `spawn` creates a new, independent instance. To share one instance, clone its client."
+          }
+        ],
+        "code": "let counter = fusor_worker::spawn::<Counter>(&owner, 0).await?; // runs Counter::new(0) on a worker\nlet value = counter.add(3).await?;                              // runs add(3) there and gives you 3\ncounter.close().await?;                                         // shuts the worker down",
+        "language": "Rust · page code",
+        "note": "`Worker` is the trait that the annotation implements for your type. You never implement it yourself. You only name it to write out the client type: `<Counter as fusor_worker::Worker>::Client`.",
+        "links": [
+          {
+            "href": "/docs/workers/services#spawn",
+            "label": "Spawn a service and get its client"
+          },
+          {
+            "href": "/docs/workers/lifecycle#ownership",
+            "label": "Who owns a running service"
+          }
+        ]
+      },
+      {
+        "id": "client",
+        "title": "Client",
+        "body": "The client is what you get when you await `spawn`. It has a method for each public method you wrote, and every call runs on the worker against the same retained state.",
+        "api": {
+          "kind": "generated type",
+          "side": "page",
+          "from": "Awaiting a `Spawn`. Fusor generates the type, so there’s nothing to import. To write it out, use `<Counter as fusor_worker::Worker>::Client`.",
+          "groups": [
+            {
+              "title": "Your methods",
+              "members": [
+                {
+                  "name": ".your_method(input)",
+                  "returns": "Job<T, E, P, Bound>",
+                  "text": "Has the same name and input as the method you wrote. It returns a job, so you can add progress or cancellation to each call before you await it.",
+                  "details": "Your method takes `&mut self`, but the client’s takes `&self`, so any clone can call it. A `TaskContext` parameter is left out, because Fusor supplies it. `T` and `E` come from your `TaskResult<T, E>`, and `P` from your `TaskContext<P>`.\n\nCalls to one instance run one at a time, in the order they arrive."
+                }
+              ]
+            },
+            {
+              "title": "Built in",
+              "members": [
+                {
+                  "name": ".close()",
+                  "returns": "Close",
+                  "text": "Stops accepting calls, lets the calls already accepted finish, then releases the instance.",
+                  "details": "`close` is reserved, so none of your own methods can use that name. Closing a service that runs on a pool leaves the pool running."
+                },
+                {
+                  "name": ".clone()",
+                  "returns": "Client",
+                  "text": "Another client for the same instance. It doesn’t copy the state."
+                }
+              ]
+            }
+          ],
+          "declaration": "// Schematic: the real type is generated from your impl block.\nimpl Clone for Client { /* … */ }\n\nimpl Client {\n    // One method for each public method you wrote, for example:\n    pub fn add(&self, amount: u64) -> Job<u64, NoError, (), Bound>;\n\n    pub fn close(&self) -> Close;\n}"
+        },
+        "callouts": [
+          {
+            "kind": "warning",
+            "body": "Dropping every client isn’t a reliable way to stop a service, because a pool can keep it alive. Call `close()`, or let the owner that spawned it go away."
+          }
+        ],
+        "code": "// You write, inside #[fusor_worker::worker] impl Counter:\npub fn add(&mut self, amount: u64) -> TaskResult<u64>\n\n// You call, on the client:\ncounter.add(3)  // Job<u64>: configure it if you like, then await it\ncounter.close() // Close: await it to shut the worker down\ncounter.clone() // another client for the same Counter",
+        "language": "Rust · what you write and what you call",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/services#methods",
+            "label": "Methods run one at a time"
+          },
+          {
+            "href": "/docs/workers/services#close",
+            "label": "Release the service"
+          }
+        ]
+      },
+      {
+        "id": "pool-init",
+        "title": "Pool::new",
+        "body": "`Pool::new` starts building a pool: a fixed set of threads that share memory, for heavy or parallel work. It returns a `PoolInit`. Set limits on it if you want to, then await it to get the running `Pool`.",
+        "api": {
+          "kind": "function",
+          "side": "page",
+          "from": "`Pool::new(&owner)`. Pools need a threaded build, and a page served with cross-origin isolation: see Building and hosting workers.",
+          "groups": [
+            {
+              "title": "Set limits before awaiting",
+              "members": [
+                {
+                  "name": ".max_threads(count)",
+                  "returns": "PoolInit",
+                  "text": "How many compute threads to start. The default is 4, or fewer on a device that reports fewer cores. It must be at least 1.",
+                  "signature": "pub fn max_threads(self, count: usize) -> Self"
+                },
+                {
+                  "name": ".max_async_jobs(count)",
+                  "returns": "PoolInit",
+                  "text": "How many operations may run at once on the coordinator thread. The default is 4, and it must be at least 1.",
+                  "details": "This counts every operation that runs on the coordinator: async tasks, stream producers, and service constructors and methods, even synchronous ones.",
+                  "signature": "pub fn max_async_jobs(self, count: usize) -> Self"
+                },
+                {
+                  "name": ".queue_capacity(count)",
+                  "returns": "PoolInit",
+                  "text": "How many operations may wait for a free slot before new ones fail with `QueueFull`. The default is 64, and `0` means nothing waits.",
+                  "details": "The same number separately limits how many `compute` calls may wait.",
+                  "signature": "pub fn queue_capacity(self, count: usize) -> Self"
+                }
+              ]
+            },
+            {
+              "title": "Cancel startup",
+              "members": [
+                {
+                  "name": ".cancel_on(&token)",
+                  "returns": "PoolInit",
+                  "text": "Stops startup when `token` is cancelled.",
+                  "details": "Neither this nor the handle affects a pool that has already started.",
+                  "signature": "pub fn cancel_on(self, token: &CancellationToken) -> Self"
+                },
+                {
+                  "name": ".cancellation_handle()",
+                  "returns": "CancellationHandle",
+                  "text": "A handle that stops startup.",
+                  "signature": "pub fn cancellation_handle(&self) -> CancellationHandle"
+                }
+              ]
+            },
+            {
+              "title": "Run",
+              "members": [
+                {
+                  "name": ".await",
+                  "returns": "Result<Pool, WorkerError>",
+                  "text": "Starts the coordinator and every compute thread, and finishes when all of them are ready.",
+                  "details": "It fails with `Unsupported` when the page can’t use shared memory. Check `capabilities()` first if you want to explain that to the user."
+                }
+              ]
+            }
+          ],
+          "declaration": "impl Pool {\n    pub fn new(owner: &OwnerHandle) -> PoolInit;\n}\n\npub struct PoolInit { /* private fields */ }\n\nimpl PoolInit {\n    pub fn max_threads(self, count: usize) -> Self;\n    pub fn max_async_jobs(self, count: usize) -> Self;\n    pub fn queue_capacity(self, count: usize) -> Self;\n    pub fn cancel_on(self, token: &CancellationToken) -> Self;\n    pub fn cancellation_handle(&self) -> CancellationHandle;\n}\n\n// Awaiting PoolInit gives Result<Pool, WorkerError>."
+        },
+        "callouts": [
+          {
+            "kind": "note",
+            "body": "A bad limit such as `max_threads(0)` doesn’t fail on the spot. It comes back as `InvalidConfiguration` when you await."
+          }
+        ],
+        "code": "let pool = Pool::new(&owner)\n    .max_threads(2) // two compute threads (the default is up to 4)\n    .await?;        // starts every thread, then gives you the Pool",
+        "language": "Rust · page code",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/pools#create",
+            "label": "Create and configure a pool"
+          },
+          {
+            "href": "/docs/workers/deployment#threads",
+            "label": "Prepare a threaded build"
+          }
+        ]
+      },
+      {
+        "id": "pool",
+        "title": "Pool",
+        "body": "A `Pool` is a running set of threads: one coordinator for async code, and several compute threads for heavy synchronous work, all sharing one memory. Put jobs, streams and services on it with `.on(&pool)`.",
+        "api": {
+          "kind": "struct",
+          "side": "page",
+          "from": "Awaiting `Pool::new(&owner)`.",
+          "groups": [
+            {
+              "title": "Methods",
+              "members": [
+                {
+                  "name": ".threads()",
+                  "returns": "usize",
+                  "text": "How many compute threads started, not counting the coordinator.",
+                  "signature": "pub fn threads(&self) -> usize"
+                },
+                {
+                  "name": ".close()",
+                  "returns": "Close",
+                  "text": "A graceful shutdown: refuse new work, let accepted work finish, then stop.",
+                  "signature": "pub fn close(&self) -> Close"
+                },
+                {
+                  "name": ".terminate()",
+                  "returns": "()",
+                  "text": "Stops the pool immediately. Work that’s still running fails, and the pool’s shared handles stop working.",
+                  "signature": "pub fn terminate(&self)"
+                }
+              ]
+            }
+          ],
+          "declaration": "pub struct Pool { /* private fields */ }\n\nimpl Pool {\n    pub fn threads(&self) -> usize;\n    pub fn close(&self) -> Close;\n    pub fn terminate(&self);\n}"
+        },
+        "callouts": [
+          {
+            "kind": "warning",
+            "body": "Keep the `Pool` value for as long as you use the pool. Dropping it, or its owner going away, stops the pool at once, just like `terminate()`."
+          }
+        ],
+        "code": "let total = summarize::run(&owner, values).on(&pool).await?; // runs in this pool\nlet threads = pool.threads();                                // for example, 2\npool.close().await?;                                         // let work finish, then stop",
+        "language": "Rust · page code",
+        "note": "You can’t clone a `Pool`: lend it with `&pool`. Work placed on a pool can’t outlive it.",
+        "links": [
+          {
+            "href": "/docs/workers/pools#budget",
+            "label": "Queues, limits, and pool lifetime"
+          }
+        ]
+      },
+      {
+        "id": "shared",
+        "title": "Shared",
+        "body": "`Shared<T>` is a small handle to a value kept inside a pool. Pass the handle to later calls, instead of sending a large value every time.",
+        "api": {
+          "kind": "struct",
+          "side": "both",
+          "from": "Call `ctx.share(value)` in pool code, and return the handle to the page. Read the value back in pool code with `ctx.resolve(&handle)`.",
+          "params": [
+            {
+              "term": "`T`",
+              "text": "The type of the stored value. It must be `Send + Sync + 'static`, and it doesn’t need Serde."
+            }
+          ],
+          "groups": [
+            {
+              "title": "On the page",
+              "members": [
+                {
+                  "name": ".clone()",
+                  "returns": "Shared<T>",
+                  "text": "Another handle to the same value. The data isn’t copied, and `T` doesn’t have to be `Clone`.",
+                  "details": "The value stays in the pool while any handle or resolved `Arc<T>` exists and the pool is still running.",
+                  "signature": "impl<T: Send + Sync + 'static> Clone for Shared<T>"
+                }
+              ]
+            },
+            {
+              "title": "In pool code",
+              "members": [
+                {
+                  "name": "ctx.share(value)",
+                  "returns": "Result<Shared<T>, WorkerError>",
+                  "text": "Stores a value and returns its handle."
+                },
+                {
+                  "name": "ctx.resolve(&handle)",
+                  "returns": "Result<Arc<T>, WorkerError>",
+                  "text": "Reads the value, as a read-only `Arc<T>`.",
+                  "details": "To change shared data, put a `Mutex` or an atomic inside `T`, and don’t hold a lock across an `.await`.\n\nA handle from another pool fails with `WrongPool`, an expired handle with `StaleShared`, and a handle of the wrong type with `SharedTypeMismatch`."
+                }
+              ]
+            }
+          ],
+          "declaration": "pub struct Shared<T: Send + Sync + 'static> { /* private fields */ }\n\n// Implements Clone (without needing T: Clone), Debug and Message.\nimpl<T: Send + Sync + 'static> Clone for Shared<T> { /* … */ }\n\n// Created and read through a context:\n//   ctx.share(value)     -> Result<Shared<T>, WorkerError>\n//   ctx.resolve(&handle) -> Result<Arc<T>, WorkerError>"
+        },
+        "callouts": [
+          {
+            "kind": "note",
+            "body": "The page can hold, clone, drop and pass on a handle, but it can’t read the data. Only pool code can do that."
+          },
+          {
+            "kind": "warning",
+            "body": "Pass a handle on its own: as a task argument, a result or a stream item. It can’t go inside a struct, tuple or `Vec` that you send, because it has no Serde implementation."
+          }
+        ],
+        "code": "let data = dataset::run(&owner, 100).on(&pool).await?;         // builds the data inside the pool\nlet a = summarize::run(&owner, data.clone()).on(&pool).await?; // sends only the handle\nlet b = summarize::run(&owner, data).on(&pool).await?;         // reuses the same data",
+        "language": "Rust · page code",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/shared",
+            "label": "Shared data guide"
+          }
+        ]
+      },
+      {
+        "id": "result-stream",
+        "title": "ResultStream",
+        "body": "A `ResultStream` is a background call that sends back many results, a batch at a time, instead of one big reply at the end. Read it in a loop with `next().await`.",
+        "api": {
+          "kind": "struct",
+          "side": "page",
+          "from": "Call a stream task’s generated `stream` function, such as `batches::stream(&owner, 100)`.",
+          "params": [
+            {
+              "term": "`T`",
+              "text": "The type of each item. It’s often a `Vec` of rows, so that each item is a batch."
+            },
+            {
+              "term": "`E`",
+              "text": "The producer’s own error type, or `NoError`."
+            },
+            {
+              "term": "`P`",
+              "text": "The type of progress update, or `()`."
+            },
+            {
+              "term": "`M`",
+              "text": "`Unbound` until you choose a pool, as on `Job`."
+            }
+          ],
+          "groups": [
+            {
+              "title": "Read results",
+              "members": [
+                {
+                  "name": ".next().await",
+                  "returns": "Option<TaskResult<T, E>>",
+                  "text": "Gives you the next item: `Some(Ok(item))`, `Some(Err(error))`, or `None` when the stream has finished. The first call starts the producer.",
+                  "details": "When the producer finishes, you get every item it had already sent, then `None`. When it returns an error, you get the items it had sent, then the error once, then `None`. Cancellation, the owner going away, or a crash discards any pending items and gives you a single error.\n\nNo trait import is needed. The type also implements `futures_core::Stream`, if you prefer stream combinators.",
+                  "signature": "pub async fn next(&mut self) -> Option<TaskResult<T, E>>"
+                }
+              ]
+            },
+            {
+              "title": "Flow control before reading",
+              "members": [
+                {
+                  "name": ".buffer(batches)",
+                  "returns": "ResultStream",
+                  "text": "How many items may be waiting for you before the producer pauses. The default is 4, and it must be at least 1.",
+                  "signature": "pub fn buffer(self, batches: usize) -> Self"
+                },
+                {
+                  "name": ".max_batch_bytes(bytes)",
+                  "returns": "ResultStream",
+                  "text": "The largest size one item may have once encoded. The default is 1 MiB, and the maximum is 16 MiB.",
+                  "details": "An invalid value comes back as `InvalidConfiguration` from the first `next()`.",
+                  "signature": "pub fn max_batch_bytes(self, bytes: usize) -> Self"
+                }
+              ]
+            },
+            {
+              "title": "Configure before reading",
+              "members": [
+                {
+                  "name": ".on_progress(callback)",
+                  "returns": "ResultStream",
+                  "text": "Receives progress updates, as on `Job`.",
+                  "signature": "pub fn on_progress(self, callback: impl FnMut(P) + 'static) -> Self"
+                },
+                {
+                  "name": ".cancel_on(&token)",
+                  "returns": "ResultStream",
+                  "text": "Cancels the stream when `token` is cancelled.",
+                  "signature": "pub fn cancel_on(self, token: &CancellationToken) -> Self"
+                },
+                {
+                  "name": ".scope(&owner)",
+                  "returns": "ResultStream",
+                  "text": "Also cancels the stream when a second owner goes away.",
+                  "signature": "pub fn scope(self, owner: &OwnerHandle) -> Self"
+                },
+                {
+                  "name": ".on(&pool)",
+                  "returns": "ResultStream<…, Bound>",
+                  "text": "Runs the producer on `pool`. You must choose a pool for a task annotated `#[task(pool, stream)]`.",
+                  "signature": "impl<T: Message, E: Message, P: Message> ResultStream<T, E, P, Unbound> {\n    pub fn on(self, pool: &Pool) -> ResultStream<T, E, P, Bound>;\n}"
+                },
+                {
+                  "name": ".cancellation_handle()",
+                  "returns": "CancellationHandle",
+                  "text": "A handle your UI can keep, to cancel the stream later.",
+                  "signature": "pub fn cancellation_handle(&self) -> CancellationHandle"
+                }
+              ]
+            }
+          ],
+          "declaration": "pub struct ResultStream<T, E = NoError, P = (), M = Unbound> { /* private fields */ }\n\nimpl<T: Message, E: Message, P: Message, M> ResultStream<T, E, P, M> {\n    pub async fn next(&mut self) -> Option<TaskResult<T, E>>;\n    pub fn buffer(self, batches: usize) -> Self;\n    pub fn max_batch_bytes(self, bytes: usize) -> Self;\n    pub fn on_progress(self, callback: impl FnMut(P) + 'static) -> Self;\n    pub fn cancel_on(self, token: &CancellationToken) -> Self;\n    pub fn scope(self, owner: &OwnerHandle) -> Self;\n    pub fn cancellation_handle(&self) -> CancellationHandle;\n}\n\nimpl<T: Message, E: Message, P: Message> ResultStream<T, E, P, Unbound> {\n    pub fn on(self, pool: &Pool) -> ResultStream<T, E, P, Bound>;\n}\n\n// Also implements futures_core::Stream<Item = TaskResult<T, E>>."
+        },
+        "callouts": [
+          {
+            "kind": "tip",
+            "body": "Dropping the stream cancels it, and the producer’s next `send` fails, so it stops producing."
+          }
+        ],
+        "code": "let mut output = batches::stream(&owner, 100);\nwhile let Some(batch) = output.next().await { // None once the stream has finished\n    values.extend(batch?);                    // each item is Ok(batch) or an error\n}",
+        "language": "Rust · page code",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/streams",
+            "label": "Produce and consume result streams"
+          },
+          {
+            "href": "/docs/workers/streams#completion",
+            "label": "Completion, errors, and cancellation"
+          }
+        ]
+      },
+      {
+        "id": "stream-sender",
+        "title": "StreamSender",
+        "body": "`StreamSender` is how a stream task sends its results. Each `send` delivers one item to the page’s `ResultStream`.",
+        "api": {
+          "kind": "struct",
+          "side": "worker",
+          "from": "Add it as the last parameter of an async function annotated `#[fusor_worker::task(stream)]`. Fusor provides it: the page never passes it.",
+          "params": [
+            {
+              "term": "`T`",
+              "text": "The item type. It must be a `Message`."
+            }
+          ],
+          "groups": [
+            {
+              "title": "Methods",
+              "members": [
+                {
+                  "name": ".send(item).await",
+                  "returns": "Result<(), WorkerError>",
+                  "text": "Sends one item, waiting first if the page’s buffer is full. `Ok` means the item was accepted, not that the page has read it yet.",
+                  "details": "It fails with `Cancelled` when the page has cancelled or dropped the stream: pass that on with `?` to stop producing. It also fails when the item can’t be encoded, is too large, or holds an invalid shared handle.",
+                  "signature": "pub async fn send(&mut self, item: T) -> Result<(), WorkerError>"
+                }
+              ]
+            }
+          ],
+          "declaration": "pub struct StreamSender<T> { /* private fields */ }\n\nimpl<T: Message> StreamSender<T> {\n    pub async fn send(&mut self, item: T) -> Result<(), WorkerError>;\n}"
+        },
+        "callouts": [
+          {
+            "kind": "tip",
+            "body": "To send many small results efficiently, collect them into a `Vec` and send that as one item."
+          }
+        ],
+        "code": "#[fusor_worker::task(stream)]\npub async fn batches(count: u32, mut output: StreamSender<Vec<u32>>) -> TaskResult<()> {\n    let mut batch = Vec::with_capacity(32);\n    for value in 0..count {\n        batch.push(value);\n        if batch.len() == 32 {\n            output.send(std::mem::take(&mut batch)).await?; // waits if the page is behind\n        }\n    }\n    if !batch.is_empty() {\n        output.send(batch).await?;\n    }\n    Ok(())\n}",
+        "language": "Rust · worker code",
+        "note": "A stream task returns `TaskResult<()>`, because its results go through the sender rather than the return value. An optional `TaskContext` parameter goes just before the sender.",
+        "links": [
+          {
+            "href": "/docs/workers/streams#producer",
+            "label": "Define an async producer"
+          }
+        ]
+      },
+      {
+        "id": "close",
+        "title": "Close",
+        "body": "`Close` is a graceful shutdown for a pool or a stateful worker. When you await it, new calls are refused, calls already accepted are allowed to finish, and then it completes.",
+        "api": {
+          "kind": "struct",
+          "side": "page",
+          "from": "`pool.close()` or `client.close()`.",
+          "groups": [
+            {
+              "title": "Methods",
+              "members": [
+                {
+                  "name": ".timeout(duration)",
+                  "returns": "Close",
+                  "text": "How long to wait for accepted work to finish. The default is five seconds. Set it before you await.",
+                  "signature": "pub fn timeout(self, duration: std::time::Duration) -> Self"
+                },
+                {
+                  "name": ".await",
+                  "returns": "Result<(), WorkerError>",
+                  "text": "Finishes once accepted work is done, or with `CloseTimedOut` if the deadline passes first.",
+                  "details": "Calling close again joins the same shutdown, and dropping a started `Close` doesn’t reopen anything. If a service method on a pool is still running at the deadline, callers stop waiting, but the service’s state is kept until that method returns."
+                }
+              ]
+            }
+          ],
+          "declaration": "pub struct Close { /* private fields */ }\n\nimpl Close {\n    pub fn timeout(self, duration: std::time::Duration) -> Self;\n}\n\n// Awaiting Close gives Result<(), WorkerError>."
+        },
+        "callouts": [
+          {
+            "kind": "tip",
+            "body": "Closing a service that runs on a pool leaves the pool running. To stop a pool immediately, call `pool.terminate()`."
+          }
+        ],
+        "code": "pool.close()\n    .timeout(Duration::from_secs(10)) // wait up to 10 seconds (the default is 5)\n    .await?;",
+        "language": "Rust · page code",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#close",
+            "label": "Closing services and pools"
+          }
+        ]
+      },
+      {
+        "id": "task-result",
+        "title": "TaskResult",
+        "body": "`TaskResult<T, E>` is the return type of every task, service method and constructor. It’s also what you get when you await a job.\n\nIt’s an ordinary Rust `Result`: either your value, or a `JobError` that says whether your code or Fusor failed.",
+        "api": {
+          "kind": "type alias",
+          "side": "both",
+          "from": "You write it as the return type of your tasks and service methods.",
+          "params": [
+            {
+              "term": "`T`",
+              "text": "The value on success."
+            },
+            {
+              "term": "`E`",
+              "text": "Your own error type. Leave it out, as in `TaskResult<u64>`, when your code has no error of its own. It then defaults to `NoError`."
+            }
+          ],
+          "declaration": "pub type TaskResult<T, E = NoError> = Result<T, JobError<E>>;\n\n// An error that can never happen.\n// Implements Debug, Display, Error and Serde’s traits.\npub enum NoError {}"
+        },
+        "callouts": [
+          {
+            "kind": "note",
+            "body": "`NoError` is an enum with no values, so it can never happen. A `TaskResult<T>` can still fail with a `WorkerError`, for example when the job is cancelled."
+          }
+        ],
+        "code": "#[fusor_worker::task]\npub fn total(values: Vec<u64>) -> TaskResult<u64> {           // has no error of its own\n    Ok(values.into_iter().sum())\n}\n\n#[fusor_worker::task]\npub fn parse_count(text: String) -> TaskResult<u32, String> { // fails with a String\n    text.parse::<u32>()\n        .map_err(|error| JobError::Application(error.to_string()))\n}",
+        "language": "Rust · worker code",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#errors",
+            "label": "Application errors and runtime errors"
+          }
+        ]
+      },
+      {
+        "id": "job-error",
+        "title": "JobError",
+        "body": "`JobError` is the error side of a `TaskResult`. It tells you whose failure it was: your code’s, or Fusor’s.",
+        "api": {
+          "kind": "enum",
+          "side": "both",
+          "from": "The `Err` side of every `TaskResult`.",
+          "params": [
+            {
+              "term": "`E`",
+              "text": "Your task’s own error type, or `NoError`."
+            }
+          ],
+          "groups": [
+            {
+              "title": "Variants",
+              "members": [
+                {
+                  "name": "Application(E)",
+                  "text": "An error your own code returned, of your type `E`.",
+                  "details": "Create one explicitly, usually inside `map_err`: `JobError::Application(error)`. There’s no automatic conversion from `E`, because it would conflict with the one below."
+                },
+                {
+                  "name": "Worker(WorkerError)",
+                  "text": "A failure from Fusor: the job was cancelled, the worker crashed, a value was too large, and so on.",
+                  "details": "`?` turns a `WorkerError` into this variant for you."
+                }
+              ]
+            }
+          ],
+          "declaration": "#[non_exhaustive]\npub enum JobError<E> {\n    Application(E),\n    Worker(WorkerError),\n}\n\nimpl<E> From<WorkerError> for JobError<E> { /* … */ }"
+        },
+        "callouts": [
+          {
+            "kind": "warning",
+            "body": "`JobError` is `#[non_exhaustive]`, so a `match` on it needs a final `_` arm."
+          }
+        ],
+        "code": "match parse_count::run(&owner, text).await {\n    Ok(count) => show_count(count),\n    Err(JobError::Application(message)) => show_error(message),    // your task’s own error\n    Err(JobError::Worker(error)) => show_error(error.to_string()), // from Fusor\n    Err(_) => {}                                                   // required: more variants may come\n}",
+        "language": "Rust · page code",
+        "note": "`E` must be a `Message`, but it doesn’t have to implement `std::error::Error`: `String` works. `JobError<E>` implements `Display` when `E` does and `Error` when `E: Error + 'static`, and it always implements `Debug` and Serde’s traits.",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#errors",
+            "label": "Application errors and runtime errors"
+          }
+        ]
+      },
+      {
+        "id": "worker-error",
+        "title": "WorkerError",
+        "body": "`WorkerError` covers every failure that comes from Fusor rather than from your code. The groups below say what happened and what you can usually do about it.",
+        "api": {
+          "kind": "enum",
+          "side": "both",
+          "from": "Inside `JobError::Worker`, and directly from methods such as `check_cancelled`, `compute` and `send`.",
+          "groups": [
+            {
+              "title": "Cancelled or gone",
+              "members": [
+                {
+                  "name": "Cancelled",
+                  "text": "The caller cancelled, through a token, a `CancellationHandle`, or by dropping the job. There’s usually nothing to show the user.",
+                  "details": "The worker may still have been running when this was reported."
+                },
+                {
+                  "name": "OwnerDisposed",
+                  "text": "The owner, or an extra scope, went away: for example, because the component was removed."
+                }
+              ]
+            },
+            {
+              "title": "Shut down",
+              "members": [
+                {
+                  "name": "Closed",
+                  "text": "The pool or service was closed before this call was accepted."
+                },
+                {
+                  "name": "Terminated",
+                  "text": "The pool was terminated or dropped."
+                },
+                {
+                  "name": "CloseTimedOut",
+                  "text": "A graceful close reached its deadline while this call was still running."
+                }
+              ]
+            },
+            {
+              "title": "Setup and placement",
+              "members": [
+                {
+                  "name": "PoolRequired",
+                  "text": "This work needs a pool. Add `.on(&pool)`."
+                },
+                {
+                  "name": "Unsupported { capability }",
+                  "text": "The browser lacks something the operation needs, such as shared memory. `capability` says which.",
+                  "details": "For pools, check that the page is served over HTTPS (or from localhost) with the cross-origin isolation headers."
+                },
+                {
+                  "name": "IncompatibleArtifact",
+                  "text": "The worker files and the page come from different builds. Deploy one complete build."
+                }
+              ]
+            },
+            {
+              "title": "Shared data",
+              "members": [
+                {
+                  "name": "WrongPool",
+                  "text": "The handle belongs to a different pool."
+                },
+                {
+                  "name": "StaleShared",
+                  "text": "The handle no longer points at live data, for example because its pool was closed or restarted."
+                },
+                {
+                  "name": "SharedTypeMismatch",
+                  "text": "The handle holds a different type from the one the code expected."
+                }
+              ]
+            },
+            {
+              "title": "Limits and settings",
+              "members": [
+                {
+                  "name": "QueueFull { capacity }",
+                  "text": "Too many operations are already waiting. Try again later, or raise `queue_capacity`."
+                },
+                {
+                  "name": "PayloadTooLarge { limit, actual }",
+                  "text": "A value was bigger than a size limit. Both numbers are in bytes."
+                },
+                {
+                  "name": "InvalidConfiguration { message }",
+                  "text": "A builder setting was invalid, or was changed after the operation had started."
+                }
+              ]
+            },
+            {
+              "title": "Runtime failures",
+              "members": [
+                {
+                  "name": "Encode { message }",
+                  "text": "A value couldn’t be turned into a message."
+                },
+                {
+                  "name": "Decode { message }",
+                  "text": "A message couldn’t be turned back into a value."
+                },
+                {
+                  "name": "Load { message }",
+                  "text": "The worker’s files couldn’t be loaded. Check the browser’s network tab and your content security policy."
+                },
+                {
+                  "name": "Crashed { message }",
+                  "text": "Worker code panicked or trapped. Its state is gone, so create a new pool or service."
+                }
+              ]
+            }
+          ],
+          "declaration": "#[non_exhaustive]\npub enum WorkerError {\n    Cancelled,\n    OwnerDisposed,\n    Closed,\n    Terminated,\n    CloseTimedOut,\n    Unsupported { capability: Capability },\n    PoolRequired,\n    IncompatibleArtifact,\n    WrongPool,\n    StaleShared,\n    SharedTypeMismatch,\n    QueueFull { capacity: usize },\n    PayloadTooLarge { limit: usize, actual: usize },\n    InvalidConfiguration { message: String },\n    Encode { message: String },\n    Decode { message: String },\n    Load { message: String },\n    Crashed { message: String },\n}"
+        },
+        "callouts": [
+          {
+            "kind": "warning",
+            "body": "`WorkerError` is `#[non_exhaustive]`, so a `match` on it needs a final `_` arm."
+          },
+          {
+            "kind": "tip",
+            "body": "Fusor never retries a failed call for you, because it may already have changed something. Whether to retry is your decision."
+          }
+        ],
+        "code": "match summarize::run(&owner, values).on(&pool).await {\n    Ok(total) => show(total.to_string()),\n    Err(JobError::Worker(WorkerError::Cancelled)) => {} // the user cancelled: nothing to show\n    Err(JobError::Worker(WorkerError::QueueFull { .. })) => show(\"Busy, try again\".into()),\n    Err(error) => show(error.to_string()),\n}",
+        "language": "Rust · page code",
+        "note": "`WorkerError` implements `Clone`, `Debug`, `PartialEq`, `Eq`, `Display` and `Error`.",
+        "links": [
+          {
+            "href": "/docs/workers/lifecycle#runtime-errors",
+            "label": "What each WorkerError means"
+          },
+          {
+            "href": "/docs/workers/deployment#troubleshooting",
+            "label": "Diagnose startup failures"
+          }
+        ]
+      },
+      {
+        "id": "message",
+        "title": "Message",
+        "body": "`Message` is the rule for anything that travels between the page and a worker: arguments, results, errors, progress updates and stream items.\n\nYou never implement it yourself. Fusor implements it for every type that qualifies.",
+        "api": {
+          "kind": "trait",
+          "side": "both",
+          "from": "Automatic, for owned types that implement Serde’s `Serialize` and `Deserialize` and are `Send + 'static`.",
+          "declaration": "// Sealed: implemented by Fusor, never by hand.\npub trait Message: Send + 'static {}\n\nimpl<T: Serialize + DeserializeOwned + Send + 'static> Message for T {}\n// Shared<T> is also a Message, without Serde."
+        },
+        "callouts": [
+          {
+            "kind": "note",
+            "body": "Deriving the Serde traits needs `serde = { version = \"1\", features = [\"derive\"] }` in your `Cargo.toml`."
+          },
+          {
+            "kind": "warning",
+            "body": "`Shared<T>` is a `Message` without Serde, so it can’t be nested inside a type that you derive Serde for."
+          }
+        ],
+        "terms": [
+          {
+            "term": "Can send",
+            "text": "Owned data: numbers, `bool`, `String`, `Vec<T>`, `Option<T>`, your own structs and enums that derive `Serialize` and `Deserialize`, and `Shared<T>` handles."
+          },
+          {
+            "term": "Can’t send",
+            "text": "Borrowed data such as `&str`, plus signals, owners, DOM elements, callbacks and closures. Those belong to the page."
+          },
+          {
+            "term": "Size limit",
+            "text": "Each value, and each whole request or reply, can be at most 16 MiB once encoded."
+          }
+        ],
+        "code": "use serde::{Deserialize, Serialize};\n\n#[derive(Serialize, Deserialize)]\npub struct Report {   // a Message: owned data that Serde can encode\n    pub title: String,\n    pub rows: Vec<u32>,\n}",
+        "language": "Rust",
+        "note": "",
+        "links": [
+          {
+            "href": "/docs/workers/tasks#messages",
+            "label": "Use owned message types"
+          }
+        ]
+      },
+      {
+        "id": "capabilities",
+        "title": "capabilities",
+        "body": "`capabilities()` tells you what the current browser supports, so you can explain a missing feature before you try to start a pool.",
+        "api": {
+          "kind": "function",
+          "side": "page",
+          "from": "`fusor_worker::capabilities()`. It takes no arguments and returns straight away.",
+          "groups": [
+            {
+              "title": "Fields of Capabilities",
+              "members": [
+                {
+                  "name": "dedicated_workers",
+                  "returns": "bool",
+                  "text": "Ordinary workers are available."
+                },
+                {
+                  "name": "shared_memory",
+                  "returns": "bool",
+                  "text": "Pools can run: workers are available, the page is cross-origin isolated, and shared memory exists."
+                },
+                {
+                  "name": "hardware_parallelism",
+                  "returns": "usize",
+                  "text": "How many threads the device suggests. It’s a hint, not a promise that those cores are free."
+                }
+              ]
+            },
+            {
+              "title": "Related",
+              "members": [
+                {
+                  "name": "Capability",
+                  "text": "An enum that names one feature, `DedicatedWorkers` or `SharedMemory`. It’s what `WorkerError::Unsupported` reports as missing."
+                }
+              ]
+            }
+          ],
+          "declaration": "pub fn capabilities() -> Capabilities;\n\npub struct Capabilities {\n    pub dedicated_workers: bool,\n    pub shared_memory: bool,\n    pub hardware_parallelism: usize,\n}\n\n// Implements Clone, Copy, Debug, PartialEq, Eq and Serde’s traits.\npub enum Capability {\n    DedicatedWorkers,\n    SharedMemory,\n}"
+        },
+        "callouts": [
+          {
+            "kind": "warning",
+            "body": "`true` doesn’t guarantee that startup will work: loading, memory or your content security policy can still get in the way. Always handle the result of `Pool::new` too."
+          }
+        ],
+        "code": "let support = fusor_worker::capabilities();\nif !support.shared_memory {\n    // Explain why pools are unavailable, or fall back to an ordinary task.\n}",
+        "language": "Rust · page code",
+        "note": "On native (non-browser) targets it reports `false`, `false` and `1`, and background jobs never quietly run locally instead.",
+        "links": [
+          {
+            "href": "/docs/workers/deployment#capabilities",
+            "label": "Check browser support"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "slug": "coherent-async",
     "title": "Coherent async views",
     "group": "Application guides",
@@ -2522,7 +4814,7 @@
         "id": "setup",
         "title": "Start with two pages and a fallback",
         "body": "This example replaces the main page of the generated `my-app` from Installation. Keep its `build.rs` and existing dependencies.\n\nAdd the dependency below under `[dependencies]`. In `[package.metadata.fusor]`, add `history-fallback = [\"/articles\", \"/missing\"]`.\n\nCreate the five files below. The build discovers `web/components/pages.html`; a `template!` call in its associated Rust module connects that HTML to the page types.",
-        "code": "fusor-router = { version = \"=0.1.0\", features = [\"browser\"] }",
+        "code": "fusor-router = { version = \"=0.1.1\", features = [\"browser\"] }",
         "language": "Cargo.toml · add under [dependencies]",
         "note": "Use the same framework version as the app generated by your CLI."
       },
@@ -2848,7 +5140,7 @@
         "id": "dependencies",
         "title": "Put dependencies in the packages that use them",
         "body": "The existing fixture inherits paths from the workspace. For your own workspace, define the registry dependencies below in its root `Cargo.toml` and inherit them in member packages.\n\nThe descriptor crate uses islands and serde; the native site uses server and islands; a browser unit enables dom/islands on fusor and browser on fusor-islands. Keep each unit’s generated HTML setup and build dependency as in a normal app.",
-        "code": "[workspace.dependencies]\nfusor-core = { version = \"=0.1.0\" }\nfusor-build = { version = \"=0.1.0\" }\nfusor-islands = { version = \"=0.1.0\" }\nfusor-server = { version = \"=0.1.0\" }\nserde = { version = \"1\", features = [\"derive\"] }\nwasm-bindgen = \"=0.2.117\"",
+        "code": "[workspace.dependencies]\nfusor-core = { version = \"=0.1.1\" }\nfusor-build = { version = \"=0.1.1\" }\nfusor-islands = { version = \"=0.1.1\" }\nfusor-server = { version = \"=0.1.1\" }\nserde = { version = \"1\", features = [\"derive\"] }\nwasm-bindgen = \"=0.2.117\"",
         "language": "Cargo.toml · root of a separate workspace",
         "note": "In the browser member’s `[dependencies]`, use `fusor-core = { workspace = true, features = [\"islands\"] }` and `fusor-islands = { workspace = true, features = [\"browser\"] }`. The setting `workspace = true` requires those dependencies to be defined in the workspace manifest."
       },
@@ -3456,7 +5748,7 @@
         "id": "build",
         "title": "Build the site",
         "body": "`fusor build --site` builds each mounted application exactly as `fusor build` would, into `target/fusor/site/<package>/`. Only when every application has built does it copy each one into the site output at its mount and publish the result.\n\nPublishing replaces the previous site in one step. If any application fails to build, or two mounts collide, the previous site stays in place.",
-        "code": "$ fusor build --site\n▲ fusor 0.1.0 · production build\n○ Compiling homepage ...\n✓ Compiled homepage in 12.4s\n○ Compiling docs ...\n✓ Compiled docs in 18.0s\n✓ Published dist/ in 30.6s\n  /       homepage  → dist/\n  /docs/  docs      → dist/docs/",
+        "code": "$ fusor build --site\n▲ fusor 0.1.1 · production build\n○ Compiling homepage ...\n✓ Compiled homepage in 12.4s\n○ Compiling docs ...\n✓ Compiled docs in 18.0s\n✓ Published dist/ in 30.6s\n  /       homepage  → dist/\n  /docs/  docs      → dist/docs/",
         "language": "Terminal"
       },
       {
