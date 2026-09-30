@@ -61,3 +61,16 @@ pub(crate) const RUST_VERSION: &str = "1.95.0";
 pub(crate) fn generated(site: &Path, generation: &str) -> PathBuf {
     site.join(GENERATED).join(generation)
 }
+
+/// Worker artifacts use the same application sources with generated UI startup excluded.
+pub(crate) const WORKER_DIRECTORY: &str = "worker";
+pub(crate) const THREADED_DIRECTORY: &str = "threaded";
+pub(crate) const WORKER_TARGET: &str = "fusor-workers/ordinary";
+pub(crate) const THREADED_TARGET: &str = "fusor-workers/threaded";
+pub(crate) const WORKER_TOOLCHAIN: &str = "nightly-2025-11-15";
+/// Presence marks a threaded application for the dev and preview servers.
+pub(crate) const WORKER_HEADERS: &str = ".fusor-worker-headers.json";
+pub(crate) const WORKER_RUSTFLAGS: &str = "-Ctarget-feature=+atomics,+bulk-memory\x1f-Clink-arg=--shared-memory\x1f-Clink-arg=--max-memory=1073741824\x1f-Clink-arg=--import-memory\x1f-Clink-arg=--export=__wasm_init_tls\x1f-Clink-arg=--export=__tls_size\x1f-Clink-arg=--export=__tls_align\x1f-Clink-arg=--export=__tls_base";
+
+pub(crate) const APP_TYPES: &str = "app.d.ts";
+pub(crate) const WORKER_DISCOVERY: &str = "fusor-workers/discovery";

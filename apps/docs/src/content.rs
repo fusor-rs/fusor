@@ -7,9 +7,70 @@ pub struct InlineData {
     pub text: &'static str,
 }
 #[derive(Clone, Copy, PartialEq)]
+pub struct ItemData {
+    pub id: usize,
+    pub spans: &'static [InlineData],
+}
+/// A paragraph, or a bullet list when `items` is not empty.
+#[derive(Clone, Copy, PartialEq)]
 pub struct ParagraphData {
     pub id: usize,
     pub spans: &'static [InlineData],
+    pub items: &'static [ItemData],
+}
+#[derive(Clone, Copy, PartialEq)]
+pub struct CalloutData {
+    pub id: usize,
+    pub kind: &'static str,
+    pub label: &'static str,
+    pub body: &'static [ParagraphData],
+}
+#[derive(Clone, Copy, PartialEq)]
+pub struct TermData {
+    pub id: usize,
+    pub term: &'static [InlineData],
+    pub text: &'static [ParagraphData],
+}
+#[derive(Clone, Copy, PartialEq)]
+pub struct MapCardData {
+    pub href: &'static str,
+    pub name: &'static str,
+    pub kind: &'static str,
+    pub text: &'static str,
+}
+#[derive(Clone, Copy, PartialEq)]
+pub struct MapGroupData {
+    pub id: usize,
+    pub title: &'static str,
+    pub side: &'static str,
+    pub cards: &'static [MapCardData],
+}
+#[derive(Clone, Copy, PartialEq)]
+pub struct MemberData {
+    pub anchor: &'static str,
+    pub name: &'static str,
+    pub returns: &'static str,
+    pub text: &'static [ParagraphData],
+    pub signature: &'static [CodeToken],
+    pub details: &'static [ParagraphData],
+    pub details_label: &'static str,
+}
+#[derive(Clone, Copy, PartialEq)]
+pub struct MemberGroupData {
+    pub id: usize,
+    pub title: &'static str,
+    pub members: &'static [MemberData],
+}
+/// One type or function on a reference page.
+#[derive(Clone, Copy, PartialEq)]
+pub struct ApiData {
+    pub kind: &'static str,
+    pub side: &'static str,
+    pub side_label: &'static str,
+    pub from: &'static [ParagraphData],
+    pub params: &'static [TermData],
+    pub groups: &'static [MemberGroupData],
+    pub declaration: &'static [CodeToken],
 }
 #[derive(Clone, Copy, PartialEq)]
 pub struct SectionData {
@@ -24,6 +85,13 @@ pub struct SectionData {
     pub note: &'static str,
     pub references: &'static [LinkData],
     pub links: &'static [LinkData],
+    /// Zero or one entry, so templates can render it with `ForEach`.
+    pub api: &'static [ApiData],
+    pub callouts: &'static [CalloutData],
+    pub terms: &'static [TermData],
+    pub map: &'static [MapGroupData],
+    /// Text from the structured fields above, for search.
+    pub search: &'static str,
 }
 pub struct PageData {
     pub parent: Option<&'static str>,
@@ -55,6 +123,8 @@ pub struct DemoData {
     pub preview_title: &'static str,
     pub preview_value: &'static str,
     pub preview_detail: &'static str,
+    /// Runs background workers; the demo gets the full width, as JavaScript demos do.
+    pub workers: bool,
     pub rust: CodeData,
     pub html: CodeData,
     pub javascript: Option<CodeData>,
@@ -90,8 +160,14 @@ pub fn matches(index: usize, query: &str) -> bool {
         .iter()
         .any(|text| text.replace('`', "").to_lowercase().contains(&needle))
         || page.sections.iter().any(|section| {
-            [section.title, section.body, section.code, section.note]
-                .iter()
-                .any(|text| text.replace('`', "").to_lowercase().contains(&needle))
+            [
+                section.title,
+                section.body,
+                section.code,
+                section.note,
+                section.search,
+            ]
+            .iter()
+            .any(|text| text.replace('`', "").to_lowercase().contains(&needle))
         })
 }

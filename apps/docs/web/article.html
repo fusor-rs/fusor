@@ -107,16 +107,42 @@
   </div>
 </template>
 <template rust:component="Section">
-  <section class="doc-section" id="{{ state.item.get().id }}">
+  <section
+    class="doc-section"
+    class:api-entry="!state.item.get().api.is_empty()"
+    id="{{ state.item.get().id }}"
+  >
+    <div class="api-badges"
+    ><ForEach items="{{ state.item.get().api.to_vec() }}" key="{{ |api| api.kind }}" item="api">
+<span class="api-badge-row"><span class="api-kind" data-kind="{{ api.get().kind }}">{{ api.get().kind }}</span
+><span class="api-side" data-side="{{ api.get().side }}">{{ api.get().side_label }}</span></span>
+</ForEach></div>
     <h2>
       <a href="#{{ state.item.get().id }}"
         >{{ state.item.get().title }}<span aria-hidden="true">#</span></a
       >
     </h2>
     <div class="body-copy"><Prose paragraphs="{{ state.item.get().body_prose }}"></Prose></div>
-    <div
+    <div class="api-from-list"
+    ><ForEach items="{{ state.item.get().api.to_vec() }}" key="{{ |api| api.kind }}" item="api">
+<div class="api-from" hidden="{{ api.get().from.is_empty() }}"><span class="api-label">Where you get one</span><Prose paragraphs="{{ api.get().from }}"></Prose></div>
+</ForEach></div>
+    <div class="section-code"
     ><CodeBlock data="{{ CodeData { label: state.item.get().language, tokens: state.item.get().tokens } }}"
       rust:if="!state.item.get().code.is_empty()"></CodeBlock></div>
+    <div class="callouts"
+    ><ForEach items="{{ state.item.get().callouts.to_vec() }}" key="{{ |callout| callout.id }}" item="callout">
+<Callout item="{{ callout.clone() }}"></Callout>
+</ForEach></div>
+    <Terms items="{{ state.item.get().terms }}"></Terms>
+    <div class="type-map"
+    ><ForEach items="{{ state.item.get().map.to_vec() }}" key="{{ |group| group.id }}" item="group">
+<MapGroup item="{{ group.clone() }}"></MapGroup>
+</ForEach></div>
+    <div class="api-body-list"
+    ><ForEach items="{{ state.item.get().api.to_vec() }}" key="{{ |api| api.kind }}" item="api">
+<ApiBody item="{{ api.clone() }}"></ApiBody>
+</ForEach></div>
     <div class="note" hidden="{{ state.item.get().note.is_empty() }}">
       <Prose paragraphs="{{ state.item.get().note_prose }}"></Prose>
     </div>
@@ -133,6 +159,80 @@
 <RelatedLink item="{{ item.clone() }}"></RelatedLink>
 </ForEach></ul>
   </section>
+</template>
+<template rust:component="Callout">
+  <aside class="callout" data-kind="{{ state.item.get().kind }}">
+    <span class="callout-icon" aria-hidden="true">{{ match state.item.get().kind { "tip" => "✓", "warning" => "!", _ => "i" } }}</span>
+    <div>
+      <strong class="callout-label">{{ state.item.get().label }}</strong>
+      <Prose paragraphs="{{ state.item.get().body }}"></Prose>
+    </div>
+  </aside>
+</template>
+<template rust:component="Terms">
+  <dl class="terms" hidden="{{ state.items.is_empty() }}"
+  ><ForEach items="{{ state.items.to_vec() }}" key="{{ |term| term.id }}" item="term">
+<div class="term"><dt><Spans spans="{{ term.get().term }}"></Spans></dt
+><dd><Prose paragraphs="{{ term.get().text }}"></Prose></dd></div>
+</ForEach></dl>
+</template>
+<template rust:component="MapGroup">
+  <div class="map-group" data-side="{{ state.item.get().side }}">
+    <h3>{{ state.item.get().title }}</h3>
+    <ul class="map-cards"
+    ><ForEach items="{{ state.item.get().cards.to_vec() }}" key="{{ |card| card.href }}" item="card">
+<li><a class="map-card" href="{{ card.get().href }}"
+  ><code>{{ card.get().name }}</code
+  ><span class="map-kind" hidden="{{ card.get().kind.is_empty() }}">{{ card.get().kind }}</span
+  ><span class="map-text">{{ card.get().text }}</span></a></li>
+</ForEach></ul>
+  </div>
+</template>
+<template rust:component="ApiBody">
+  <div class="api-body">
+    <div class="api-params" hidden="{{ state.item.get().params.is_empty() }}">
+      <h3>Type parameters</h3>
+      <Terms items="{{ state.item.get().params }}"></Terms>
+    </div>
+    <div class="member-groups"
+    ><ForEach items="{{ state.item.get().groups.to_vec() }}" key="{{ |group| group.id }}" item="group">
+<div class="member-group">
+  <h3 hidden="{{ group.get().title.is_empty() }}">{{ group.get().title }}</h3>
+  <ul class="members"
+  ><ForEach items="{{ group.get().members.to_vec() }}" key="{{ |member| member.anchor }}" item="member">
+<Member item="{{ member.clone() }}"></Member>
+</ForEach></ul>
+</div>
+</ForEach></div>
+    <details class="declaration" hidden="{{ state.item.get().declaration.is_empty() }}">
+      <summary>Full declaration</summary>
+      <Signature tokens="{{ state.item.get().declaration }}"></Signature>
+    </details>
+  </div>
+</template>
+<template rust:component="Member">
+  <li class="member" id="{{ state.item.get().anchor }}">
+    <div class="member-head">
+      <a class="member-name" href="#{{ state.item.get().anchor }}"
+        ><code>{{ state.item.get().name }}</code></a
+      ><span class="member-returns" hidden="{{ state.item.get().returns.is_empty() }}"
+        ><span class="sr-only">returns </span><span aria-hidden="true">→ </span
+        ><code>{{ state.item.get().returns }}</code></span
+      >
+    </div>
+    <div class="member-text"><Prose paragraphs="{{ state.item.get().text }}"></Prose></div>
+    <details
+      class="member-details"
+      hidden="{{ state.item.get().signature.is_empty() &amp;&amp; state.item.get().details.is_empty() }}"
+    >
+      <summary>{{ state.item.get().details_label }}</summary>
+      <Signature
+        tokens="{{ state.item.get().signature }}"
+        rust:if="!state.item.get().signature.is_empty()"
+      ></Signature>
+      <Prose paragraphs="{{ state.item.get().details }}"></Prose>
+    </details>
+  </li>
 </template>
 <template rust:component="Toc"
   ><li>
@@ -158,11 +258,22 @@
 <template rust:component="Prose">
   <div class="prose">
     <ForEach items="{{ state.paragraphs.to_vec() }}" key="{{ |item| item.id }}">
-      <p><ForEach
-        items="{{ item.get().spans.to_vec() }}"
-        key="{{ |span| span.id }}"
-        item="span"
-      ><span><If condition="{{ span.get().code }}"><code class="inline-code">{{ span.get().text }}</code><Else><span>{{ span.get().text }}</span></Else></If></span></ForEach></p>
+      <div class="prose-block"><If condition="{{ item.get().items.is_empty() }}"
+        ><p><Spans spans="{{ item.get().spans }}"></Spans></p
+        ><Else><ul><ForEach
+          items="{{ item.get().items.to_vec() }}"
+          key="{{ |entry| entry.id }}"
+          item="entry"
+        ><li><Spans spans="{{ entry.get().spans }}"></Spans></li></ForEach></ul></Else
+      ></If></div>
     </ForEach>
   </div>
 </template>
+
+<template rust:component="Spans"
+  ><span class="spans"><ForEach
+    items="{{ state.spans.to_vec() }}"
+    key="{{ |span| span.id }}"
+    item="span"
+  ><span><If condition="{{ span.get().code }}"><code class="inline-code">{{ span.get().text }}</code><Else><span>{{ span.get().text }}</span></Else></If></span></ForEach></span></template
+>

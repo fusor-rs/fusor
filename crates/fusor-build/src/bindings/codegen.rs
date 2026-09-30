@@ -858,6 +858,7 @@ fn app_entry(expression: &Rust, prepare: &TokenStream) -> TokenStream {
     let allow = allow_generated(span);
     quote_spanned! {span=>
         #allow
+        #[cfg(not(fusor_worker))]
         pub(crate) fn __fusor_mount() -> ::std::result::Result<(), ::fusor::dom::JsValue> {
             ::fusor_components::App::mount(|| {
                 let parent = ::std::option::Option::None;
@@ -865,6 +866,7 @@ fn app_entry(expression: &Rust, prepare: &TokenStream) -> TokenStream {
                 #prepare
             })
         }
+        #[cfg(not(fusor_worker))]
         #[::wasm_bindgen::prelude::wasm_bindgen(start)]
         pub fn __fusor_start() -> ::std::result::Result<(), ::fusor::dom::JsValue> {
             __fusor_mount()

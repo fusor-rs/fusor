@@ -9,6 +9,7 @@ pub(crate) mod manifest;
 pub(crate) mod publish;
 pub(crate) mod site;
 pub(crate) mod wasm;
+pub(crate) mod workers;
 
 use crate::{
     context::Context,
@@ -50,6 +51,13 @@ impl<'a> Publication<'a> {
             &publication.site.join(layout::GENERATED),
             &publication.staging.join(layout::GENERATED),
         )?;
+        let requirements = publication.site.join(layout::WORKER_HEADERS);
+        if requirements.is_file() {
+            std::fs::copy(
+                requirements,
+                publication.staging.join(layout::WORKER_HEADERS),
+            )?;
+        }
         Ok(publication)
     }
 

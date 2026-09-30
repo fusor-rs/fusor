@@ -3,10 +3,13 @@ use std::{env, fs, path::PathBuf};
 mod highlight;
 #[path = "build/prose.rs"]
 mod prose;
+#[path = "build/reference.rs"]
+mod reference;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=build/highlight.rs");
     println!("cargo:rerun-if-changed=build/prose.rs");
+    println!("cargo:rerun-if-changed=build/reference.rs");
     let highlighter = highlight::Highlighter::new();
     println!("cargo:rerun-if-changed=content/resources.json");
     let resources: std::collections::BTreeMap<String, String> =
@@ -49,10 +52,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             text(page, "lead"),
             prose::compile(page["lead"].as_str().unwrap_or(""))?
         ));
-        for section in page["sections"]
+        let sections = page["sections"]
             .as_array()
-            .ok_or("sections must be an array")?
-        {
+            .ok_or("sections must be an array")?;
+        let ids: std::collections::BTreeSet<&str> = sections
+            .iter()
+            .filter_map(|section| section["id"].as_str())
+            .collect();
+        let mut anchors = std::collections::BTreeSet::new();
+        for section in sections {
+            let structured = reference::section(section, &ids, &highlighter)?;
+            for anchor in structured.anchors.iter() {
+                if ids.contains(anchor.as_str()) || !anchors.insert(anchor.clone()) {
+                    return Err(format!("member anchor repeats an id: {anchor}").into());
+                }
+            }
             let code = if let Some(path) = section["source"].as_str() {
                 println!("cargo:rerun-if-changed={path}");
                 fs::read_to_string(path)?
@@ -107,7 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            source.push_str("] },\n");
+            source.push_str(&format!("], {} }},\n", structured.source));
         }
         source.push_str("] },\n");
     }
@@ -133,6 +147,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ] {
             source.push_str(&format!("{key}: {},", text(demo, key)));
         }
+        source.push_str(&format!(
+            "workers: {},",
+            demo["workers"].as_bool().unwrap_or(false)
+        ));
         let slug = demo["slug"].as_str().ok_or("demo slug is required")?;
         for (language, extension, folder) in [
             ("rust", "rs", "src"),

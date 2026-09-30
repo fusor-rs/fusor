@@ -48,7 +48,8 @@ just dev
 ```
 
 `just setup` installs the Wasm target and the pinned wasm-bindgen, the npm
-packages, and the Playwright browsers. `just dev` serves the whole site, the
+packages, the Playwright browsers, and the nightly toolchain that threaded
+worker pools build with (the docs' fractal demo uses one). `just dev` serves the whole site, the
 landing page, docs and benchmarks, at http://127.0.0.1:4173, and rebuilds
 whichever application you edit. To work on one application alone, such as the
 framework playground, use `just dev-app fusor-playground`.
@@ -103,6 +104,7 @@ Then run the browser suites for the area you changed:
 | Routing | `just test router`, `just test navigation` |
 | Islands | `just test islands`, `just test delivery`, `just test component-hydration` |
 | JavaScript modules and npm | `just test javascript`, `just test javascript-build`, `just test javascript-dev`, `just test integrations` |
+| Workers, tasks, shared pools, or streams | `just test worker`, `just test worker-pool`, `just test worker-dev` |
 | The CLI or the dev server | `just test dev`, `just test standalone` |
 | The docs, landing page or benchmark site | `just test docs`, `just test docs-examples`, `just test-landing`, `just test benchmarks` |
 | Benchmark tooling | `just test-tools`, `just bench verify` |
@@ -233,6 +235,10 @@ To deploy, run the **Deploy site** workflow from the Actions tab and choose
 production or preview. From your own machine, `just deploy` does the same once
 you have run `vercel login` and `vercel link --scope pirela --project fusor`;
 `just deploy preview` makes a preview deployment.
+
+`vercel.json` sends the cross-origin isolation headers on every `/docs/` page,
+because the docs' pool demo needs shared memory. Anything the docs embed must
+come from the same origin or allow cross-origin embedding.
 
 One-time setup: create a Vercel access token for the pirela team and save it as
 the secret `VERCEL_TOKEN` in a GitHub environment named `vercel`.

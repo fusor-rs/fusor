@@ -45,8 +45,10 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: just
-      # Only what `just site` uses: wasm-bindgen and the docs' npm packages.
+      # Only what `just site` uses: wasm-bindgen, the docs' npm packages, and
+      # the nightly toolchain the docs' worker pool demo is built with.
       - run: cargo fusor install -p fusor-landing
+      - run: cargo fusor install -p fusor-docs
       - run: npm ci --prefix apps/docs --ignore-scripts
       - run: npm install --global vercel@59.23.2
       - run: vercel pull --yes --environment=${{ inputs.environment }}

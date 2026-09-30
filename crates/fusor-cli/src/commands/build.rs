@@ -107,6 +107,15 @@ fn application(cx: &Context, project: &Project, debug: bool, dev: bool) -> Resul
     wasm::bindgen(&bindgen, wasm_path, &package, layout::APP_NAME, debug, dev)?;
     wasm::optimize(&package.join(layout::APP_WASM), debug, dev)?;
 
+    let workers = pipeline::workers::build(
+        cx,
+        project,
+        &publication,
+        &bindgen,
+        compilation.manifest.managed_entry,
+        debug,
+        dev,
+    )?;
     let prefix = publication.url_prefix();
     let bundle: Javascript = serde_json::from_value(fusor_npm::bundle(
         &project.root,
@@ -115,16 +124,18 @@ fn application(cx: &Context, project: &Project, debug: bool, dev: bool) -> Resul
         &format!("{prefix}/{}", layout::PACKAGE),
         !debug,
     )?)?;
-    fs::write(
-        generated.join(layout::BOOT_MODULE),
-        boot_script(
-            project,
-            &compilation.manifest,
-            &publication.generation,
-            dev,
-            generated,
-        )?,
-    )?;
+    let mut boot = workers
+        .map(|workers| workers.boot())
+        .transpose()?
+        .unwrap_or_default();
+    boot.push_str(&boot_script(
+        project,
+        &compilation.manifest,
+        &publication.generation,
+        dev,
+        generated,
+    )?);
+    fs::write(generated.join(layout::BOOT_MODULE), boot)?;
     // Development pages keep the loader's own discovery order.
     let modules = if dev {
         Vec::new()

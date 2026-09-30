@@ -452,6 +452,85 @@ export async function checkShowcase(page, origin, browserName, demos) {
         "$36",
         "3",
       ]);
+    } else if (demo.slug === "search") {
+      const box = canvas.getByRole("searchbox", { name: "Search a million books" });
+      await expect(box).toBeVisible({ timeout: 30000 });
+      const summary = canvas.locator(".search-meta strong");
+      await expect(summary).toHaveText("1,000,000 books");
+      await box.pressSequentially("moon", { delay: 20 });
+      await expect(summary).not.toHaveText("1,000,000 books");
+      await expect(summary).not.toHaveText("Searching…");
+      const titles = await canvas.locator(".search-title").allTextContents();
+      assert(titles.length > 0 && titles.every((title) => /moon/i.test(title)), "every result matches");
+      await expect(canvas.locator(".search-title .hit").first()).toHaveText(/^moon$/i);
+      await expect(canvas.locator(".search-facts")).toContainText("bytes");
+      const scifi = canvas.locator(".search-genres button", { hasText: "Science fiction" });
+      await scifi.click();
+      await expect(scifi).toHaveAttribute("aria-pressed", "true");
+      await expect(canvas.locator(".search-genre").first()).toHaveText("Science fiction");
+      assert((await canvas.locator(".search-genre").allTextContents()).every((genre) => genre === "Science fiction"));
+      await scifi.click();
+      await box.fill("zzqx");
+      await expect(summary).toHaveText("0 books");
+      await expect(canvas.locator(".search-none")).toBeVisible();
+    } else if (demo.slug === "game") {
+      const status = canvas.locator(".game-status");
+      const engine = canvas.locator(".cell.engine");
+      await expect(status).toHaveText(/Your move/, { timeout: 30000 });
+      await canvas.getByRole("radio", { name: "Quick" }).check();
+      await canvas.getByRole("button", { name: "Drop a disc in column 4" }).click();
+      await expect(canvas.locator(".cell.you")).toHaveCount(1);
+      await expect(engine).toHaveCount(1, { timeout: 10000 });
+      await expect(status).toHaveText("Your move.");
+      await expect(canvas.locator(".game-stats")).toContainText("moves ahead");
+      // Move now settles a long search at once with the best move so far.
+      await canvas.getByRole("radio", { name: "Deep" }).check();
+      await canvas.getByRole("button", { name: "Drop a disc in column 3" }).click();
+      await expect(status).toContainText("thinking");
+      await expect(canvas.locator(".rating.known").first()).toBeVisible();
+      const asked = Date.now();
+      await canvas.getByRole("button", { name: "Move now" }).click();
+      await expect(engine).toHaveCount(2);
+      assert(Date.now() - asked < 2000, "Move now must not wait for the whole think time");
+      await canvas.getByRole("button", { name: "Undo" }).click();
+      await expect(canvas.locator(".cell.you")).toHaveCount(1);
+      await expect(engine).toHaveCount(1);
+      await canvas.getByRole("radio", { name: "Quick" }).check();
+      await canvas.getByRole("button", { name: "Engine starts" }).click();
+      await expect(canvas.locator(".cell.you")).toHaveCount(0);
+      await expect(engine).toHaveCount(1, { timeout: 15000 });
+      await expect(status).toHaveText(/Your move/);
+    } else if (demo.slug === "fractal") {
+      const status = canvas.locator(".fractal-status");
+      await expect(status).toHaveText(/^Painted 160 tiles/, { timeout: 60000 });
+      assert(await page.evaluate(() => crossOriginIsolated), "the docs are served cross-origin isolated");
+      await expect(canvas.locator(".fractal-notice")).toBeHidden();
+      const counts = await canvas.locator(".painter").allTextContents();
+      assert.equal(counts.reduce((sum, text) => sum + Number(text.split("·")[1]), 0), 160, "each tile is painted once");
+      await canvas.getByRole("button", { name: /^Race/ }).click();
+      await expect(canvas.locator(".fractal-race-result")).toContainText("faster", { timeout: 60000 });
+      // Zooming mid-picture stops the tiles of the old view.
+      await canvas.getByRole("button", { name: "1", exact: true }).click();
+      await expect(status).toContainText("Painting with 1 thread");
+      await canvas.locator(".fractal-tile").nth(88).click();
+      await expect(canvas.locator(".fractal-depth")).toHaveText("3× zoom");
+      await expect(canvas.locator(".fractal-stopped")).toContainText("stopped");
+      await expect(status).toHaveText(/^Painted 160 tiles/, { timeout: 60000 });
+      // Without isolation there is no shared memory: one ordinary worker paints.
+      const plain = await page.context().browser().newContext();
+      await plain.route("**/*", async (route) => {
+        const response = await route.fetch();
+        const headers = { ...response.headers() };
+        delete headers["cross-origin-opener-policy"];
+        delete headers["cross-origin-embedder-policy"];
+        await route.fulfill({ response, headers });
+      });
+      const other = await plain.newPage();
+      await other.goto(origin + "showcase/fractal");
+      await expect(other.locator(".fractal-notice")).toContainText("isn’t cross-origin isolated");
+      await expect(other.locator(".fractal-status")).toHaveText(/^Painted 160 tiles in \d+ ms with 1 thread$/, { timeout: 60000 });
+      await expect(other.getByRole("button", { name: /^Race/ })).toBeDisabled();
+      await plain.close();
     } else if (demo.slug === "context") {
       await canvas.getByRole("button", { name: "Violet", exact: true }).click();
       await expect(canvas.locator(".context-badge h3")).toHaveText("Violet");

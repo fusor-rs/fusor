@@ -199,6 +199,11 @@ pub mod browser {
     //! Browser executor and monotonic performance clock. Enable the async crate's
     //! `browser` feature separately when using its Fetch adapter.
     use super::*;
+    #[wasm_bindgen::prelude::wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = ["globalThis", "performance"], js_name = now)]
+        fn performance_now() -> f64;
+    }
     pub fn client<K, T, E, F>(
         parent: &OwnerHandle,
         options: QueryOptions,
@@ -210,15 +215,12 @@ pub mod browser {
         E: 'static,
         F: Future<Output = Result<T, E>> + 'static,
     {
-        let performance = web_sys::window()
-            .and_then(|w| w.performance())
-            .expect("query client requires browser performance clock");
         QueryClient::new(
             parent,
             options,
             load,
             wasm_bindgen_futures::spawn_local,
-            move || Duration::from_secs_f64(performance.now() / 1000.0),
+            || Duration::from_secs_f64(performance_now() / 1000.0),
         )
     }
 }

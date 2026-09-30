@@ -1,0 +1,8 @@
+[package]
+name = "worker-test-dependency"
+version = "0.0.0"
+edition = "2024"
+[dependencies]
+fusor-worker = { path = "../../../../crates/fusor-worker" }
+[lints.rust]
+unsafe_code = "forbid"

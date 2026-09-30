@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Background work · fusor</title>
+<style>body{font:18px/1.6 system-ui;max-width:42rem;margin:4rem auto;padding:1rem}button{font:inherit;padding:.5rem 1rem;margin:.25rem}</style></head>
+<body><App state="{{ App::new(owner) }}"><main>
+<h1>Keep the page responsive</h1>
+<p>Prime counting runs in an ordinary worker. Change the input while continuing to use the page.</p>
+<button on:click="state.limit.set(100_000)">Count below 100,000</button>
+<button on:click="state.limit.set(1_000_000)">Count below 1,000,000</button>
+<p role="status">{{ state.status() }}</p>
+<button on:click="state.clicks.update(|count| *count += 1)">UI clicks: {{ state.clicks.get() }}</button>
+</main></App></body></html>

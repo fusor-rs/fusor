@@ -1,0 +1,69 @@
+<template rust:component="Fractal">
+  <section class="demo-fractal" aria-label="A fractal painted by a pool of threads">
+    <div class="fractal-bar">
+      <p class="fractal-status" aria-live="polite">{{ state.status() }}</p>
+      <span class="fractal-depth">{{ state.depth() }}</span>
+    </div>
+    <div
+      class="fractal-picture"
+      class:painters="state.show_painters.get()"
+      title="Click to zoom in"
+    ><ForEach items="{{ state.tile_ids() }}" key="{{ |id| *id }}">
+<span
+  class="fractal-tile"
+  class:stale="state.tile_stale(item.get())"
+  style="{{ state.tile_style(item.get()) }}"
+  on:click="state.zoom(item.get(), event)"
+><img src="{{ state.tile_image(item.get()) }}" alt="" draggable="false" /></span>
+</ForEach></div>
+    <p class="fractal-notice" hidden="{{ state.notice().is_empty() }}">{{ state.notice() }}</p>
+    <div class="fractal-controls">
+      <div class="fractal-group" role="group" aria-label="Threads painting">
+        <span class="fractal-label">Threads</span
+        ><span class="fractal-choices"><ForEach items="{{ state.painter_choices() }}" key="{{ |count| *count }}">
+<button
+  aria-pressed="{{ state.painters.get() == item.get() }}"
+  disabled="{{ !state.pooled() || state.racing.get() }}"
+  on:click="state.choose_painters(item.get())"
+>{{ item.get() }}</button>
+</ForEach></span>
+      </div>
+      <button
+        class="fractal-race"
+        on:click="state.race()"
+        disabled="{{ !state.pooled() || state.racing.get() }}"
+      >
+        Race: 1 thread vs {{ state.threads.get() }}
+      </button>
+      <label class="fractal-toggle"
+        ><input type="checkbox" bind="state.show_painters" /> Show which thread
+        painted each tile</label
+      >
+    </div>
+    <div class="fractal-controls">
+      <div class="fractal-group" role="group" aria-label="Places to visit">
+        <span class="fractal-label">Visit</span
+        ><span class="fractal-choices"><ForEach items="{{ state.places() }}" key="{{ |place| place.0 }}">
+<button on:click="state.visit(item.get().0)">{{ item.get().1 }}</button>
+</ForEach></span>
+      </div>
+      <div class="fractal-group">
+        <button on:click="state.zoom_in()">Zoom in</button
+        ><button on:click="state.zoom_out()">Zoom out</button
+        ><button on:click="state.go(HOME)">Reset</button>
+      </div>
+    </div>
+    <p class="fractal-race-result" hidden="{{ state.race_result().is_empty() }}">
+      {{ state.race_result() }}
+    </p>
+    <p class="fractal-stopped" hidden="{{ state.stopped_label().is_empty() }}">
+      {{ state.stopped_label() }}
+    </p>
+    <div class="fractal-painters" aria-label="Tiles painted by each thread"
+    ><ForEach items="{{ state.painter_counts() }}" key="{{ |count| count.painter }}">
+<span class="painter" style="{{ item.get().style }}"
+  ><i aria-hidden="true"></i>Thread {{ item.get().painter + 1 }} · {{ item.get().tiles }}</span
+>
+</ForEach></div>
+  </section>
+</template>
