@@ -10,6 +10,7 @@ pub struct CounterInputs {
 }
 
 impl FromInputs for Counter {
+    type Error = fusor::dom::JsValue;
     type Inputs = CounterInputs;
 
     fn from_inputs(

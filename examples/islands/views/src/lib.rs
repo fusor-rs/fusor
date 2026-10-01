@@ -60,6 +60,7 @@ struct LineInputs {
 }
 impl fusor::dom::FromInputs for Line {
     type Inputs = LineInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         inputs: Self::Inputs,
         _owner: fusor::OwnerHandle,
@@ -71,6 +72,7 @@ impl fusor::dom::FromInputs for Line {
 struct NoteInputs {}
 impl fusor::dom::FromInputs for Note {
     type Inputs = NoteInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         _inputs: Self::Inputs,
         _owner: fusor::OwnerHandle,

@@ -21,6 +21,7 @@ struct Filter {
 }
 impl fusor::dom::FromInputs for Filter {
     type Inputs = FilterInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(_: FilterInputs, owner: OwnerHandle) -> Result<Self, JsValue> {
         Ok(Self {
             location: Navigation::from_owner(&owner)

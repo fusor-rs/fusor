@@ -39,6 +39,7 @@ struct ReadPanelInputs {
 }
 impl FromInputs for ReadPanel {
     type Inputs = ReadPanelInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(inputs: Self::Inputs, owner: OwnerHandle) -> Result<Self, JsValue> {
         Ok(Self {
             read: browser::read(

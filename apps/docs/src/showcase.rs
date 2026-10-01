@@ -83,6 +83,7 @@ fn set_title(title: &str) {
 fusor::bindings!(showcase);
 
 impl fusor::dom::FromInputs for DemoCard {
+    type Error = fusor::dom::JsValue;
     type Inputs = Self;
     fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(inputs)
@@ -92,6 +93,7 @@ impl fusor::dom::FromInputs for DemoCard {
 pub struct GalleryInputs {}
 impl fusor::dom::FromInputs for Gallery {
     type Inputs = GalleryInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(_: Self::Inputs, _: fusor::OwnerHandle) -> Result<Self, wasm_bindgen::JsValue> {
         Ok(Self::new())
     }
@@ -101,6 +103,7 @@ pub struct DemoPageInputs {
 }
 impl fusor::dom::FromInputs for DemoPage {
     type Inputs = DemoPageInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         inputs: Self::Inputs,
         _: fusor::OwnerHandle,

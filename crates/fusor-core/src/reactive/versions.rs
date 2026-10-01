@@ -4,6 +4,8 @@ use super::{CURRENT, graph::Source};
 use std::{cell::RefCell, rc::Rc};
 
 #[derive(Clone, Default)]
+/// A set of reactive source identities and their observed versions. Capturing
+/// versions does not retain historical values or create an effect subscription.
 pub struct Versions(Vec<(Rc<Source>, u64)>);
 
 struct Collector {
@@ -72,6 +74,8 @@ impl Versions {
             }
         });
     }
+    /// Capture tracked sources read by this callback. Ordinary tracking remains
+    /// enabled; nested collectors restore correctly even during unwinding.
     pub fn capture<R>(read: impl FnOnce() -> R) -> (R, Self) {
         COLLECTORS.with(|stack| {
             stack.borrow_mut().push(Collector {
@@ -88,12 +92,15 @@ impl Versions {
         (value, versions)
     }
 
+    /// Check that every source still has its captured version. Memo sources may
+    /// refresh their lazy computations while their versions are checked.
     pub fn is_current(&self) -> bool {
         self.0
             .iter()
             .all(|(source, version)| source.version() == *version)
     }
 
+    /// Compare identities and versions, independent of capture order.
     pub fn same(&self, other: &Self) -> bool {
         self.0.len() == other.0.len()
             && self.0.iter().all(|(source, version)| {

@@ -84,6 +84,7 @@ struct LargeInputs {
     empty: Signal<String>,
 }
 impl fusor::dom::FromInputs for Large {
+    type Error = fusor::dom::JsValue;
     type Inputs = LargeInputs;
     fn from_inputs(inputs: Self::Inputs, _: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(Self { value: inputs.value, empty: inputs.empty })
@@ -92,6 +93,7 @@ impl fusor::dom::FromInputs for Large {
 struct Panel;
 struct PanelInputs {}
 impl fusor::dom::FromInputs for Panel {
+    type Error = fusor::dom::JsValue;
     type Inputs = PanelInputs;
     fn from_inputs(_: Self::Inputs, _: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(Self)

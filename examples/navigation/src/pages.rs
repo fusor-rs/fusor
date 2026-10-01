@@ -118,6 +118,7 @@ pub struct PreviewInputs {
 }
 impl fusor::dom::FromInputs for Preview {
     type Inputs = PreviewInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         inputs: Self::Inputs,
         owner: fusor::OwnerHandle,
@@ -129,6 +130,7 @@ impl fusor::dom::FromInputs for Preview {
 pub struct MetadataInputs {}
 impl fusor::dom::FromInputs for Metadata {
     type Inputs = MetadataInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         _inputs: Self::Inputs,
         owner: fusor::OwnerHandle,
@@ -140,12 +142,14 @@ impl fusor::dom::FromInputs for Metadata {
 pub struct EmptyInputs {}
 impl fusor::dom::FromInputs for Home {
     type Inputs = EmptyInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(_: Self::Inputs, _: OwnerHandle) -> Result<Self, JsValue> {
         Ok(Self::default())
     }
 }
 impl fusor::dom::FromInputs for NotFound {
     type Inputs = EmptyInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(_: Self::Inputs, _: OwnerHandle) -> Result<Self, JsValue> {
         Ok(Self)
     }
@@ -161,6 +165,7 @@ fn route_location(owner: &OwnerHandle) -> Result<Derived<Location<Page>>, JsValu
 }
 impl fusor::dom::FromInputs for ArticleRoute {
     type Inputs = EmptyInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(_: Self::Inputs, owner: OwnerHandle) -> Result<Self, JsValue> {
         Ok(Self {
             valid: matches!(route_location(&owner)?.get().route, Some(Page::Article(_))),
@@ -169,6 +174,7 @@ impl fusor::dom::FromInputs for ArticleRoute {
 }
 impl fusor::dom::FromInputs for Article {
     type Inputs = EmptyInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(_: Self::Inputs, owner: OwnerHandle) -> Result<Self, JsValue> {
         let location = route_location(&owner)?;
         Ok(Self::new(owner, location))

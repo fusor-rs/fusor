@@ -67,6 +67,7 @@ struct ProductReadInputs {
 }
 impl fusor::dom::FromInputs for ProductRead {
     type Inputs = ProductReadInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         inputs: Self::Inputs,
         owner: fusor::OwnerHandle,

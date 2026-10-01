@@ -189,6 +189,7 @@ struct RowInputs {
     pub model: Rc<Model>,
 }
 impl fusor::dom::FromInputs for Row {
+    type Error = fusor::dom::JsValue;
     type Inputs = RowInputs;
     fn from_inputs(
         inputs: Self::Inputs,

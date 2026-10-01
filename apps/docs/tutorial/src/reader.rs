@@ -46,6 +46,7 @@ pub struct ReaderInputs {
     pub selected_id: Signal<u32>,
 }
 impl fusor::dom::FromInputs for Reader {
+    type Error = fusor::dom::JsValue;
     type Inputs = ReaderInputs;
     fn from_inputs(
         inputs: Self::Inputs,

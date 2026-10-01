@@ -28,6 +28,7 @@ pub struct LayoutInputs {
     pub reset: Signal<u32>,
 }
 impl fusor::dom::FromInputs for Layout {
+    type Error = fusor::dom::JsValue;
     type Inputs = LayoutInputs;
     fn from_inputs(inputs: Self::Inputs, owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Self::new(owner, inputs.title, inputs.theme, inputs.body, inputs.visible, inputs.reset)

@@ -97,6 +97,7 @@ pub struct DocRouteInputs {
 }
 impl fusor::dom::FromInputs for DocRoute {
     type Inputs = DocRouteInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         inputs: Self::Inputs,
         owner: OwnerHandle,
@@ -210,6 +211,7 @@ impl NavEntry {
 fusor::bindings!(app);
 
 impl fusor::dom::FromInputs for NavGroup {
+    type Error = fusor::dom::JsValue;
     type Inputs = Self;
     fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(inputs)
@@ -224,6 +226,7 @@ struct NavEntryInputs {
 }
 impl fusor::dom::FromInputs for NavEntry {
     type Inputs = NavEntryInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         inputs: Self::Inputs,
         _owner: fusor::OwnerHandle,

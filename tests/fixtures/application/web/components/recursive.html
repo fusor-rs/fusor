@@ -4,6 +4,7 @@ pub struct Recursive;
 pub struct RecursiveInputs {
 }
 impl fusor::dom::FromInputs for Recursive {
+    type Error = fusor::dom::JsValue;
     type Inputs = RecursiveInputs;
     fn from_inputs(_inputs: Self::Inputs, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(Self)

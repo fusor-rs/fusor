@@ -70,16 +70,12 @@ impl Model {
             .with(|tasks| tasks.iter().filter(|task| task.done.get()).count())
     }
 }
+#[derive(fusor::FromInputs)]
 struct Row {
+    #[input]
     item: fusor::Memo<Task>,
+    #[input]
     model: Rc<Model>,
 }
 fusor::bindings!(app);
 include!(env!("FUSOR_MODULE"));
-
-impl fusor::dom::FromInputs for Row {
-    type Inputs = Self;
-    fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
-        Ok(inputs)
-    }
-}

@@ -79,6 +79,7 @@ pub struct ChartJsInputs {}
 
 impl fusor::dom::FromInputs for ChartJs {
     type Inputs = ChartJsInputs;
+    type Error = fusor::dom::JsValue;
 
     fn from_inputs(
         _inputs: Self::Inputs,

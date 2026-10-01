@@ -351,6 +351,7 @@ impl TaskRow {
 }
     
 impl fusor::dom::FromInputs for TaskRow {
+    type Error = fusor::dom::JsValue;
     type Inputs = Self;
     fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> { Ok(inputs) }
 }

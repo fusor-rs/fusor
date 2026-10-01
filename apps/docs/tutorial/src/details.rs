@@ -20,6 +20,7 @@ pub struct DetailsInputs {
     pub id: u32,
 }
 impl fusor::dom::FromInputs for Details {
+    type Error = fusor::dom::JsValue;
     type Inputs = DetailsInputs;
     fn from_inputs(
         inputs: Self::Inputs,

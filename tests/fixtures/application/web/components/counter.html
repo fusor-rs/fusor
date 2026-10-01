@@ -25,6 +25,7 @@ pub struct CounterInputs {
     pub count: Signal<i32>,
 }
 impl fusor::dom::FromInputs for Counter {
+    type Error = fusor::dom::JsValue;
     type Inputs = CounterInputs;
     fn from_inputs(inputs: Self::Inputs, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(Self::new(inputs.count))

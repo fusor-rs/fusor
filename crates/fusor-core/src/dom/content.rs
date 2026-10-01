@@ -20,7 +20,8 @@ impl Content {
         Self::try_new(move |owner| Ok(make(owner)))
     }
 
-    /// Fallible constructor; work waits for the receiving scope's commit.
+    /// Fallible constructor; owner-activation registrations wait for the receiving
+    /// scope's commit. Ordinary constructor effects retain their immediate timing.
     pub fn try_new<C: TemplateComponent>(
         make: impl Fn(OwnerHandle) -> Result<C, JsValue> + 'static,
     ) -> Self {
@@ -35,7 +36,8 @@ impl Content {
     }
 
     /// Prepare a fresh, detached template child for an outlet or custom host.
-    /// The caller attaches it and commits its scope; owned work waits for commit.
+    /// The caller attaches it and commits its scope; activation registrations wait
+    /// for commit. Ordinary constructor effects retain their immediate timing.
     pub fn prepare(&self, parent: &OwnerHandle) -> Result<Scope, JsValue> {
         let scope = (self.0)(parent)?;
         let owner = scope.owner();
