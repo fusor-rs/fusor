@@ -92,13 +92,15 @@ just check
 
 It runs formatting, the workspace tests, Clippy with warnings denied, each
 `fusor-std` feature on its own, two applications built outside the workspace,
-and rustdoc. It needs no Node and no browser.
+the executable external-renderer consumer, and rustdoc. It needs no Node and no
+browser.
 
 Then run the browser suites for the area you changed:
 
 | If you changed | Run |
 | --- | --- |
 | Compiler errors or diagnostics | `just test consumer`, `just test authoring` |
+| Compiler backend, construction or output contracts | `just test external-backend`, `just test component-tags`, plus the affected structural suites below |
 | Components, lists, children | `just test-browser`, `just test foreach`, `just test children`, `just test component-tags` |
 | Conditions, async, coherent views | `just test control-flow`, `just test async-components`, `just test coherent` |
 | Routing | `just test router`, `just test navigation` |
@@ -145,6 +147,13 @@ with `quote!`. Don't build Rust source out of strings. Keep the authored spans
 and line positions intact, so rustc's errors point at the right HTML. Add both a
 valid and an invalid case, and when you generate new Rust, check it compiles in
 a real application: a string assertion doesn't prove that.
+
+External renderers use the bounded [backend contract](crates/fusor-build/BACKENDS.md)
+and [runtime integration contracts](crates/fusor-core/BACKENDS.md). Keep their
+versions independent of the browser HTML format. The external-backend fixture
+is a separate Cargo workspace; test native execution, Rust binding failures with
+authored source maps, dependency isolation and browser compilation of shared
+component sources. Reject unsupported operations explicitly.
 
 **Runtime and DOM.** Test what a user can observe: the scheduling order, when
 cleanup runs, and whether the same DOM nodes survive an update. Include the case

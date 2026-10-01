@@ -20,6 +20,8 @@ mod tokens;
 use crate::{BindingLocation, ExtractError, RustBlock};
 pub(crate) use ir::Edit;
 
+pub(crate) use codegen::generate_backend;
+
 pub(crate) struct Compiled {
     pub edits: Vec<Edit>,
     pub templates: String,

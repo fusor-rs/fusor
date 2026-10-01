@@ -103,7 +103,7 @@ async function editor() {
     if (JSON.stringify(generated)?.includes("dom.rs")) break;
     await new Promise(resolve => setTimeout(resolve, 300));
   }
-  assert.match(JSON.stringify(generated), /dom.rs/);
+  assert.match(JSON.stringify(generated), /dom.rs/, `generated Component method did not resolve\n${logs}`);
   await request("shutdown", null);
   send({ method: "exit", params: null });
   console.log("PASS: rust-analyzer completion, authored definitions, private-field types and generated Component methods resolve");
@@ -113,7 +113,7 @@ try {
   await exec("cargo", ["build", "-p", "fusor-cli", "--locked", "--offline"], { cwd: root, timeout: 180_000 });
   await exec(cli, ["new", app, "--framework-path", root], { cwd: scratch, env });
   const rustPath = join(app, "src/app.rs"), htmlPath = join(app, "web/index.html");
-  const rust = `//! Native module documentation.\n#![allow(dead_code)]\nmod nested;\n#[path = "support.rs"]\nmod support;\nconst LABEL: &str = include_str!("label.txt");\n${await readFile(rustPath, "utf8")}\nimpl App {\n    fn read(&self) -> i32 { self.count.get() + nested::value() + support::value() }\n    fn manual() -> Result<Scope, fusor::dom::JsValue> { Counter::try_mount_with(|owner| Counter::from_inputs(crate::counter::CounterInputs { count: signal(0) }, owner)) }\n}\n`;
+  const rust = `//! Native module documentation.\n#![allow(dead_code)]\nmod nested;\n#[path = "support.rs"]\nmod support;\nconst LABEL: &str = include_str!("label.txt");\n${await readFile(rustPath, "utf8")}\nimpl App {\n    fn read(&self) -> i32 { self.count.get() + nested::value() + support::value() }\n    fn manual() -> Result<Scope, fusor::dom::JsValue> { Counter::try_mount_with(|owner| Counter::from_inputs(crate::counter::CounterInputs { count: signal(0) }, owner).map_err(fusor::dom::IntoMountError::into_mount_error)) }\n}\n`;
   await mkdir(join(app, "src/app"));
   await writeFile(join(app, "src/app/nested.rs"), "pub fn value() -> i32 { 1 }\n");
   await writeFile(join(app, "src/support.rs"), "pub fn value() -> i32 { 2 }\n");

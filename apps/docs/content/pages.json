@@ -1240,12 +1240,12 @@
         "body": "For `Counter`, the derive generates a `CounterInputs` struct with a public `count` field. It also implements `FromInputs`, the trait the framework calls to construct a component. A Rust trait is an interface: a set of functions a type promises to provide.\n\nThe generated input struct has the same visibility as `Counter`. The original component fields stay private. Every field must have exactly one `#[input]` or `#[local(init = ...)]` annotation; missing or conflicting annotations produce a compiler error on that field.",
         "code": "pub struct CounterInputs {\n    pub count: Signal<i32>,\n}",
         "language": "Rust · generated input contract, do not add this to your module",
-        "note": "The derive is available with the `dom` feature through `fusor::prelude::*`. It supports concrete named-field structs and unit structs. It creates no `new()` method and does not replace `template!`. Reserve the generated `CounterInputs` name; do not also declare it yourself."
+        "note": "The derive is available with the `derive` feature through `fusor::prelude::*`, without browser dependencies. The `dom` feature also enables it. Its associated `Error` is `std::convert::Infallible`. It supports concrete named-field structs and unit structs. It creates no `new()` method and does not replace `template!`. Reserve the generated `CounterInputs` name; do not also declare it yourself."
       },
       {
         "id": "manual-inputs",
         "title": "Write the constructor when you need custom setup",
-        "body": "Local initializers can call ordinary Rust helpers such as `signal(0)` or `Self::initial_clicks()`. They cannot read other fields of an instance still being constructed, and they do not receive special inputs or owner variables.\n\nWhen setup depends on parent inputs or needs an `OwnerHandle`, implement `FromInputs` yourself. The file below is the complete manual equivalent of the derive example. Replace only `src/counter.rs`; keep the same HTML and parent files. The application behaves identically.\n\nUse either this implementation or the derive, not both.",
+        "body": "Local initializers can call ordinary Rust helpers such as `signal(0)` or `Self::initial_clicks()`. They cannot read other fields of an instance still being constructed, and they do not receive special inputs or owner variables.\n\nWhen setup depends on parent inputs or needs an `OwnerHandle`, implement `FromInputs` yourself. The file below is the complete manual equivalent of the derive example. Replace only `src/counter.rs`; keep the same HTML and parent files. The application behaves identically.\n\nUse either this implementation or the derive, not both.\n\n`FromInputs` is a renderer-independent construction trait. It has `Inputs` and `Error` associated types and is available without features. Existing manual browser implementations migrate by adding `type Error = fusor::dom::JsValue;`; their existing return signatures and the compatibility import `fusor::dom::FromInputs` keep working. Portable constructors choose their own error type.\n\nBrowser component tags convert errors through `fusor::dom::IntoMountError`: JavaScript errors retain their original value, `Infallible` cannot fail, and `String` or `&str` become JavaScript strings. Implement that trait for a custom error when enabling browser rendering. Explicit mounting closures can call `.map_err(fusor::dom::IntoMountError::into_mount_error)` themselves.\n\nConstruction and mounting remain separate. Ordinary effects still run immediately during ordinary construction; owner activation gates work registered with `on_activate`. Moving the trait does not change either lifecycle.",
         "code": "",
         "language": "src/counter.rs · complete alternative",
         "note": "`OwnerHandle` is a handle to a component’s lifetime, useful for requests and cleanup that should stop when it is removed. For a component tag, the framework calls `FromInputs::from_inputs` with the inputs and that child’s handle.\n\nThe _owner parameter in this example is an ordinary Rust parameter; the leading underscore says this counter does not use it. Generic components also use the manual trait in this release.",
@@ -1892,7 +1892,7 @@
         "id": "owner-variable",
         "title": "What is owner, and where does it come from?",
         "body": "`OwnerHandle` is the public type for a handle to a view’s lifetime. With component tags, the framework supplies it as the second argument to `FromInputs::from_inputs`.\n\nIn your Rust implementation, `owner` is a normal parameter you declare and may rename. It is not a global variable or a value created by importing `OwnerHandle`.",
-        "code": "impl fusor::dom::FromInputs for Watch {\n    type Inputs = WatchInputs;\n    fn from_inputs(\n        inputs: Self::Inputs,\n        owner: fusor::OwnerHandle,\n    ) -> Result<Self, fusor::dom::JsValue> {\n        Ok(Self::new(owner, inputs.lifecycle))\n    }\n}",
+        "code": "impl fusor::dom::FromInputs for Watch {\n    type Error = fusor::dom::JsValue;\n    type Inputs = WatchInputs;\n    fn from_inputs(\n        inputs: Self::Inputs,\n        owner: fusor::OwnerHandle,\n    ) -> Result<Self, fusor::dom::JsValue> {\n        Ok(Self::new(owner, inputs.lifecycle))\n    }\n}",
         "language": "Rust · Watch’s input conversion",
         "note": "`WatchInputs` contains a field declared as `pub lifecycle: Signal<String>`. The framework calls this method; your implementation chooses which arguments to pass to `Watch::new`. The corresponding HTML is `<Watch lifecycle=\"{{ state.lifecycle.clone() }}\"></Watch>`.",
         "links": [
@@ -1917,7 +1917,7 @@
       {
         "id": "constructors",
         "title": "How many parameters can new have?",
-        "body": "Your own constructors remain ordinary Rust functions with any parameters. Component tags use one fixed entry point: `FromInputs::from_inputs(inputs, owner)` -> `Result<Self, JsValue>`. Implement it to call any constructor, perform context lookup, or return an error.\n\nFor straightforward fields, derive `FromInputs` instead; the components guide explains `#[input]` and #[local(init = ...)]. Use a manual implementation when initialization needs the owner.",
+        "body": "Your own constructors remain ordinary Rust functions with any parameters. Component tags use one fixed entry point: `FromInputs::from_inputs(inputs, owner)` -> `Result<Self, Self::Error>`. Implement it to call any constructor, perform context lookup, or return an error.\n\nFor straightforward fields, derive `FromInputs` instead; the components guide explains `#[input]` and #[local(init = ...)]. Use a manual implementation when initialization needs the owner.",
         "code": "// Your constructors can have different signatures:\nfn new() -> Self\nfn new(owner: OwnerHandle, count: Signal<i32>) -> Self\nfn new(owner: OwnerHandle, id: u32, title: String) -> Result<Self, JsValue>\n\n// Inside your FromInputs implementation, forward a fallible result:\nSelf::new(owner, inputs.id, inputs.title)",
         "language": "Rust · signatures only",
         "note": "The framework does not inspect new or guess its arguments. Named HTML inputs build the Inputs struct, and your implementation controls initialization.",
@@ -1946,7 +1946,7 @@
         "id": "tags",
         "title": "What happens when you write <Counter>?",
         "body": "Component tags use a fixed trait contract instead of calling new. The framework builds `CounterInputs` from the tag’s named attributes, then calls `Counter::from_inputs(inputs, owner)`.\n\nThe owner belongs to that new `Counter`. `#[derive(FromInputs)]` generates this implementation for simple input/local fields; it does not generate a new method.",
-        "code": "fn from_inputs(\n    inputs: Self::Inputs,\n    owner: OwnerHandle,\n) -> Result<Self, JsValue>",
+        "code": "fn from_inputs(\n    inputs: Self::Inputs,\n    owner: OwnerHandle,\n) -> Result<Self, Self::Error>",
         "language": "Rust · FromInputs trait method",
         "note": "The derive has no implicit `owner` or `inputs` variable in #[local(init = ...)]. Implement `FromInputs` manually when initialization depends on the owner or on another input.",
         "links": [
@@ -5565,6 +5565,24 @@
           {
             "href": "/docs/ownership#lifetime",
             "label": "Observe cleanup when a child disappears"
+          }
+        ]
+      },
+      {
+        "id": "rendering-backends",
+        "title": "Integrate an independently maintained renderer",
+        "body": "`compile_app()` uses the built-in DOM compiler backend, and ordinary `template!` includes its output. Existing browser applications need no configuration change.\n\n`fusor_build::backend` exposes a versioned compiler boundary for external build helpers. A backend declares supported operations, validates every static node and attribute, supplies runtime paths, and emits Rust tokens for mounting and binding operations. Fusor keeps lexical captures, nested state aliases, typed component inputs, branch payloads, keyed rows, and closure generation in its compiler.\n\n`backend::build::BuildInputs` validates an explicit list of package-relative templates without requiring web-delivery metadata. `compile_cargo` writes Rust, source maps, and a versioned manifest below `OUT_DIR/fusor_backends/<namespace>/`. Browser output from `compile_app()` remains separate. The helper chooses its own metadata and output namespace. Each component package compiles and includes the templates belonging to its Rust types.\n\nThe authoring model keeps interpolation, `on:click`, `bind`, component inputs, signals, ownership, and structural tags. Actual support is declared by each backend. Browser-specific event payloads stay browser-specific; a callback that ignores `event` can be shared. No rendering target is selected by assuming that every Wasm program runs in a browser.",
+        "code": "// In the Rust module owning the component:\nfusor::template!(backend = \"memory\", \"ui/panel.html\");",
+        "language": "Rust · external helper output association",
+        "note": "The public external backend interface at version 1 rejects async/coherent templates, routing, hydration, JavaScript modules, server-rendering modes, opaque content, and inline/external Rust script blocks. The built-in DOM backend retains those browser features. This boundary supplies compiler and runtime integration contracts; it does not ship a terminal renderer. Backend maintainers must define event dispatch, control editing, validation, publication, and cleanup behavior and test the generated Rust in real consumers.",
+        "links": [
+          {
+            "href": "https://github.com/fusor-rs/fusor/blob/main/crates/fusor-build/BACKENDS.md",
+            "label": "Compiler, output and renderer lifecycle contracts"
+          },
+          {
+            "href": "/docs/components#manual-inputs",
+            "label": "Portable construction and manual implementation migration"
           }
         ]
       },

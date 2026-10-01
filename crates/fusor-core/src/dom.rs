@@ -60,7 +60,8 @@ pub trait Component: Sized + 'static {
         Ok(scope)
     }
 
-    /// Prepare a child without starting owned work. Attach, then commit the
+    /// Prepare a child while owner-activation registrations wait. Ordinary
+    /// constructor effects keep their immediate timing. Attach, then commit the
     /// returned scope; dropping it rolls back preparation. Used by outlets.
     fn prepare(
         parent: &OwnerHandle,
@@ -98,32 +99,41 @@ pub type ComponentFactory<'a, C> = Box<dyn FnOnce(OwnerHandle) -> Result<C, JsVa
 /// Generated for types declared with `<template rust:component="Type">`.
 pub trait TemplateComponent: Component {}
 
-/// The explicit input contract for compiler-resolved component tags.
+/// Compatibility import for the renderer-independent construction contract.
+pub use crate::FromInputs;
+
+/// Convert a component construction error at the browser mounting boundary.
 ///
-/// `Inputs` is a named-field struct (or a unit struct for empty tags). The
-/// compiler builds it with an ordinary struct literal: rustc checks every field,
-/// its visibility, and its type. Input expressions and this constructor run once
-/// per mounted identity, untracked. Pass signals or memos for live shared inputs.
-/// Construction is separate from rendering: browser mounts require `Component`
-/// and native rendering requires `fusor_server::Render` at the use site.
-/// `owner` is the new child's prepared owner; fallible construction rolls back.
-///
-/// Simple concrete components can use `#[derive(fusor::FromInputs)]`:
-/// mark every field `#[input]` (required from the parent) or
-/// `#[local(init = expression)]` (initialized once per instance). The derive
-/// generates a `TypeNameInputs` struct with the component's visibility and
-/// public input fields, plus this trait implementation. Original field
-/// visibility is unchanged. Unit and all-local components get unit Inputs.
-///
-/// Local expressions execute in declaration order in the generated constructor;
-/// `Self` refers to the component. They have no implicit `inputs`/`owner` names
-/// and cannot access other instance fields. Implement this trait manually for
-/// input-dependent initialization, owner-aware setup, or generic components.
-/// The derive creates neither a `new` method nor a template association.
-/// Use `#[from_inputs(crate = ::alias)]` when renaming the runtime dependency.
-pub trait FromInputs: Sized {
-    type Inputs;
-    fn from_inputs(inputs: Self::Inputs, owner: OwnerHandle) -> Result<Self, JsValue>;
+/// Implement this for a custom portable error when enabling browser rendering.
+/// There is deliberately no blanket `Display` implementation: JavaScript values
+/// retain their original identity, and applications choose how to represent a
+/// native error to the browser.
+pub trait IntoMountError {
+    fn into_mount_error(self) -> JsValue;
+}
+
+impl IntoMountError for JsValue {
+    fn into_mount_error(self) -> JsValue {
+        self
+    }
+}
+
+impl IntoMountError for std::convert::Infallible {
+    fn into_mount_error(self) -> JsValue {
+        match self {}
+    }
+}
+
+impl IntoMountError for String {
+    fn into_mount_error(self) -> JsValue {
+        JsValue::from_str(&self)
+    }
+}
+
+impl IntoMountError for &str {
+    fn into_mount_error(self) -> JsValue {
+        JsValue::from_str(self)
+    }
 }
 
 pub fn document() -> Result<Document, JsValue> {

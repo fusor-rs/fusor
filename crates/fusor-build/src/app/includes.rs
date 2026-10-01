@@ -31,11 +31,12 @@ pub fn includes_foreign_file_with(
 /// Matched as token streams, so formatting does not matter. The metavariables
 /// appear because a path dependency on `fusor` puts the macro definitions
 /// themselves in the scanned sources.
-fn generated_contracts() -> [TokenStream; 3] {
+fn generated_contracts() -> [TokenStream; 4] {
     [
         format!(r#"concat!(env!("OUT_DIR"), "/{TEMPLATE_DIRECTORY}/", $path, ".rs")"#),
         format!(r#"concat!(env!("OUT_DIR"), "/{BINDINGS_PREFIX}", stringify!($name), ".rs")"#),
         format!(r#"env!("{MODULE_VARIABLE}")"#),
+        r#"concat!(env!("OUT_DIR"), "/fusor_backends/", $backend, "/", $path, ".rs")"#.to_owned(),
     ]
     .map(|contract| contract.parse().expect("generated include contract"))
 }

@@ -1,4 +1,4 @@
-use super::{Bundle, Ctx, captures, scoped};
+use super::{Bundle, Ctx, bindings::scoped, captures};
 use crate::bindings::{
     emit::{self, element, point, text},
     ir::{Anchor, Binding, Component},

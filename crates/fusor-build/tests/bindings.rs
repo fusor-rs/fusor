@@ -649,7 +649,7 @@ fn component_tags_lower_native_inputs_aliases_and_explicit_content() {
     let page = extract(&source).unwrap();
     let rust = tokens(&page.rust);
     assert!(rust.contains(&tokens(
-        "<widgets::CounterAlias as ::fusor::dom::FromInputs> ::Inputs"
+        "<widgets::CounterAlias as ::fusor::FromInputs> ::Inputs"
     )),);
     assert!(rust.contains(&tokens("count: { state.count.clone() }")));
     assert!(rust.contains(&tokens("title: { \"literal & text\" }")));

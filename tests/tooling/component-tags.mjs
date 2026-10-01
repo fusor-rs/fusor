@@ -83,6 +83,26 @@ try {
     });
     const metrics = () => page.evaluate(() => Array.from(window.client.metrics()));
     assert.deepEqual(await metrics(), [2, 0, 2]);
+    // One native event has separate reactive batches for each registered
+    // listener. Text bind installs first; select bind installs after its options
+    // and therefore after the authored change listener. Source attribute order
+    // does not reverse those existing compiler/runtime decisions.
+    const eventTrace = await page.evaluate(() => {
+      window.client.take_event_trace();
+      const text = document.querySelector('#event-text');
+      text.value = 'edited';
+      text.dispatchEvent(new Event('input'));
+      const input = window.client.take_event_trace();
+      const select = document.querySelector('#event-select');
+      select.value = 'b';
+      select.dispatchEvent(new Event('change'));
+      return { input, change: window.client.take_event_trace() };
+    });
+    assert.deepEqual(eventTrace, {
+      input: 'text:edited|input:edited|pulse:2',
+      change: 'change:a|pulse:4|select:b',
+    });
+    console.log(`PASS (${name}): text/select bind-handler ordering and separate listener batches, with one effect flush for repeated handler writes`);
     await expect(page.locator(".rust-button")).toHaveText("Rust component");
     await expect(page.locator("tbody > tr > td")).toHaveText("0");
     assert.deepEqual(await page.locator("tbody").evaluate(node => [...node.children].map(child => child.localName)), ["tr"]);

@@ -49,10 +49,10 @@ fn construct_child(
         quote! { try_child_with_children }
     };
     let writer = into.then(|| quote! { , __fusor_writer });
-    let construct = super::emit::from_inputs(ty.span(), ty, fields);
+    let convert = quote! { |_| ::std::string::String::from(concat!("component ", stringify!(#ty), " input construction failed")) };
+    let construct = super::emit::construct_inputs(ty.span(), ty, fields, convert);
     quote_spanned! {ty.span()=> __fusor_context.#method(|owner| {
         #construct
-            .map_err(|_| ::std::string::String::from(concat!("component ", stringify!(#ty), " input construction failed")))
     }, #content #writer) }
 }
 

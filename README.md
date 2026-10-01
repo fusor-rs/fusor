@@ -101,6 +101,8 @@ fusor keeps the boundaries visible:
 
 The default application is a client side WebAssembly app. Optional packages add routing, async resources, shared queries, background workers, native JavaScript integrations, and server rendered islands. See the [guides](apps/docs/) for their setup and current limits.
 
+`compile_app()` and ordinary `template!` includes keep the built-in browser behavior with no configuration change. Independently maintained renderers use the versioned [`fusor_build::backend` interface](crates/fusor-build/BACKENDS.md).
+
 ## Examples
 
 - [Landing app](apps/landing/) — a complete fusor site with live counter, search, lists, and async examples.
@@ -114,7 +116,7 @@ The [documentation showcase](apps/docs/) has more runnable examples. Performance
 
 ## Status and known limitations
 
-fusor is v0.1 and experimental. It targets the browser only: there is no desktop or mobile renderer.
+fusor is v0.1 and experimental. Its built-in renderer targets the browser; fusor does not ship a desktop, mobile or terminal renderer.
 
 **Breaking changes.** Until 1.0, each minor release (0.2, 0.3, …) may change the HTML syntax and the Rust APIs. Patch releases (0.1.x) fix bugs without breaking changes. Every breaking release will come with migration notes.
 
@@ -129,7 +131,7 @@ fusor is v0.1 and experimental. It targets the browser only: there is no desktop
 - `bind` on file inputs. Read their files in an `on:change` handler.
 - Nested `<Async>` boundaries, editable controls and router outlets inside coherent async views.
 - Nested islands and streamed server rendering. Server rendering is synchronous, and your application resolves its data first.
-- A built-in backend or server functions. fusor renders HTML; you bring your own HTTP server and data layer.
+- A built-in HTTP backend or server functions. fusor renders HTML; you bring your own HTTP server and data layer.
 - npm workspaces and linked packages. Apps that use component JavaScript rebuild and reload on every source edit instead of refreshing in place.
 
 The [guides](apps/docs/) list the limits of each feature in more detail.

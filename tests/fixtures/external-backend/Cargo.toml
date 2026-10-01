@@ -1,0 +1,20 @@
+[package]
+name = "fusor-external-backend-test"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[workspace]
+members = ["renderer", "compiler", "components"]
+
+[features]
+browser = ["fixture-components/browser"]
+
+[dependencies]
+fusor-core = { path = "../../../crates/fusor-core", features = ["derive"] }
+memory-renderer = { path = "renderer" }
+fixture-components = { path = "components" }
+
+[lints.rust]
+unsafe_code = "forbid"

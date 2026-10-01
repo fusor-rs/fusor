@@ -80,7 +80,12 @@ impl<T> Signal<T> {
     /// A generated keyed row's candidate input. The override is synchronous,
     /// never published to observers, and validates against the collection's
     /// actual source versions. This is not historical storage for signals.
-    #[doc(hidden)]
+    ///
+    /// Only direct signal reads are overridden. This does not invalidate an
+    /// already cached [`Memo`]; a renderer must not assume cached projections
+    /// recompute against the candidate. Nested overrides restore the preceding
+    /// value, including during unwinding. Do not mutate the signal in `render`.
+    /// Part of the contract versioned by [`crate::coherence::VERSION`].
     pub fn with_render_value<R>(
         &self,
         value: Rc<T>,

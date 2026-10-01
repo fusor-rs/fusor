@@ -12,8 +12,23 @@
 /// stay in this lexical scope, including access to private state and imports.
 /// Call once per HTML file. Multiple component declarations in one file share
 /// this module. Use `/` separators and the exact configured package-relative path.
+///
+/// An independent backend helper using `fusor_build::backend::build::compile_cargo`
+/// writes into its own output namespace. Include that implementation with
+/// `template!(backend = "memory", "ui/panel.html")`; the same component module
+/// may include both browser and backend implementations without output clashes.
 #[macro_export]
 macro_rules! template {
+    (backend = $backend:literal, $path:literal) => {
+        include!(concat!(
+            env!("OUT_DIR"),
+            "/fusor_backends/",
+            $backend,
+            "/",
+            $path,
+            ".rs"
+        ));
+    };
     ($path:literal) => {
         include!(concat!(env!("OUT_DIR"), "/fusor_templates/", $path, ".rs"));
     };

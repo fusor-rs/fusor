@@ -1,0 +1,26 @@
+[package]
+name = "fixture-components"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+build = "build.rs"
+
+[features]
+browser = ["fusor-core/dom", "fusor-components/browser"]
+
+[dependencies]
+fusor-core = { path = "../../../../crates/fusor-core", features = ["derive"] }
+fusor-components = { path = "../../../../crates/fusor-components" }
+memory-renderer = { path = "../renderer" }
+
+[build-dependencies]
+fusor-build = { path = "../../../../crates/fusor-build" }
+memory-compiler = { path = "../compiler" }
+
+[package.metadata.fusor]
+entry = "ui/panel.html"
+templates = []
+
+[lints.rust]
+unsafe_code = "forbid"

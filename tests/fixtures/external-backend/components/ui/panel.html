@@ -1,0 +1,40 @@
+<template rust:component="Panel">
+  <section id="panel" class="static-panel">
+    <p>Static &amp; complete</p>
+    <button id="increment" on:click="state.count.update(|count| *count += 1)">{{ state.title }}: {{ state.count.get() }}</button>
+    <input id="number" type="text" bind="state.number" on:input="state.observed.set(state.number.get())">
+    <input id="checked" type="checkbox" bind="state.checked">
+    <Frame title="Receiver"><span id="projected">{{ state.title }}</span></Frame>
+    <Match value="{{ Some(state.number.get()) }}">
+      <Case pattern="Some(number)"><span id="payload">{{ number.get() }}</span></Case>
+      <Case pattern="None"><span>Absent</span></Case>
+    </Match>
+    <If condition="{{ state.visible.get() }}">
+      <Child label="{{ state.title.clone() }}" visible="{{ state.visible.clone() }}" cleanups="{{ state.cleanups.clone() }}"></Child>
+    </If>
+    <ul>
+      <ForEach items="{{ state.rows.get() }}" key="{{ |row| row.id }}">
+        <li>
+          <If condition="{{ item.get().id > 0 }}">
+            <span>{{ format!("{}:{}", state.title, item.get().label) }}</span>
+            <div>
+              <ForEach items="{{ item.get().children }}" key="{{ |child| *child }}">
+                <span>{{ format!("{}:{}", state.title, item.get()) }}</span>
+              </ForEach>
+            </div>
+          </If>
+          <Child label="{{ item.get().label }}" visible="{{ state.visible.clone() }}" cleanups="{{ state.cleanups.clone() }}"></Child>
+        </li>
+      </ForEach>
+    </ul>
+  </section>
+</template>
+<template rust:component="Frame">
+  <div class="frame"><span>{{ state.title }}</span><Children></Children></div>
+</template>
+<template rust:component="Child">
+  <div class="child">
+    <button on:click="state.clicks.update(|clicks| *clicks += 1)">{{ state.label }} clicks {{ state.clicks.get() }}</button>
+    <button class="remove" on:click="state.visible.set(false)">Remove</button>
+  </div>
+</template>

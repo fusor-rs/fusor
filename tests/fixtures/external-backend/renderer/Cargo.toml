@@ -1,0 +1,15 @@
+[package]
+name = "memory-renderer"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[dependencies]
+fusor-core = { path = "../../../../crates/fusor-core" }
+
+[dev-dependencies]
+fusor-std = { path = "../../../../crates/fusor-std", features = ["forms"] }
+
+[lints.rust]
+unsafe_code = "forbid"

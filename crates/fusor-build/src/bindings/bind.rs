@@ -1,11 +1,11 @@
-//! `bind` on a form control: parsing, the browser install, hydration adoption
-//! and server HTML. `fusor::bind` defines what each bound value means.
+//! `bind` on a form control: parsing and server HTML.
+//! `fusor::bind` defines what each bound value means.
 use super::{emit, interpolation, ir::*, tokens::Rust};
 use crate::{ExtractError, error};
 use fusor::template::{ElementId, InputKind};
 use html5gum::{StartTag, Token};
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote, quote_spanned};
+use quote::{quote, quote_spanned};
 use std::collections::BTreeMap;
 
 /// Parse `bind` on a native element, given its attributes and where each value starts.
@@ -74,46 +74,6 @@ pub(super) fn parse(
         control,
         value: Rust::parse(source, value, offset)?,
     })
-}
-
-/// The function in `fusor::dom::controls` that installs this control;
-/// `adopt_` plus the same name adopts its native edits.
-fn runtime(control: &Control) -> &'static str {
-    match control {
-        Control::Text => "text",
-        Control::Select => "select",
-        Control::SelectMultiple => "select_multiple",
-        Control::Checkbox(_) => "checkbox",
-        Control::Radio(_) => "radio",
-    }
-}
-
-/// Install a bound control. rustc checks the bound value's type at the attribute.
-pub(super) fn browser(node: ElementId, control: &Control, value: &Rust) -> TokenStream {
-    let node = emit::element(node);
-    let function = format_ident!("{}", runtime(control));
-    let choice = control.choice().map(|choice| {
-        let choice = emit::string(choice);
-        quote! { move || #choice, }
-    });
-    // Clone the bound value before the choice closure takes `state`.
-    quote_spanned! {value.span()=> {
-        let __fusor_bound = ::std::clone::Clone::clone(&(#value));
-        ::fusor::dom::controls::#function(&mut __fusor_scope, &#node, #choice __fusor_bound)?;
-    }}
-}
-
-/// Take a native edit made before hydration into the bound value.
-pub(super) fn adopt(node: ElementId, control: &Control, value: &Rust) -> TokenStream {
-    let node = emit::element(node);
-    let function = format_ident!("adopt_{}", runtime(control));
-    let choice = control.choice().map(|choice| {
-        let choice = emit::string(choice);
-        quote! { || #choice, }
-    });
-    quote_spanned! {value.span()=>
-        ::fusor::dom::controls::#function(&__fusor_scope, &#node, #choice &(#value))?;
-    }
 }
 
 /// How the runtime decides whether the bound value chooses a checkbox, radio or option.

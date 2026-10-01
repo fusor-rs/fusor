@@ -21,6 +21,7 @@ setup-browser:
     cargo fusor install -p fusor-playground
     cargo fetch --locked --manifest-path tests/fixtures/component-tags/Cargo.toml
     cargo fetch --locked --manifest-path tests/fixtures/native-javascript/Cargo.toml
+    cargo fetch --locked --manifest-path tests/fixtures/external-backend/Cargo.toml
     cargo fusor install --manifest-path tests/fixtures/worker/Cargo.toml --features pool
     npm ci
     npm ci --prefix examples/npm --cache {{npm_cache}} --ignore-scripts
@@ -51,6 +52,7 @@ lock:
     cargo fetch --manifest-path tests/fixtures/application/Cargo.toml
     cargo fetch --manifest-path tests/fixtures/component-tags/Cargo.toml
     cargo fetch --manifest-path tests/fixtures/native-javascript/Cargo.toml
+    cargo fetch --manifest-path tests/fixtures/external-backend/Cargo.toml
     cargo fetch --manifest-path tests/fixtures/worker/Cargo.toml
     cargo fetch --manifest-path examples/npm/Cargo.toml
     cargo fetch --manifest-path apps/docs/tutorial/Cargo.toml
@@ -127,6 +129,7 @@ ci-browser:
     just test worker-pool
     just test worker-dev
     just test consumer
+    just test external-backend
     just test authoring
     just test async-components
     just test children

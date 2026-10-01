@@ -35,6 +35,8 @@ pub(super) struct Component {
     pub render: RenderTarget,
     pub range: Range<usize>,
     pub html: String,
+    // Authored byte for each materialized byte, retained for backend diagnostics.
+    pub html_origins: Vec<usize>,
     pub javascript: Option<crate::JavaScriptModule>,
 }
 
@@ -77,6 +79,7 @@ impl Component {
             render,
             range,
             html: String::new(),
+            html_origins: Vec::new(),
             javascript: None,
         }
     }
@@ -198,6 +201,16 @@ pub(super) enum Control {
 }
 
 impl Control {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Select => "select",
+            Self::SelectMultiple => "select_multiple",
+            Self::Checkbox(_) => "checkbox",
+            Self::Radio(_) => "radio",
+        }
+    }
+
     /// The `value` a checkbox or radio compares with the bound value.
     pub fn choice(&self) -> Option<&InterpolatedString> {
         match self {
