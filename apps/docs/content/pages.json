@@ -183,7 +183,7 @@
         "id": "configuration",
         "title": "Read the manifest",
         "body": "The generated manifest pins the framework crates to the CLI’s release version and downloads them from crates.io.\n\nThe `dom` feature enables browser bindings, and `fusor-components` supplies browser components. The default entry is `web/index.html`; reusable HTML is discovered under `web/components/`. One file may declare several component templates.\n\nThe core crate is published as `fusor-core`, and its library is named `fusor`, so your code writes `use fusor::...`.",
-        "code": "[package]\nname = \"my-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\n\n[workspace]\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n[dependencies]\nfusor-core = { version = \"=0.1.2\", features = [\"dom\"] }\nfusor-components = { version = \"=0.1.2\", features = [\"browser\"] }\nwasm-bindgen = \"=0.2.117\"\n\n[build-dependencies]\nfusor-build = { version = \"=0.1.2\" }\n\n[package.metadata.fusor]\nassets = \"public\"\noutput = \"dist\"\nbase-path = \"/\"\n\n[profile.release]\nopt-level = \"s\"\nlto = true\ncodegen-units = 1\npanic = \"abort\"",
+        "code": "[package]\nname = \"my-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\n\n[workspace]\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n[dependencies]\nfusor-core = { version = \"=0.1.3\", features = [\"dom\"] }\nfusor-components = { version = \"=0.1.3\", features = [\"browser\"] }\nwasm-bindgen = \"=0.2.117\"\n\n[build-dependencies]\nfusor-build = { version = \"=0.1.3\" }\n\n[package.metadata.fusor]\nassets = \"public\"\noutput = \"dist\"\nbase-path = \"/\"\n\n[profile.release]\nopt-level = \"s\"\nlto = true\ncodegen-units = 1\npanic = \"abort\"",
         "language": "Cargo.toml · generated",
         "note": "In `[package.metadata.fusor]`, set `templates = [\"ui/components\", \"ui/pages\"]` once for another directory layout, or [] to disable discovery. Paths are package-relative, bounded to this package, and cannot overlap output. Discovery rejects symlinks."
       },
@@ -1300,7 +1300,7 @@
         "id": "start",
         "title": "Start with a generated app",
         "body": "Follow Installation to generate and run an app. Replace `src/app.rs` and `web/index.html` with the two complete files below. Keep the generated `src/lib.rs`, `build.rs`, and `Cargo.toml`. Newly generated apps include the `fusor-components` dependency; an existing workspace app should add `fusor-components` using the same version or local path as its other fusor crates.",
-        "code": "[dependencies]\nfusor-components = { version = \"=0.1.2\", features = [\"browser\"] }",
+        "code": "[dependencies]\nfusor-components = { version = \"=0.1.3\", features = [\"browser\"] }",
         "language": "Cargo.toml",
         "note": "Apps created with `fusor new` already include this dependency. `<ForEach>` is a reserved built-in HTML tag; it needs no use import or template registration. Your own component tags still use normal Rust imports.",
         "links": [
@@ -2086,7 +2086,7 @@
         "id": "dependency",
         "title": "Add the async crate to your own app",
         "body": "The runnable companion already declares `fusor-async` with the browser feature.\n\nThe line below shows the dependency to add under `[dependencies]` if adapting this code in the `my-app` from Installation. It is only the dependency step: use the complete file-wiring checklist at the end of this page before copying the companion’s files.",
-        "code": "fusor-async = { version = \"=0.1.2\", features = [\"browser\"] }",
+        "code": "fusor-async = { version = \"=0.1.3\", features = [\"browser\"] }",
         "language": "Cargo.toml · add under [dependencies]",
         "note": ""
       },
@@ -2503,7 +2503,7 @@
         "id": "setup",
         "title": "Add the package to your app",
         "body": "Add `fusor-worker` to the dependencies of an existing Fusor app. Keep the `<App>` entry point and the usual `fusor_build::compile_app()` build script, and put annotated functions in ordinary Rust modules that your app includes.\n\nThen build as usual with `fusor dev` or `fusor build`. The CLI finds the annotated functions in the compiled code and generates the worker assets. You don’t write a worker entry point, register functions, supply worker URLs, or add a Cargo target.\n\nUse the same release for `fusor-worker` and any other optional Fusor packages as for your app’s core and CLI.",
-        "code": "[dependencies]\nfusor-worker = \"=0.1.2\"",
+        "code": "[dependencies]\nfusor-worker = \"=0.1.3\"",
         "language": "TOML · additions to Cargo.toml",
         "note": "",
         "links": [
@@ -2602,7 +2602,7 @@
       {
         "id": "fetch",
         "title": "Make network requests from async tasks",
-        "body": "An async task can await Fetch and other browser APIs that are available in workers. Passing `TaskContext::cancellation_token()` to a request ties it to the job’s cancellation. The example uses the `fusor_async::fetch::get_text` helper and converts its failure into a serializable application error. Relative URLs given to this helper resolve against the app’s base URL, including when the app is deployed under a subpath.\n\nThe helper requires `fusor-async = { version = \"=0.1.2\", features = [\"browser\"] }` in your dependencies. Being async doesn’t move synchronous code off the worker’s event loop: code between awaits still runs there. In a task placed on a pool, hand substantial CPU work to `ctx.compute`.",
+        "body": "An async task can await Fetch and other browser APIs that are available in workers. Passing `TaskContext::cancellation_token()` to a request ties it to the job’s cancellation. The example uses the `fusor_async::fetch::get_text` helper and converts its failure into a serializable application error. Relative URLs given to this helper resolve against the app’s base URL, including when the app is deployed under a subpath.\n\nThe helper requires `fusor-async = { version = \"=0.1.3\", features = [\"browser\"] }` in your dependencies. Being async doesn’t move synchronous code off the worker’s event loop: code between awaits still runs there. In a task placed on a pool, hand substantial CPU work to `ctx.compute`.",
         "code": "",
         "language": "Rust · fetch.rs",
         "note": "",
@@ -4814,7 +4814,7 @@
         "id": "setup",
         "title": "Start with two pages and a fallback",
         "body": "This example replaces the main page of the generated `my-app` from Installation. Keep its `build.rs` and existing dependencies.\n\nAdd the dependency below under `[dependencies]`. In `[package.metadata.fusor]`, add `history-fallback = [\"/articles\", \"/missing\"]`.\n\nCreate the five files below. The build discovers `web/components/pages.html`; a `template!` call in its associated Rust module connects that HTML to the page types.",
-        "code": "fusor-router = { version = \"=0.1.2\", features = [\"browser\"] }",
+        "code": "fusor-router = { version = \"=0.1.3\", features = [\"browser\"] }",
         "language": "Cargo.toml · add under [dependencies]",
         "note": "Use the same framework version as the app generated by your CLI."
       },
@@ -5140,7 +5140,7 @@
         "id": "dependencies",
         "title": "Put dependencies in the packages that use them",
         "body": "The existing fixture inherits paths from the workspace. For your own workspace, define the registry dependencies below in its root `Cargo.toml` and inherit them in member packages.\n\nThe descriptor crate uses islands and serde; the native site uses server and islands; a browser unit enables dom/islands on fusor and browser on fusor-islands. Keep each unit’s generated HTML setup and build dependency as in a normal app.",
-        "code": "[workspace.dependencies]\nfusor-core = { version = \"=0.1.2\" }\nfusor-build = { version = \"=0.1.2\" }\nfusor-islands = { version = \"=0.1.2\" }\nfusor-server = { version = \"=0.1.2\" }\nserde = { version = \"1\", features = [\"derive\"] }\nwasm-bindgen = \"=0.2.117\"",
+        "code": "[workspace.dependencies]\nfusor-core = { version = \"=0.1.3\" }\nfusor-build = { version = \"=0.1.3\" }\nfusor-islands = { version = \"=0.1.3\" }\nfusor-server = { version = \"=0.1.3\" }\nserde = { version = \"1\", features = [\"derive\"] }\nwasm-bindgen = \"=0.2.117\"",
         "language": "Cargo.toml · root of a separate workspace",
         "note": "In the browser member’s `[dependencies]`, use `fusor-core = { workspace = true, features = [\"islands\"] }` and `fusor-islands = { workspace = true, features = [\"browser\"] }`. The setting `workspace = true` requires those dependencies to be defined in the workspace manifest."
       },
@@ -5748,7 +5748,7 @@
         "id": "build",
         "title": "Build the site",
         "body": "`fusor build --site` builds each mounted application exactly as `fusor build` would, into `target/fusor/site/<package>/`. Only when every application has built does it copy each one into the site output at its mount and publish the result.\n\nPublishing replaces the previous site in one step. If any application fails to build, or two mounts collide, the previous site stays in place.",
-        "code": "$ fusor build --site\n▲ fusor 0.1.2 · production build\n○ Compiling homepage ...\n✓ Compiled homepage in 12.4s\n○ Compiling docs ...\n✓ Compiled docs in 18.0s\n✓ Published dist/ in 30.6s\n  /       homepage  → dist/\n  /docs/  docs      → dist/docs/",
+        "code": "$ fusor build --site\n▲ fusor 0.1.3 · production build\n○ Compiling homepage ...\n✓ Compiled homepage in 12.4s\n○ Compiling docs ...\n✓ Compiled docs in 18.0s\n✓ Published dist/ in 30.6s\n  /       homepage  → dist/\n  /docs/  docs      → dist/docs/",
         "language": "Terminal"
       },
       {
