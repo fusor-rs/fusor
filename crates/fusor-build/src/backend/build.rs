@@ -322,11 +322,12 @@ mod tests {
                 message: "unsupported operation".into(),
             })
         });
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("ui/panel.html:4:2: unsupported operation")
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            format!(
+                "{}:4:2: unsupported operation",
+                inputs.sources()[0].canonical().display()
+            )
         );
         assert!(!out.path().join("fusor_backends").exists());
     }
