@@ -17,10 +17,12 @@ mod cleanup;
 pub mod coherence;
 mod owner;
 mod reactive;
+#[doc(hidden)]
 pub mod render;
 pub use cleanup::{Cleanup, CleanupEffect, effect_with_cleanup};
 pub use owner::{ContextError, ContextKey, Owner, OwnerHandle, Registration};
 /// Source-version snapshots for supported renderer and async-read integration.
+#[doc(hidden)]
 pub use reactive::versions;
 
 /// Versioned contract shared by the HTML compiler and the DOM runtime.
@@ -37,8 +39,7 @@ pub use reactive::{
 /// compiler builds it with an ordinary struct literal: rustc checks every field,
 /// its visibility, and its type. Input expressions and this constructor run once
 /// per mounted identity, untracked. Pass signals or memos for live shared inputs.
-/// Construction is separate from rendering: browser mounts require `Component`
-/// and each other renderer requires its own mounting contract at the use site.
+/// Construction is separate from rendering: browser mounts require `Component`.
 /// `owner` is the new child's prepared owner. The caller owns preparation,
 /// activation, rollback, and conversion of construction errors. This trait does
 /// not itself defer ordinary effects or activate the owner.

@@ -6,15 +6,13 @@
 //! bindings are read-only reactive values; the collection remains application
 //! state. The HTML compiler connects these types to the existing owned list
 //! engine, including coherent publication and server rendering.
-//!
-//! [`BACKEND_VERSION`] versions the supported row/capture helpers used by
-//! generated code for external renderers. They contain no browser dependencies.
 use fusor::{Memo, Signal, memo};
 
 /// Version of the backend row/capture protocol: [`Entry`], [`Value`],
 /// [`RowValue`], [`Row`], [`ItemRow`], [`Captured`], and [`ForEach`]'s `entries`,
 /// `values`, `key`, `value_key`, `row`, and `item_row` helpers. Browser mounting
 /// and server-only helpers are separate contracts.
+#[doc(hidden)]
 pub const BACKEND_VERSION: u32 = 1;
 
 /// The built-in application boundary. Its state is ordinary inferred Rust.

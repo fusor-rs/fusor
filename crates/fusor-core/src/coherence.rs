@@ -1,11 +1,9 @@
-//! The renderer/readiness contract, independent of executors and the browser.
+//! Coherent async views and their loading status.
 //!
-//! A boundary validates tracked source versions before synchronously publishing
-//! owned patches. Async libraries implement `ReadLease`; renderers implement
-//! `Publication`. This module does not execute or cache application requests.
-//!
-//! These APIs are a supported integration surface for independently maintained
-//! renderers and async adapters. See [`VERSION`] for the contract version.
+//! Supply an [`AsyncBoundary`] to one `<Async>` region to coordinate its reads.
+//! Its [`BoundaryStatus`] reports when the complete view is ready or a read has
+//! failed. Keep status displays and retry controls outside the region so they
+//! remain usable while it is pending.
 use crate::{
     Effect, OwnerHandle, Registration, Signal, batch, effect, signal, untrack, versions::Versions,
 };
@@ -21,6 +19,7 @@ use std::{
 /// [`Signal::with_render_value`]. A change to their integration semantics bumps
 /// this version. It is independent of the browser template format and of any
 /// external renderer's generated-code protocol.
+#[doc(hidden)]
 pub const VERSION: u32 = 2;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,6 +36,7 @@ pub enum BoundaryStatus {
 ///
 /// Reads may start before owner activation. The boundary cancels leases when
 /// their inputs become obsolete, they leave the read set, or it is disposed.
+#[doc(hidden)]
 pub trait ReadLease {
     /// Invalidate delivery and request cancellation. Must tolerate repeated calls;
     /// cancellation does not roll back external work or await its termination.
@@ -50,6 +50,7 @@ pub trait ReadLease {
 /// Formatting, constructors, key comparisons and fallible target setup belong
 /// in evaluation or [`Self::validate`], before any visible mutation. The boundary
 /// validates source versions both before and after renderer validation.
+#[doc(hidden)]
 pub trait Publication {
     /// Check that all prepared operations can still target the intended nodes.
     /// An error preserves the previously published scene and reports `Error`.
@@ -172,6 +173,7 @@ impl AsyncBoundary {
     ///
     /// Disposal is permanent: a boundary cannot attach again after its mount or
     /// owner has been disposed. This method does not commit the supplied owner.
+    #[doc(hidden)]
     pub fn attach(
         &self,
         owner: &OwnerHandle,
@@ -213,6 +215,7 @@ impl AsyncBoundary {
 
 /// Retained by the renderer. Dropping it cancels candidate reads and subscriptions.
 #[must_use = "retain the mount for as long as the coherent region is mounted"]
+#[doc(hidden)]
 pub struct BoundaryMount {
     inner: Weak<Inner>,
     subscription: Effect,
@@ -249,6 +252,7 @@ fn discard_candidates(inner: &Inner) {
 }
 
 /// Weak lifetime witness used by read declarations that outlive a mounted view.
+#[doc(hidden)]
 pub struct BoundaryLifetime(Weak<Inner>);
 impl BoundaryLifetime {
     /// Whether the boundary remains attached or available to attach.
@@ -259,6 +263,7 @@ impl BoundaryLifetime {
 
 /// One discovery pass in the current attempt. An unresolved read records pending
 /// and returns normally; no exception, panic, or unwinding implements suspension.
+#[doc(hidden)]
 pub struct Attempt {
     inner: Weak<Inner>,
     epoch: u64,
@@ -473,6 +478,7 @@ pub(crate) fn preparing_owner() -> Option<OwnerHandle> {
 /// use it unless staged effects are intended: outside this explicit preparation
 /// context, [`effect`] runs immediately even when an unrelated owner is prepared.
 /// Speculative async reads have separate leases and may start before activation.
+#[doc(hidden)]
 pub fn prepare_state<R>(owner: OwnerHandle, make: impl FnOnce(OwnerHandle) -> R) -> R {
     struct Restore(Option<OwnerHandle>);
     impl Drop for Restore {

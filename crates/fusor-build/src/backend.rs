@@ -4,7 +4,6 @@
 //! A backend owns static-node emission and the operations those factories call.
 //! Browser builds select the internal `DomBackend`; this public facade adapts
 //! external renderers to the same private compiler emission contract.
-//! See `BACKENDS.md` for the runtime and output contracts.
 
 pub mod build;
 
@@ -121,7 +120,7 @@ pub struct Runtime {
     pub error: Path,
     pub children: Path,
     pub convert_error: Path,
-    /// Opt in to coherent installation. See BACKENDS.md for the scope/frame contract.
+    /// Opt in to coherent installation.
     pub coherent_frame: Option<Path>,
 }
 

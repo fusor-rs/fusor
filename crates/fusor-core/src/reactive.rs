@@ -100,6 +100,7 @@ impl<T> Signal<T> {
     /// inputs directly. Nested overrides restore the preceding value, including
     /// during unwinding. Do not mutate signals in `render`.
     /// Part of the contract versioned by [`crate::coherence::VERSION`].
+    #[doc(hidden)]
     pub fn with_render_value<R>(
         &self,
         value: Rc<T>,

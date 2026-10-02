@@ -12,7 +12,38 @@ use fusor::{Derived, OwnerHandle};
 use std::rc::Rc;
 use wasm_bindgen::JsValue;
 
-/// A lazy DOM route factory.
+/// A lazy DOM route factory for [`ViewRouter`] or [`mount_routes`].
+///
+/// `RouteView::new(pattern, render)` validates a route pattern, returning
+/// `Result<RouteView, JsValue>`. `RouteView::fallback(render)` creates the view
+/// used when no pattern matches. Both accept a
+/// `Fn(&OwnerHandle, &crate::pattern::Match) -> Result<Scope, JsValue> + 'static`.
+/// Captures in `Match::params` are decoded. Unmatched factories do not run.
+///
+/// Return a detached scope prepared under the supplied owner. The router
+/// attaches and activates it; the factory must not commit it itself.
+///
+/// ```no_run
+/// use fusor::{OwnerHandle, dom::{Scope, document}};
+/// use fusor_router::browser::declarative::RouteView;
+/// use wasm_bindgen::JsValue;
+///
+/// fn page(owner: &OwnerHandle, text: &str) -> Result<Scope, JsValue> {
+///     let element = document()?.create_element("p")?;
+///     element.set_text_content(Some(text));
+///     let mut scope = Scope::new(element);
+///     scope.prepare_owner(Some(owner));
+///     Ok(scope)
+/// }
+///
+/// let routes = vec![
+///     RouteView::new("/pages/:name", |owner, matched| {
+///         page(owner, &matched.params["name"])
+///     })?,
+///     RouteView::fallback(|owner, _| page(owner, "Page not found")),
+/// ];
+/// # Ok::<(), JsValue>(())
+/// ```
 pub type RouteView = view::RouteView<Scope>;
 
 /// Navigation shared by nested routers, independent of the declaring template file.

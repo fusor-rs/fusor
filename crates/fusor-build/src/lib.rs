@@ -5,6 +5,7 @@
 //! share a typed contract with the DOM runtime.
 
 pub mod app;
+#[doc(hidden)]
 pub mod backend;
 mod bindings;
 mod cargo;

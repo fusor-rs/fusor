@@ -148,13 +148,6 @@ and line positions intact, so rustc's errors point at the right HTML. Add both a
 valid and an invalid case, and when you generate new Rust, check it compiles in
 a real application: a string assertion doesn't prove that.
 
-External renderers use the bounded [backend contract](crates/fusor-build/BACKENDS.md)
-and [runtime integration contracts](crates/fusor-core/BACKENDS.md). Keep their
-versions independent of the browser HTML format. The external-backend fixture
-is a separate Cargo workspace; test native execution, Rust binding failures with
-authored source maps, dependency isolation and browser compilation of shared
-component sources. Reject unsupported operations explicitly.
-
 **Runtime and DOM.** Test what a user can observe: the scheduling order, when
 cleanup runs, and whether the same DOM nodes survive an update. Include the case
 where a callback removes its own element. Changes to rendering should keep focus,

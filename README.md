@@ -101,8 +101,6 @@ fusor keeps the boundaries visible:
 
 The default application is a client side WebAssembly app. Optional packages add routing, async resources, shared queries, background workers, native JavaScript integrations, and server rendered islands. See the [guides](apps/docs/) for their setup and current limits.
 
-`compile_app()` and ordinary `template!` includes keep the built-in browser behavior with no configuration change. Independently maintained renderers use the versioned [`fusor_build::backend` interface](crates/fusor-build/BACKENDS.md).
-
 ## Examples
 
 - [Landing app](apps/landing/) — a complete fusor site with live counter, search, lists, and async examples.

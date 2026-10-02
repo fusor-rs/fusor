@@ -1,11 +1,10 @@
-//! Typed application URLs and renderer-independent route views.
-//! [`view`] owns selection and staged transitions; enable `browser` for
-//! History API navigation and DOM outlets.
+//! Typed application URLs. Enable `browser` for History API navigation and DOM outlets.
 #[cfg(feature = "browser")]
 pub mod browser;
 pub mod pattern;
 mod select;
 mod url;
+#[doc(hidden)]
 pub mod view;
 pub use url::{AppUrl, BasePath, UrlError, encode_query, encode_segment};
 
