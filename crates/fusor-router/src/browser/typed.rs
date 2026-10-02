@@ -22,8 +22,8 @@ type Render<R> = dyn Fn(RouteContext<R>) -> Result<Scope, JsValue>;
 /// One view per route; navigating to an equal route keeps the view.
 struct Routes<R: Route>(Box<Render<R>>);
 
-impl<R: Route> Views for Routes<R> {
-    fn select(&self, url: &AppUrl, prefix: usize) -> Result<Option<Selection<'_>>, JsValue> {
+impl<R: Route> Views<Scope> for Routes<R> {
+    fn select(&self, url: &AppUrl, prefix: usize) -> Result<Option<Selection<'_, Scope>>, JsValue> {
         let route = R::parse(url);
         // Unknown URLs are distinct destinations, even though each parses as None.
         let unknown = route.is_none().then(|| url.path.clone());

@@ -15,6 +15,8 @@ struct RecordingBackend {
     version: u32,
     text: bool,
     app: bool,
+    router: bool,
+    coherent: bool,
     templates: RefCell<Vec<Template>>,
     operations: RefCell<Vec<Operation>>,
 }
@@ -25,6 +27,8 @@ impl Default for RecordingBackend {
             version: backend::VERSION,
             text: true,
             app: true,
+            router: true,
+            coherent: false,
             templates: RefCell::new(Vec::new()),
             operations: RefCell::new(Vec::new()),
         }
@@ -46,6 +50,9 @@ impl Backend for RecordingBackend {
             error: syn::parse_quote!(::test_runtime::Error),
             children: syn::parse_quote!(::test_runtime::Children),
             convert_error: syn::parse_quote!(::test_runtime::convert_error),
+            coherent_frame: self
+                .coherent
+                .then(|| syn::parse_quote!(::test_runtime::Frame)),
         }
     }
 
@@ -53,6 +60,8 @@ impl Backend for RecordingBackend {
         match capability {
             Capability::Text => self.text,
             Capability::App => self.app,
+            Capability::Router => self.router,
+            Capability::Async => self.coherent,
             _ => true,
         }
     }
@@ -305,7 +314,7 @@ fn rejected_features_and_versions_fail_before_backend_emission() {
 }
 
 #[test]
-fn browser_delivery_and_coherent_features_are_explicitly_rejected() {
+fn browser_delivery_and_unimplemented_coherent_features_are_explicitly_rejected() {
     for (source, expected) in [
         (
             r#"<template rust:component="Panel"><script type="text/rust">fn unused() {}</script></template>"#,
@@ -323,16 +332,92 @@ fn browser_delivery_and_coherent_features_are_explicitly_rejected() {
             r#"<template rust:component="Panel"><button type="button" hydrate:target="island">Open</button></template>"#,
             "hydration",
         ),
-        (
-            r#"<template rust:component="Panel"><div><Router><Route path="/"><p>home</p></Route></Router></div></template>"#,
-            "routing",
-        ),
     ] {
         let backend = RecordingBackend::default();
         let error = fail(source, &backend);
         assert!(error.message.contains(expected), "{error}");
         assert!(backend.operations.borrow().is_empty());
     }
+}
+
+#[test]
+fn async_supplies_coherent_operations_and_rejects_editable_regions() {
+    let source = r#"<template rust:component="Panel"><Async boundary="{{ state.boundary }}"><section>
+      <Await value="{{ state.value }}" let="result"><p>{{ result.as_str() }}</p></Await>
+      <ul><ForEach items="{{ state.rows.get() }}" key="{{ |row| row.id }}"><li>{{ item.get().label }}</li></ForEach></ul>
+    </section></Async></template>"#;
+    let backend = RecordingBackend {
+        coherent: true,
+        ..RecordingBackend::default()
+    };
+    backend::generate(source, &backend).unwrap();
+    let operations = backend.operations.borrow();
+    assert!(
+        operations
+            .iter()
+            .any(|operation| matches!(operation.kind, backend::OperationKind::Async { .. }))
+    );
+    assert!(operations.iter().any(
+        |operation| operation.mode == backend::OperationMode::Coherent
+            && matches!(operation.kind, backend::OperationKind::Keyed { .. })
+    ));
+    drop(operations);
+    let invalid = source.replace("<section>", "<section><input bind=\"state.input\">");
+    let error = fail(&invalid, &backend);
+    assert!(error.message.contains("support display bindings only"));
+    assert_eq!((error.line, error.column), location(&invalid, "<input"));
+}
+
+#[test]
+fn nested_children_emit_one_factory_for_both_binding_modes() {
+    let source = format!(
+        "<template rust:component=\"Panel\"><div>{}<p>{{{{ state.leaf }}}}</p>{}</div></template>",
+        "<Frame>".repeat(8),
+        "</Frame>".repeat(8)
+    );
+    let backend = RecordingBackend {
+        coherent: true,
+        ..RecordingBackend::default()
+    };
+    backend::generate(&source, &backend).unwrap();
+    assert_eq!(
+        backend
+            .operations
+            .borrow()
+            .iter()
+            .filter(|operation| matches!(operation.kind, backend::OperationKind::Text { .. }))
+            .count(),
+        2,
+        "one reactive and one coherent text operation, regardless of wrapper depth"
+    );
+}
+
+#[test]
+fn routing_supplies_factories_and_requires_backend_support() {
+    let source = r#"<template rust:component="Panel"><div><Router>
+        <Route path="/jobs/:id" let="route"><p>{{ route.id }}</p></Route>
+        <Route fallback><p>missing</p></Route>
+    </Router></div></template>"#;
+    let backend = RecordingBackend::default();
+    backend::generate(source, &backend).unwrap();
+    let operations = backend.operations.borrow();
+    let routes = operations
+        .iter()
+        .find_map(|operation| match &operation.kind {
+            backend::OperationKind::Router { routes } => Some(routes),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(routes.len(), 2);
+    assert_eq!(routes[0].pattern.as_deref(), Some("/jobs/:id"));
+    assert_eq!(routes[1].pattern, None);
+    let unsupported = RecordingBackend {
+        router: false,
+        ..RecordingBackend::default()
+    };
+    let error = fail(source, &unsupported);
+    assert!(error.message.contains("does not support Router"));
+    assert!(unsupported.operations.borrow().is_empty());
 }
 
 #[test]

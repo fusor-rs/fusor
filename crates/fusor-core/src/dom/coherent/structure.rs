@@ -1,6 +1,6 @@
 use super::{Frame, SlotId, Structure, allowed, error, visit};
 use crate::dom::{Children, MountPoint, Scope, TemplateComponent};
-use crate::{OwnerHandle, Signal, signal, versions::Versions};
+use crate::{OwnerHandle, Signal, coherence::Attempt, signal, versions::Versions};
 use std::{
     cell::{Cell, RefCell},
     collections::BTreeMap,
@@ -27,10 +27,17 @@ impl<V: Default> Default for EpochSlot<V> {
     }
 }
 
-impl<V: Default> EpochSlot<V> {
-    fn begin(&self, epoch: u64) {
-        if self.epoch.replace(Some(epoch)) != Some(epoch) {
+impl<V: Default + 'static> EpochSlot<V> {
+    fn begin(self: &Rc<Self>, attempt: &Attempt) {
+        if self.epoch.replace(Some(attempt.epoch())) != Some(attempt.epoch()) {
             drop(self.candidate.take());
+            let weak = Rc::downgrade(self);
+            attempt.on_invalidate(move || {
+                if let Some(slot) = weak.upgrade() {
+                    slot.epoch.set(None);
+                    drop(slot.candidate.take());
+                }
+            });
         }
     }
 
@@ -94,7 +101,7 @@ impl Frame<'_> {
         self.range(target)?;
         let state: Rc<ChildSlot<Rc<K>>> =
             self.slot(SlotId::Component(slot), "coherent child key type changed")?;
-        state.begin(self.attempt.epoch());
+        state.begin(self.attempt);
         let next = match key.map(Rc::new) {
             None => None,
             Some(key) => {
@@ -175,29 +182,19 @@ impl Frame<'_> {
         children: &Children,
     ) -> Result<(), String> {
         self.range(target)?;
-        let existing = self
-            .tree
-            .slots
-            .borrow()
-            .get(&SlotId::Children(slot))
-            .cloned();
-        let state = if let Some(existing) = existing {
-            existing
-                .downcast::<ChildrenState>()
-                .map_err(|_| "coherent children slot type changed")?
-        } else {
-            let scope = children
+        let state: Rc<ChildrenState> = self.slot(
+            SlotId::Children(slot),
+            "coherent children slot type changed",
+        )?;
+        state.begin(self.attempt);
+        let scope = match state.find(|_| true) {
+            Some(scope) => Some(scope),
+            None => children
                 .prepare(&self.tree.owner)
                 .map_err(error)?
-                .map(Rc::new);
-            let state = Rc::new(ChildrenState(scope));
-            self.tree
-                .slots
-                .borrow_mut()
-                .insert(SlotId::Children(slot), state.clone());
-            state
+                .map(Rc::new),
         };
-        if let Some(scope) = &state.0 {
+        if let Some(scope) = scope {
             visit(
                 scope
                     .render_tree
@@ -206,19 +203,22 @@ impl Frame<'_> {
                 self.attempt,
                 self.publication,
             )?;
+            state.propose(Some(scope.clone()));
             self.publication.structures.push(Box::new(ChildrenPlan {
                 target: target.clone(),
-                scope: scope.clone(),
+                scope,
+                state,
             }));
         }
         Ok(())
     }
 }
 
-struct ChildrenState(Option<Rc<Scope>>);
+type ChildrenState = EpochSlot<Option<Rc<Scope>>>;
 struct ChildrenPlan {
     target: MountPoint,
     scope: Rc<Scope>,
+    state: Rc<ChildrenState>,
 }
 impl Structure for ChildrenPlan {
     fn validate(&self) -> Result<(), String> {
@@ -237,7 +237,9 @@ impl Structure for ChildrenPlan {
         Ok(())
     }
     fn finish(self: Box<Self>) {
+        let old = self.state.publish(Some(self.scope.clone()));
         self.scope.commit();
+        drop(old);
     }
 }
 
@@ -254,7 +256,7 @@ impl Frame<'_> {
         let ((key, data), inputs) = Versions::capture(read);
         let state: Rc<BranchSlot<T>> =
             self.slot(SlotId::Branch(slot), "coherent branch capture type changed")?;
-        state.begin(self.attempt.epoch());
+        state.begin(self.attempt);
         let (value, scope) = match state.find(|(old, _, _)| *old == key) {
             Some((_, value, scope)) => (value, scope),
             None => {
@@ -351,7 +353,7 @@ impl Frame<'_> {
         }
         let state: Rc<ListSlot<K, T>> =
             self.slot(SlotId::List(slot), "coherent list item/key type changed")?;
-        state.begin(self.attempt.epoch());
+        state.begin(self.attempt);
         let mut next = BTreeMap::new();
         let mut updates = Vec::new();
         for (key, item) in keys.iter().zip(items) {

@@ -19,13 +19,29 @@ thread_local! {
     static NEXT_FLUSH: Cell<u64> = const { Cell::new(0) };
     static NEXT_WAVE: Cell<u64> = const { Cell::new(0) };
     static COMPUTING: Cell<usize> = const { Cell::new(0) };
+    static RENDERING: Cell<bool> = const { Cell::new(false) };
     #[cfg(feature = "javascript")]
     static AFTER_FLUSH: RefCell<VecDeque<Box<dyn FnOnce()>>> = const { RefCell::new(VecDeque::new()) };
 }
 
+struct RenderGuard(bool);
+
+impl RenderGuard {
+    fn replace(rendering: bool) -> Self {
+        Self(RENDERING.with(|current| current.replace(rendering)))
+    }
+}
+
+impl Drop for RenderGuard {
+    fn drop(&mut self) {
+        RENDERING.with(|current| current.set(self.0));
+    }
+}
+
 fn assert_not_computing() {
-    assert!(
-        COMPUTING.with(Cell::get) == 0,
+    assert_eq!(
+        COMPUTING.with(Cell::get),
+        0,
         "memo computations and equality functions must not write signals or create effects"
     );
 }
@@ -58,8 +74,7 @@ impl<T> Signal<T> {
     /// Read without cloning the value, tracking this dependency.
     /// Do not write this signal while the read closure holds its borrow.
     pub fn with<R>(&self, read: impl FnOnce(&T) -> R) -> R {
-        let render_value = self.0.render_values.borrow().last().cloned();
-        if let Some((value, inputs)) = render_value {
+        if let Some((value, inputs)) = self.render_value() {
             versions::Versions::exclude(|| track(&self.0.source));
             inputs.include();
             return read(&value);
@@ -70,8 +85,7 @@ impl<T> Signal<T> {
 
     /// Read without subscribing the current effect.
     pub fn with_untracked<R>(&self, read: impl FnOnce(&T) -> R) -> R {
-        let render_value = self.0.render_values.borrow().last().cloned();
-        if let Some((value, _)) = render_value {
+        if let Some((value, _)) = self.render_value() {
             return read(&value);
         }
         read(&self.0.value.borrow())
@@ -81,10 +95,10 @@ impl<T> Signal<T> {
     /// never published to observers, and validates against the collection's
     /// actual source versions. This is not historical storage for signals.
     ///
-    /// Only direct signal reads are overridden. This does not invalidate an
-    /// already cached [`Memo`]; a renderer must not assume cached projections
-    /// recompute against the candidate. Nested overrides restore the preceding
-    /// value, including during unwinding. Do not mutate the signal in `render`.
+    /// [`Memo`] reads recompute against candidate inputs without changing their
+    /// committed cache or subscriptions. The consuming evaluation tracks those
+    /// inputs directly. Nested overrides restore the preceding value, including
+    /// during unwinding. Do not mutate signals in `render`.
     /// Part of the contract versioned by [`crate::coherence::VERSION`].
     pub fn with_render_value<R>(
         &self,
@@ -100,6 +114,7 @@ impl<T> Signal<T> {
             }
         }
         self.0.render_values.borrow_mut().push((value, inputs));
+        let _rendering = RenderGuard::replace(true);
         let _pop = Pop(self);
         render()
     }
@@ -120,6 +135,13 @@ impl<T> Signal<T> {
     /// the result retires the old value after notification.
     pub fn replace(&self, value: T) -> T {
         self.update(|current| std::mem::replace(current, value))
+    }
+
+    fn render_value(&self) -> Option<(Rc<T>, versions::Versions)> {
+        RENDERING
+            .with(Cell::get)
+            .then(|| self.0.render_values.borrow().last().cloned())
+            .flatten()
     }
 }
 

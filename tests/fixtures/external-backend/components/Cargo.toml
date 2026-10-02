@@ -7,11 +7,13 @@ publish = false
 build = "build.rs"
 
 [features]
-browser = ["fusor-core/dom", "fusor-components/browser"]
+browser = ["fusor-core/dom", "fusor-components/browser", "fusor-router/browser"]
 
 [dependencies]
 fusor-core = { path = "../../../../crates/fusor-core", features = ["derive"] }
 fusor-components = { path = "../../../../crates/fusor-components" }
+fusor-router = { path = "../../../../crates/fusor-router" }
+fusor-async = { path = "../../../../crates/fusor-async" }
 memory-renderer = { path = "../renderer" }
 
 [build-dependencies]

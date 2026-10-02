@@ -1,33 +1,8 @@
 //! Compiler-owned child fragments. Factories capture lexical state; placement
 //! supplies the lifetime. The temporary staging element is never mounted.
-use super::{JsValue, MountPoint, Scope, hydration, scoped};
-use crate::OwnerHandle;
-use std::{cell::RefCell, rc::Rc};
+use super::{JsValue, MountPoint, Scope, hydration};
 
-#[derive(Clone, Default)]
-#[doc(hidden)]
-pub struct Children(Option<Rc<Factory>>);
-type Factory = dyn Fn(&OwnerHandle) -> Result<Scope, JsValue>;
-thread_local! {
-    static INCOMING: RefCell<Children> = RefCell::new(Children::default());
-}
-
-impl Children {
-    pub fn new(make: impl Fn(&OwnerHandle) -> Result<Scope, JsValue> + 'static) -> Self {
-        Self(Some(Rc::new(make)))
-    }
-    /// Generated prepare takes the children its component tag supplied.
-    pub fn take() -> Self {
-        INCOMING.take()
-    }
-    /// Supply these children to the component that `run` prepares next.
-    pub fn with<R>(&self, run: impl FnOnce() -> R) -> R {
-        scoped(&INCOMING, self.clone(), run)
-    }
-    pub(super) fn prepare(&self, parent: &OwnerHandle) -> Result<Option<Scope>, JsValue> {
-        self.0.as_ref().map(|make| make(parent)).transpose()
-    }
-}
+pub type Children = crate::render::Children<Scope, JsValue>;
 
 impl Scope {
     #[doc(hidden)]

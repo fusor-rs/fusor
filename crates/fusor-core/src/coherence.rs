@@ -21,7 +21,7 @@ use std::{
 /// [`Signal::with_render_value`]. A change to their integration semantics bumps
 /// this version. It is independent of the browser template format and of any
 /// external renderer's generated-code protocol.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BoundaryStatus {
@@ -43,8 +43,9 @@ pub trait ReadLease {
     fn cancel(&self);
 }
 
-/// A renderer-owned candidate update. Dropping an unpublished candidate must
-/// dispose its prepared owners and release any staged nodes and registrations.
+/// A renderer-owned candidate update. Dropping it releases unpublished patches.
+/// A renderer may retain prepared scopes across discovery passes in one attempt;
+/// use [`Attempt::on_invalidate`] to retire them when the input epoch ends.
 ///
 /// Formatting, constructors, key comparisons and fallible target setup belong
 /// in evaluation or [`Self::validate`], before any visible mutation. The boundary
@@ -81,6 +82,7 @@ struct Inner {
     rejected_retry: Cell<Option<u64>>,
     inputs: RefCell<Versions>,
     reads: RefCell<BTreeMap<u64, Rc<dyn ReadLease>>>,
+    candidates: RefCell<Vec<Box<dyn FnOnce()>>>,
 }
 
 thread_local! {
@@ -116,6 +118,7 @@ impl AsyncBoundary {
             inputs: RefCell::new(Versions::default()),
             rejected_retry: Cell::new(None),
             reads: RefCell::new(BTreeMap::new()),
+            candidates: RefCell::new(Vec::new()),
         }))
     }
 
@@ -232,7 +235,17 @@ fn dispose(inner: &Inner) {
     for read in reads.into_values() {
         read.cancel();
     }
+    discard_candidates(inner);
     inner.status.set(BoundaryStatus::Disposed);
+}
+
+fn discard_candidates(inner: &Inner) {
+    let candidates = inner.candidates.take();
+    untrack(|| {
+        for cleanup in candidates {
+            cleanup();
+        }
+    });
 }
 
 /// Weak lifetime witness used by read declarations that outlive a mounted view.
@@ -264,6 +277,22 @@ impl Attempt {
     /// Candidate input generation. Changes when captured source versions change.
     pub fn epoch(&self) -> u64 {
         self.epoch
+    }
+    /// Retire prepared state when this input epoch ends or the boundary is
+    /// disposed, even if its renderer slot is never visited again. Register once
+    /// per slot and epoch, normally capturing a weak slot reference. The callback
+    /// runs untracked and without internal borrows held.
+    /// Pending passes and retries within the same epoch keep the candidate alive.
+    pub fn on_invalidate(&self, cleanup: impl FnOnce() + 'static) {
+        if let Some(inner) = self
+            .inner
+            .upgrade()
+            .filter(|inner| inner.alive.get() && inner.epoch.get() == self.epoch)
+        {
+            inner.candidates.borrow_mut().push(Box::new(cleanup));
+        } else {
+            untrack(cleanup);
+        }
     }
     /// Explicit retry generation, used by read adapters to retry failed reads.
     pub fn retry_generation(&self) -> u64 {
@@ -331,6 +360,10 @@ fn drive(inner: &Rc<Inner>, evaluate: &Evaluate) {
         for read in reads.into_values() {
             read.cancel();
         }
+        discard_candidates(inner);
+    }
+    if !inner.alive.get() {
+        return;
     }
     inner.violation.take();
     let attempt = Attempt {

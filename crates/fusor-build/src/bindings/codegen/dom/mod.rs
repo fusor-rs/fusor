@@ -37,6 +37,7 @@ impl CompilerBackend for DomBackend {
             error: syn::parse_quote!(::fusor::dom::JsValue),
             children: syn::parse_quote!(::fusor::dom::Children),
             convert_error: syn::parse_quote!(::fusor::dom::IntoMountError::into_mount_error),
+            coherent_frame: Some(syn::parse_quote!(::fusor::dom::coherent::Frame)),
         }
     }
 
@@ -48,7 +49,12 @@ impl CompilerBackend for DomBackend {
         bindings::emit(binding, ctx, locals)
     }
 
-    fn operation(&self, binding: &Binding, operation: OperationKind) -> TokenStream {
+    fn operation(
+        &self,
+        binding: &Binding,
+        operation: OperationKind,
+        _mode: OperationMode,
+    ) -> TokenStream {
         let span = binding.span();
         let anchor = emit::handle(binding.anchor());
         match operation {
@@ -59,6 +65,25 @@ impl CompilerBackend for DomBackend {
                 ..
             } => {
                 quote_spanned! {span=> __fusor_scope.component_at(&#anchor, #identity, #make, #children)?; }
+            }
+            OperationKind::Router { routes } => {
+                let routes = routes.into_iter().map(|route| {
+                    let prepare = route.prepare;
+                    match route.pattern {
+                        Some(pattern) => quote! {
+                            ::fusor_router::browser::declarative::RouteView::new(#pattern, #prepare)?
+                        },
+                        None => quote! {
+                            ::fusor_router::browser::declarative::RouteView::fallback(#prepare)
+                        },
+                    }
+                });
+                quote_spanned! {span=> {
+                    ::fusor_router::browser::declarative::mount_routes(
+                        &mut __fusor_scope, &#anchor, ::std::env!("FUSOR_BASE_PATH"),
+                        ::std::vec![#(#routes),*]
+                    )?;
+                }}
             }
             _ => unreachable!("DOM leaf bindings use typed and bundled emission"),
         }

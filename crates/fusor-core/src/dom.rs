@@ -415,6 +415,20 @@ impl Drop for Scope {
     }
 }
 
+impl crate::render::Scope for Scope {
+    fn owner(&self) -> OwnerHandle {
+        self.owner()
+    }
+
+    fn retain_state<T: 'static>(&mut self, state: T) -> Rc<T> {
+        self.retain_state(state)
+    }
+
+    fn prepares_effects(&self) -> bool {
+        self.prepares_effects()
+    }
+}
+
 impl Scope {
     pub fn new(root: Element) -> Self {
         let owner = Owner::new();

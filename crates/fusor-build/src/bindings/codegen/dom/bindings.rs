@@ -7,14 +7,12 @@ pub(super) fn emit(binding: &Binding, ctx: Ctx<'_>, locals: &[Rust]) -> TokenStr
         Binding::Branch { .. }
         | Binding::ForEach { .. }
         | Binding::Invocation { .. }
+        | Binding::Router { .. }
         | Binding::Region {
             kind: RegionKind::Await { alias: Some(_) },
             ..
         } => {
             unreachable!("recursive browser bindings share their constructors across modes")
-        }
-        Binding::Router { point, routes, .. } => {
-            return router(span, *point, routes, ctx, locals);
         }
         Binding::Children { point: id, .. } => {
             let point = point(*id);
@@ -166,17 +164,9 @@ fn shared_children(
     ctx: Ctx,
     locals: &[Rust],
 ) -> BrowserBinding {
-    let span = item.span();
-    let make = indexed("make_children", id.index());
-    let children = children_factory(Some(child), ctx);
-    let captures = captures(span, ctx, &ctx.components[child].async_locals);
+    let (make, shared) = shared_children_factory(id, child, ctx);
     BrowserBinding {
-        shared: quote_spanned! {span=>
-            let #make = {
-                #captures
-                move || #children
-            };
-        },
+        shared,
         ordinary: codegen::invocation(
             item,
             quote! {{ let __fusor_make_children = #make; __fusor_make_children() }},
@@ -185,64 +175,6 @@ fn shared_children(
         ),
         coherent: coherent::invocation(item, quote! { #make() }, ctx),
     }
-}
-
-/// Each route body prepares without inheriting an enclosing await's `ready`.
-fn router(
-    span: Span,
-    id: MountId,
-    routes: &[RouteBranch],
-    ctx: Ctx,
-    locals: &[Rust],
-) -> TokenStream {
-    let point = point(id);
-    let factories = routes.iter().map(|route| {
-        let prepare = Ctx {
-            ready: false,
-            ..ctx
-        }
-        .component(route.body);
-        let clones = clone_locals(locals);
-        let params = route.params.as_ref().map(|alias| {
-            let names = &route.names;
-            let keys = names.iter().map(|name| name.tokens.to_string());
-            quote! {
-                #[derive(Clone)]
-                struct __Params { #(pub #names: ::std::string::String),* }
-                let #alias = __Params {
-                    #(#names: __fusor_match.params.get(#keys)
-                        .expect("validated route capture").clone()),*
-                };
-            }
-        });
-        let restore = restore(Span::call_site());
-        let factory = quote! {
-            move |__fusor_parent: &::fusor::OwnerHandle,
-                  __fusor_match: &::fusor_router::pattern::Match| {
-                #restore
-                #clones
-                #params
-                #prepare
-            }
-        };
-        let construct = if let Some(path) = &route.path {
-            quote! { ::fusor_router::browser::declarative::RouteView::new(#path, #factory)? }
-        } else {
-            quote! { ::fusor_router::browser::declarative::RouteView::fallback(#factory) }
-        };
-        let handoff = handoff(Span::call_site(), quote! { &state });
-        quote! {{
-            #handoff
-            #clones
-            #construct
-        }}
-    });
-    quote_spanned! {span=> {
-        ::fusor_router::browser::declarative::mount_routes(
-            &mut __fusor_scope, &#point, ::std::env!("FUSOR_BASE_PATH"),
-            ::std::vec![#(#factories),*]
-        )?;
-    }}
 }
 
 enum ControlMode {

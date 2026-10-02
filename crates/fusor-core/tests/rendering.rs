@@ -2,24 +2,93 @@
 use fusor::{
     Effect, Owner, batch,
     coherence::{AsyncBoundary, BoundaryStatus, Publication, ReadLease, prepare_state},
-    effect, memo, signal,
+    effect, memo,
+    render::{Children, construct},
+    signal,
     versions::Versions,
 };
 use std::{
+    any::Any,
     cell::{Cell, RefCell},
     panic::{AssertUnwindSafe, catch_unwind},
     rc::Rc,
 };
 
+struct Construction {
+    owner: Owner,
+    prepared: bool,
+    state: Option<Rc<dyn Any>>,
+}
+
+impl fusor::render::Scope for Construction {
+    fn owner(&self) -> fusor::OwnerHandle {
+        self.owner.handle()
+    }
+
+    fn retain_state<T: 'static>(&mut self, state: T) -> Rc<T> {
+        let state = Rc::new(state);
+        self.state = Some(state.clone());
+        state
+    }
+
+    fn prepares_effects(&self) -> bool {
+        self.prepared
+    }
+}
+
+#[test]
+fn children_delivery_is_nested_typed_and_restored_after_unwind() {
+    type Fragment = Children<u32, ()>;
+    type Other = Children<String, ()>;
+    let owner = Owner::new();
+    owner.commit();
+    let outer = Fragment::new(|owner| {
+        assert!(owner.is_active(), "factory uses the placement owner");
+        Ok(1)
+    });
+    outer.with(|| {
+        Fragment::default().with(|| {
+            assert_eq!(Fragment::take().prepare(&owner.handle()), Ok(None));
+        });
+        Other::new(|_| Ok("other".into())).with(|| {
+            let failed = catch_unwind(AssertUnwindSafe(|| {
+                Fragment::new(|_| Ok(2)).with(|| {
+                    assert_eq!(Fragment::take().prepare(&owner.handle()), Ok(Some(2)));
+                    panic!("construction failed");
+                });
+            }));
+            assert!(failed.is_err());
+            assert_eq!(Fragment::take().prepare(&owner.handle()), Ok(Some(1)));
+            assert_eq!(
+                Other::take().prepare(&owner.handle()),
+                Ok(Some("other".into()))
+            );
+        });
+    });
+    assert_eq!(Fragment::take().prepare(&owner.handle()), Ok(None));
+    assert_eq!(Other::take().prepare(&owner.handle()), Ok(None));
+}
 #[test]
 fn ordinary_constructor_effects_are_immediate_and_explicit_preparation_defers() {
-    let owner = Owner::new();
+    let mut ordinary_scope = Construction {
+        owner: Owner::new(),
+        prepared: false,
+        state: None,
+    };
+    let mut prepared_scope = Construction {
+        owner: Owner::new(),
+        prepared: true,
+        state: None,
+    };
     let value = signal(0);
     let ordinary = Rc::new(RefCell::new(Vec::new()));
     let prepared = Rc::new(RefCell::new(Vec::new()));
     let _ordinary = batch(|| {
         let (value, seen) = (value.clone(), ordinary.clone());
-        let subscription = effect(move || seen.borrow_mut().push(value.get()));
+        let subscription = construct(&mut ordinary_scope, |_| {
+            Ok::<_, ()>(effect(move || seen.borrow_mut().push(value.get())))
+        })
+        .unwrap();
         assert_eq!(
             *ordinary.borrow(),
             [0],
@@ -27,21 +96,62 @@ fn ordinary_constructor_effects_are_immediate_and_explicit_preparation_defers() 
         );
         subscription
     });
-    let _prepared = prepare_state(owner.handle(), |_| {
+    let _prepared = construct(&mut prepared_scope, |_| {
         let (value, seen) = (value.clone(), prepared.clone());
-        effect(move || seen.borrow_mut().push(value.get()))
-    });
+        Ok::<_, ()>(effect(move || seen.borrow_mut().push(value.get())))
+    })
+    .unwrap();
     value.set(1);
     assert_eq!(*ordinary.borrow(), [0, 1]);
     assert!(prepared.borrow().is_empty());
-    owner.commit();
+    prepared_scope.owner.commit();
     assert_eq!(*prepared.borrow(), [1]);
     value.set(2);
     assert_eq!(*prepared.borrow(), [1, 2]);
-    owner.dispose();
+    prepared_scope.owner.dispose();
     value.set(3);
     assert_eq!(*ordinary.borrow(), [0, 1, 2, 3]);
     assert_eq!(*prepared.borrow(), [1, 2]);
+}
+
+#[test]
+fn construction_preserves_ambient_tracking_and_nested_effect_dependencies() {
+    let mut scope = Construction {
+        owner: Owner::new(),
+        prepared: false,
+        state: None,
+    };
+    let input = signal(0);
+    let nested = signal(0);
+    let calls = Rc::new(Cell::new(0));
+    let nested_calls = Rc::new(Cell::new(0));
+    let _effect = effect({
+        let (input, nested, calls, nested_calls) = (
+            input.clone(),
+            nested.clone(),
+            calls.clone(),
+            nested_calls.clone(),
+        );
+        move || {
+            calls.set(calls.get() + 1);
+            construct(&mut scope, |_| {
+                input.get();
+                let (nested, calls) = (nested.clone(), nested_calls.clone());
+                Ok::<_, ()>(effect(move || {
+                    nested.get();
+                    calls.set(calls.get() + 1);
+                }))
+            })
+            .unwrap();
+        }
+    });
+    assert_eq!((calls.get(), nested_calls.get()), (1, 1));
+    nested.set(1);
+    assert_eq!((calls.get(), nested_calls.get()), (1, 2));
+    input.set(1);
+    assert_eq!((calls.get(), nested_calls.get()), (2, 3));
+    nested.set(2);
+    assert_eq!((calls.get(), nested_calls.get()), (2, 4));
 }
 
 #[test]
@@ -122,6 +232,29 @@ struct Candidate {
     trace: Rc<RefCell<Vec<&'static str>>>,
     valid: bool,
     apply_ok: bool,
+}
+
+#[test]
+fn candidate_invalidation_can_dispose_the_boundary_before_reevaluation() {
+    let owner = Rc::new(Owner::new());
+    let boundary = AsyncBoundary::coherent();
+    let input = signal(0);
+    let calls = Rc::new(Cell::new(0));
+    let _mount = boundary
+        .attach(&owner.handle(), {
+            let (owner, input, calls) = (owner.clone(), input.clone(), calls.clone());
+            move |attempt| {
+                input.get();
+                calls.set(calls.get() + 1);
+                let owner = owner.clone();
+                attempt.on_invalidate(move || owner.dispose());
+                Err("pending candidate".into())
+            }
+        })
+        .unwrap();
+    input.set(1);
+    assert_eq!(calls.get(), 1);
+    assert_eq!(boundary.status(), BoundaryStatus::Disposed);
 }
 
 impl Publication for Candidate {
@@ -333,33 +466,157 @@ fn candidate_signal_reads_validate_collection_versions_without_publishing() {
 }
 
 #[test]
-fn candidate_overrides_restore_on_unwind_and_do_not_invalidate_cached_memos() {
+fn candidate_memos_restore_on_unwind_without_changing_the_committed_cache() {
     let row = signal(1);
+    let computations = Rc::new(Cell::new(0));
     let projection = memo({
-        let row = row.clone();
-        move || row.get() * 10
+        let (row, computations) = (row.clone(), computations.clone());
+        move || {
+            computations.set(computations.get() + 1);
+            let value = row.get();
+            assert_ne!(value, 2, "candidate rejected");
+            value * 10
+        }
     });
     assert_eq!(projection.get(), 10);
     let failed = catch_unwind(AssertUnwindSafe(|| {
         row.with_render_value(Rc::new(2), Versions::default(), || {
-            assert_eq!(row.get(), 2);
-            assert_eq!(
-                projection.get(),
-                10,
-                "cached speculative projections are unsupported"
-            );
-            panic!("candidate rejected");
+            projection.get();
         });
     }));
     assert!(failed.is_err());
     assert_eq!(row.get(), 1);
     assert_eq!(projection.get(), 10);
-    row.set(2);
+    assert_eq!(computations.get(), 2, "committed cache was discarded");
+    row.with_render_value(Rc::new(3), Versions::default(), || {
+        assert_eq!(projection.get_untracked(), 30);
+    });
+    row.set(4);
     assert_eq!(
         projection.get(),
-        20,
+        40,
         "published updates still invalidate the memo"
     );
+}
+
+#[test]
+fn nested_candidate_memos_track_actual_sources_without_replacing_committed_dependencies() {
+    let collection = signal(true);
+    let row = signal(false);
+    let left = signal(1);
+    let right = signal(2);
+    let selected = memo({
+        let (row, left, right) = (row.clone(), left.clone(), right.clone());
+        move || if row.get() { right.get() } else { left.get() }
+    });
+    let projection = memo({
+        let selected = selected.clone();
+        move || selected.get() * 10
+    });
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let _effect = effect({
+        let (projection, observed) = (projection.clone(), observed.clone());
+        move || observed.borrow_mut().push(projection.get())
+    });
+    let (_, inputs) = Versions::capture(|| collection.get());
+    let versions = row.with_render_value(Rc::new(true), inputs, || {
+        let (value, versions) = Versions::capture(|| projection.get());
+        assert_eq!(value, 20);
+        let (_, expected) = Versions::capture(|| (collection.get(), right.get()));
+        assert!(versions.same(&expected));
+        row.with_render_value(Rc::new(false), Versions::default(), || {
+            assert_eq!(projection.get(), 10);
+        });
+        assert_eq!(projection.get(), 20);
+        versions
+    });
+    assert!(versions.is_current());
+    assert_eq!(projection.get(), 10);
+    right.set(3);
+    assert!(!versions.is_current());
+    assert_eq!(*observed.borrow(), [10]);
+    left.set(4);
+    assert_eq!(*observed.borrow(), [10, 40]);
+
+    let (_, inputs) = Versions::capture(|| collection.get());
+    let (_, versions) = row.with_render_value(Rc::new(true), inputs, || {
+        Versions::capture(|| projection.get_untracked())
+    });
+    collection.set(false);
+    assert!(!versions.is_current());
+}
+
+#[test]
+fn candidate_memo_reads_subscribe_the_consumer_without_initializing_the_cache() {
+    let collection = signal(2);
+    let row = signal(1);
+    let projection = memo({
+        let row = row.clone();
+        move || row.get() * 10
+    });
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let _effect = effect({
+        let (collection, row, projection, observed) = (
+            collection.clone(),
+            row.clone(),
+            projection.clone(),
+            observed.clone(),
+        );
+        move || {
+            let (value, versions) = Versions::capture(|| collection.get());
+            row.with_render_value(Rc::new(value), versions, || {
+                observed.borrow_mut().push(projection.get());
+            });
+        }
+    });
+    assert_eq!(
+        projection.get(),
+        10,
+        "first candidate read filled the cache"
+    );
+    collection.set(3);
+    assert_eq!(*observed.borrow(), [20, 30]);
+    assert_eq!(projection.get(), 10);
+    let untracked_reads = Rc::new(Cell::new(0));
+    let _untracked = effect({
+        let (row, projection, untracked_reads) =
+            (row.clone(), projection.clone(), untracked_reads.clone());
+        move || {
+            row.with_render_value(Rc::new(4), Versions::default(), || {
+                assert_eq!(projection.get_untracked(), 40);
+            });
+            untracked_reads.set(untracked_reads.get() + 1);
+        }
+    });
+    row.set(2);
+    assert_eq!(*observed.borrow(), [20, 30, 30]);
+    assert_eq!(projection.get(), 20);
+    assert_eq!(untracked_reads.get(), 1);
+}
+
+#[test]
+fn version_validation_inside_an_override_refreshes_only_committed_memo_values() {
+    let row = signal(1);
+    let projection = memo({
+        let row = row.clone();
+        move || row.get() * 10
+    });
+    let (_, versions) = Versions::capture(|| projection.get());
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let _effect = effect({
+        let (projection, observed) = (projection.clone(), observed.clone());
+        move || observed.borrow_mut().push(projection.get())
+    });
+    batch(|| {
+        row.set(2);
+        row.with_render_value(Rc::new(3), Versions::default(), || {
+            assert!(!versions.is_current());
+            assert_eq!(projection.get(), 30);
+        });
+        assert_eq!(projection.get(), 20);
+        assert_eq!(*observed.borrow(), [10]);
+    });
+    assert_eq!(*observed.borrow(), [10, 20]);
 }
 
 #[test]

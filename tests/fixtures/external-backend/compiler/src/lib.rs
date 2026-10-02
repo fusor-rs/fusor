@@ -3,7 +3,7 @@ use fusor_build::{
     ExtractError,
     backend::{
         Anchor, Backend, Capability, ComponentCode, Control, NodeKind, Operation, OperationKind,
-        Runtime, Template,
+        OperationMode, Runtime, Template,
     },
 };
 use proc_macro2::TokenStream;
@@ -14,7 +14,7 @@ pub struct Memory;
 
 impl Backend for Memory {
     fn version(&self) -> u32 {
-        1
+        2
     }
     fn name(&self) -> &str {
         "memory fixture"
@@ -25,6 +25,7 @@ impl Backend for Memory {
             error: parse_quote!(::memory_renderer::Error),
             children: parse_quote!(::memory_renderer::Children),
             convert_error: parse_quote!(::memory_renderer::error),
+            coherent_frame: Some(parse_quote!(::memory_renderer::Frame)),
         }
     }
     fn supports(&self, capability: Capability<'_>) -> bool {
@@ -36,6 +37,8 @@ impl Backend for Memory {
                 | Capability::Keyed
                 | Capability::Component
                 | Capability::Children
+                | Capability::Router
+                | Capability::Async
                 | Capability::Bind(Control::Text | Control::Checkbox)
         )
     }
@@ -135,19 +138,23 @@ impl Backend for Memory {
         quote! { ::memory_renderer::Scope::new(parent, &[#(#nodes),*]) }
     }
     fn operation(&self, operation: Operation) -> TokenStream {
+        let scope = match operation.mode {
+            OperationMode::Reactive => quote! { __fusor_scope },
+            OperationMode::Coherent => quote! { __fusor_frame },
+        };
         let anchor = match operation.anchor {
             Anchor::Element(id) | Anchor::Text(id) | Anchor::Mount(id) => id,
         };
         match operation.kind {
-            OperationKind::Text { read } => quote! { __fusor_scope.text(#anchor, #read)?; },
+            OperationKind::Text { read } => quote! { #scope.text(#anchor, #read)?; },
             OperationKind::Event { name, handler } => {
-                quote! { __fusor_scope.on(#anchor, #name, #handler)?; }
+                quote! { #scope.on(#anchor, #name, #handler)?; }
             }
             OperationKind::Branch { read, prepare } => {
-                quote! { __fusor_scope.branch(#anchor, #read, #prepare)?; }
+                quote! { #scope.branch(#anchor, #read, #prepare)?; }
             }
             OperationKind::Keyed { read, key, prepare } => {
-                quote! { __fusor_scope.keyed(#anchor, #read, #key, #prepare)?; }
+                quote! { #scope.keyed(#anchor, #read, #key, #prepare)?; }
             }
             OperationKind::Component {
                 ty,
@@ -155,10 +162,10 @@ impl Backend for Memory {
                 make,
                 children,
             } => quote! {
-                __fusor_scope.component::<#ty, _, _, _>(#anchor, #identity, #make, #children)?;
+                #scope.component::<#ty, _, _, _>(#anchor, #identity, #make, #children)?;
             },
             OperationKind::Children { children } => {
-                quote! { __fusor_scope.children(#anchor, #children)?; }
+                quote! { #scope.children(#anchor, #children)?; }
             }
             OperationKind::Bind {
                 control: Control::Text,
@@ -170,6 +177,26 @@ impl Backend for Memory {
                 value,
                 choice,
             } => quote! { __fusor_scope.bind_checkbox(#anchor, #value, #choice)?; },
+            OperationKind::Router { routes } => {
+                let routes = routes.into_iter().map(|route| {
+                    let prepare = route.prepare;
+                    match route.pattern {
+                        Some(pattern) => quote! {
+                            ::fusor_router::view::RouteView::new(#pattern, #prepare)?
+                        },
+                        None => quote! {
+                            ::fusor_router::view::RouteView::fallback(#prepare)
+                        },
+                    }
+                });
+                quote! {
+                    const _: () = assert!(::fusor_router::view::VERSION == 1);
+                    __fusor_scope.routes(#anchor, ::std::vec![#(#routes),*])?;
+                }
+            }
+            OperationKind::Async { boundary, render } => quote! {
+                __fusor_scope.async_region(#anchor, #boundary, #render)?;
+            },
             _ => unreachable!("capabilities are checked before emission"),
         }
     }
@@ -185,6 +212,8 @@ impl Backend for Memory {
         );
         quote! {
             const _: () = assert!(::memory_renderer::VERSION == 1);
+            const _: () = assert!(::fusor::render::VERSION == 1);
+            const _: () = assert!(::fusor::coherence::VERSION == 2);
             const _: () = assert!(::fusor_components::BACKEND_VERSION == 1);
             #[allow(unused_variables, unused_braces, non_snake_case, clippy::unused_unit, clippy::unit_arg, clippy::clone_on_copy)]
             impl ::memory_renderer::Component for #ty {

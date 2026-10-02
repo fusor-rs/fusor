@@ -1,4 +1,7 @@
 //! A deliberately small renderer contract test, not an application framework.
+mod coherent;
+pub use coherent::Frame;
+
 use fusor::bind::{Checkbox, TextValue};
 use fusor::{Effect, Owner, OwnerHandle, Registration, Signal, batch, effect, signal};
 use std::{
@@ -23,28 +26,7 @@ pub trait Component: Sized + 'static {
     ) -> Result<Scope, Error>;
 }
 
-type Factory = dyn Fn(&OwnerHandle) -> Result<Scope, Error>;
-#[derive(Clone, Default)]
-pub struct Children(Option<Rc<Factory>>);
-thread_local! { static CHILDREN: RefCell<Children> = RefCell::new(Children::default()); }
-impl Children {
-    pub fn new(factory: impl Fn(&OwnerHandle) -> Result<Scope, Error> + 'static) -> Self {
-        Self(Some(Rc::new(factory)))
-    }
-    pub fn take() -> Self {
-        CHILDREN.with(|current| std::mem::take(&mut *current.borrow_mut()))
-    }
-    pub fn with<R>(&self, body: impl FnOnce() -> R) -> R {
-        struct Restore(Children);
-        impl Drop for Restore {
-            fn drop(&mut self) {
-                CHILDREN.with(|current| *current.borrow_mut() = std::mem::take(&mut self.0));
-            }
-        }
-        let _restore = Restore(CHILDREN.with(|current| current.replace(self.clone())));
-        body()
-    }
-}
+pub type Children = fusor::render::Children<Scope, Error>;
 
 pub struct StaticNode {
     pub parent: Option<usize>,
@@ -179,8 +161,57 @@ pub struct Scope {
     elements: BTreeMap<usize, Node>,
     texts: BTreeMap<usize, Node>,
     mounts: BTreeMap<usize, Node>,
+    attached: Option<Node>,
+    coherent: Option<Rc<coherent::Tree>>,
     retained: Rc<RefCell<Retained>>,
     _cleanup: Registration,
+}
+impl Drop for Scope {
+    fn drop(&mut self) {
+        self.owner.dispose();
+        if let Some(target) = &self.attached {
+            target
+                .0
+                .children
+                .borrow_mut()
+                .retain(|node| !self.roots.iter().any(|root| Rc::ptr_eq(&node.0, &root.0)));
+        }
+    }
+}
+
+impl fusor_router::view::RouteScope for Scope {
+    type Target = Node;
+    type Error = Error;
+
+    fn prepare_at(&mut self, target: &Node, _parent_active: bool) -> Result<(), Error> {
+        if self.attached.is_some() {
+            return Err("route view is already attached".into());
+        }
+        target.0.children.borrow_mut().extend(self.roots.clone());
+        self.attached = Some(target.clone());
+        Ok(())
+    }
+
+    fn commit(&self) {
+        self.publish();
+    }
+
+    fn error(message: &str) -> Error {
+        message.into()
+    }
+}
+impl fusor::render::Scope for Scope {
+    fn owner(&self) -> OwnerHandle {
+        self.owner()
+    }
+
+    fn retain_state<T: 'static>(&mut self, state: T) -> Rc<T> {
+        self.retain_state(state)
+    }
+
+    fn prepares_effects(&self) -> bool {
+        self.is_coherent()
+    }
 }
 impl Scope {
     pub fn new(parent: Option<&OwnerHandle>, specs: &[StaticNode]) -> Result<Self, Error> {
@@ -222,15 +253,18 @@ impl Scope {
             }
             all.push(node);
         }
+        let coherent = coherent::Tree::inherited(&owner.handle(), &elements, &texts, &mounts);
+        let weak_tree = coherent.as_ref().map(Rc::downgrade);
         let cleanup = owner.handle().on_cleanup(move || {
             for node in &all {
                 node.0.listeners.borrow_mut().clear();
             }
             if let Some(retained) = weak.upgrade() {
-                let mut retained = retained.borrow_mut();
-                retained.effects.clear();
-                retained.children.clear();
-                retained.states.clear();
+                let discarded = std::mem::take(&mut *retained.borrow_mut());
+                drop(discarded);
+            }
+            if let Some(tree) = weak_tree.and_then(|tree| tree.upgrade()) {
+                tree.clear();
             }
         });
         Ok(Self {
@@ -239,6 +273,8 @@ impl Scope {
             elements,
             texts,
             mounts,
+            attached: None,
+            coherent,
             retained,
             _cleanup: cleanup,
         })
@@ -266,6 +302,26 @@ impl Scope {
     }
     fn keep(&mut self, effect: Effect) {
         self.retained.borrow_mut().effects.push(effect);
+    }
+    fn try_effect(
+        &mut self,
+        mut update: impl FnMut() -> Result<(), Error> + 'static,
+    ) -> Result<(), Error> {
+        let failure = Rc::new(RefCell::new(None));
+        let mut initial = Some(failure.clone());
+        let subscription = effect(move || {
+            let result = update();
+            if let Some(initial) = initial.take() {
+                *initial.borrow_mut() = result.err();
+            } else {
+                result.expect("reactive component update");
+            }
+        });
+        if let Some(error) = failure.take() {
+            return Err(error);
+        }
+        self.keep(subscription);
+        Ok(())
     }
     fn element(&self, id: usize) -> Result<Node, Error> {
         self.elements
@@ -423,17 +479,17 @@ impl Scope {
     ) -> Result<(), Error> {
         let (node, owner) = (self.mount(id)?, self.owner());
         let mut current: Option<(K, Scope)> = None;
-        self.keep(effect(move || {
+        self.try_effect(move || {
             let identity = identity();
             if current.as_ref().map(|(key, _)| key) == identity.as_ref() {
-                return;
+                return Ok(());
             }
-            let next = identity.map(|key| {
-                let scope =
+            let next = identity
+                .map(|key| {
                     fusor::untrack(|| T::prepare(Some(&owner), Box::new(&make), children.clone()))
-                        .expect("component preparation");
-                (key, scope)
-            });
+                        .map(|scope| (key, scope))
+                })
+                .transpose()?;
             *node.0.children.borrow_mut() = next
                 .as_ref()
                 .map_or_else(Vec::new, |(_, scope)| scope.roots.clone());
@@ -441,16 +497,30 @@ impl Scope {
             if let Some((_, scope)) = &current {
                 scope.publish();
             }
-        }));
-        Ok(())
+            Ok(())
+        })
     }
     pub fn children(&mut self, id: usize, children: Children) -> Result<(), Error> {
-        if let Some(factory) = children.0 {
-            let scope = fusor::untrack(|| factory(&self.owner()))?;
+        if let Some(scope) = fusor::untrack(|| children.prepare(&self.owner()))? {
             *self.mount(id)?.0.children.borrow_mut() = scope.roots.clone();
             scope.publish();
             self.retained.borrow_mut().children.push(scope);
         }
+        Ok(())
+    }
+
+    pub fn routes(
+        &mut self,
+        id: usize,
+        routes: Vec<fusor_router::view::RouteView<Self>>,
+    ) -> Result<(), Error> {
+        let router = fusor_router::view::ViewRouter::mount(
+            &self.owner(),
+            &self.mount(id)?,
+            routes,
+            fusor_router::AppUrl::parse("/").map_err(error)?,
+        )?;
+        self.retain_state(router);
         Ok(())
     }
 }

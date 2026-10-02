@@ -4,7 +4,7 @@
 //! A backend owns static-node emission and the operations those factories call.
 //! Browser builds select the internal `DomBackend`; this public facade adapts
 //! external renderers to the same private compiler emission contract.
-//! See `BACKENDS.md` for the v1 runtime and output contracts.
+//! See `BACKENDS.md` for the runtime and output contracts.
 
 pub mod build;
 
@@ -13,7 +13,7 @@ use proc_macro2::TokenStream;
 use syn::Path;
 
 /// Changes when the backend callback or generated-code contract changes.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// An authored location, using a byte offset and one-based line/character column.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -100,6 +100,8 @@ pub enum Capability<'a> {
     Keyed,
     Component,
     Children,
+    Router,
+    Async,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -112,23 +114,41 @@ pub enum Control {
 }
 
 /// Paths supplied by the external build helper, never inferred from architecture.
-/// `Scope` supplies `owner()` and `retain_state(T) -> Rc<T>`. `Children` supplies
+/// `Scope` implements `fusor::render::Scope`. `Children` supplies
 /// `default`, `new`, `take` and `Clone`. Error conversion is a generic function.
 pub struct Runtime {
     pub scope: Path,
     pub error: Path,
     pub children: Path,
     pub convert_error: Path,
+    /// Opt in to coherent installation. See BACKENDS.md for the scope/frame contract.
+    pub coherent_frame: Option<Path>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperationMode {
+    Reactive,
+    Coherent,
 }
 
 /// Fully lowered operations. Captures and closure lifetimes belong to fusor.
-/// Emit statements using the mutable local `__fusor_scope`; propagate errors.
+/// Emit statements using `__fusor_scope` or `__fusor_frame` according to `mode`.
 pub struct Operation {
     pub anchor: Anchor,
     pub origin: Origin,
     pub kind: OperationKind,
+    pub mode: OperationMode,
 }
 
+/// A route's captured factory. Parameters and lexical aliases are lowered by fusor.
+#[derive(Clone)]
+pub struct Route {
+    pub pattern: Option<String>,
+    /// `Fn(&OwnerHandle, &fusor_router::pattern::Match) -> Result<Scope, Error>`.
+    pub prepare: TokenStream,
+}
+
+#[derive(Clone)]
 pub enum OperationKind {
     Text {
         read: TokenStream,
@@ -186,19 +206,28 @@ pub enum OperationKind {
     Children {
         children: TokenStream,
     },
+    Router {
+        routes: Vec<Route>,
+    },
+    /// Attach a boundary. `render` is `Fn(&mut Frame<'_>) -> Result<(), String>`.
+    Async {
+        boundary: TokenStream,
+        render: TokenStream,
+    },
 }
 
 /// A declared component implementation or an application entry. `body` prepares
 /// a Scope using locals `parent: Option<&OwnerHandle>` and `make` (FnOnce).
-/// It constructs state with ordinary immediate effect timing, without committing
-/// the owner. The renderer validates/publishes the result before activation.
+/// It uses `fusor::render::construct`, without committing the owner. Ordinary
+/// scopes preserve immediate effects; explicitly prepared scopes defer them.
+/// The renderer validates/publishes the result before activation.
 pub struct ComponentCode {
     pub ty: TokenStream,
     pub body: TokenStream,
     pub app_state: Option<TokenStream>,
 }
 
-/// Bounded backend v1. Unsupported async/router/hydration/JS/server/opaque-content
+/// Bounded backend v2. Unsupported hydration/JS/server/opaque-content
 /// operations are rejected by this version even if a backend would accept them.
 pub trait Backend {
     fn version(&self) -> u32;

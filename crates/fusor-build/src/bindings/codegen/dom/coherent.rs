@@ -10,18 +10,14 @@ pub(super) fn shared_await(
     let span = item.span();
     let render = indexed("await_render", node.index());
     let node = element(node);
-    let body = binding(item, ctx, locals);
+    let render_body = coherent_renderer(binding(item, ctx, locals), ctx);
     let captures = captures(span, ctx, locals);
     BrowserBinding {
         shared: quote_spanned! {span=>
             let #render = {
                 #captures
                 let #node = #node.clone();
-                move |__fusor_frame: &mut ::fusor::dom::coherent::Frame<'_>| {
-                    let __fusor_attempt = __fusor_frame.attempt;
-                    #body
-                    ::std::result::Result::<(), ::std::string::String>::Ok(())
-                }
+                #render_body
             };
         },
         ordinary: quote_spanned! {span=> {
@@ -34,6 +30,9 @@ pub(super) fn shared_await(
 
 pub(super) fn binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream {
     let span = binding.span();
+    if let Some(message) = coherent_rejection(binding) {
+        return reject(span, message);
+    }
     match binding {
         Binding::Branch {
             point: id,
@@ -75,30 +74,9 @@ pub(super) fn binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStre
             invocation(binding, children, ctx)
         }
         Binding::Region {
-            value,
-            kind: RegionKind::Await { alias },
-            bindings,
+            kind: RegionKind::Await { .. },
             ..
-        } => {
-            let mut nested = locals.to_vec();
-            if let Some(alias) = alias {
-                nested.push(alias.clone());
-            }
-            let resolved = emit::or(alias.as_ref(), quote! { ready });
-            let inner = Ctx {
-                ready: ctx.ready || alias.is_none(),
-                ..ctx
-            };
-            let bindings = bindings
-                .iter()
-                .map(|binding| self::binding(binding, inner, &nested));
-            quote_spanned! {span=>
-                if let ::fusor_async::AsyncRead::Ready(#resolved) = (#value).read(__fusor_attempt)? {
-                    #(#bindings)*
-                }
-            }
-        }
-        Binding::Region { .. } => reject(span, "nested coherent boundaries are unsupported"),
+        } => await_binding(binding, ctx, locals, self::binding),
         Binding::Text { slot, value } => {
             let node = text(*slot);
             quote_spanned! {span=> __fusor_frame.text(&#node, &(#value))?; }
@@ -137,10 +115,8 @@ pub(super) fn binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStre
         | Binding::Value { .. }
         | Binding::Checked { .. }
         | Binding::Bind { .. }
-        | Binding::Slot { .. } => reject(
-            span,
-            "editable controls, widgets, outlets and opaque content must remain outside coherent regions",
-        ),
+        | Binding::Slot { .. }
+        | Binding::Region { .. } => unreachable!("rejected coherent binding"),
     }
 }
 

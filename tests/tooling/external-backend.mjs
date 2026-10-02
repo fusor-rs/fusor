@@ -79,6 +79,8 @@ try {
     ['<Frame title="Receiver">', '<Frame nonexistent="Receiver">', "E0560"],
     ["{{ number.get() }}", "{{ number.get().missing_field }}", "E0610"],
     ['bind="state.number"', 'bind="state.rows"', "E0277"],
+    ['state.title, team.team, member.id', 'state.title, team.team, member.missing_id', "E0609"],
+    ['state.prefix, result.as_str(), again.as_str()', 'state.prefix, result.missing_method(), again.as_str()', "E0599"],
   ]) {
     assert.ok(good.includes(before));
     const broken = good.replace(before, after);
@@ -107,6 +109,7 @@ try {
     ['id="checked" type="checkbox"', 'id="checked" type="checkbox" on:input="state.count.set(0)"', "directly supported control"],
     ['on:click="state.count.update', 'on:keydown="state.count.update', 'does not support Event("keydown")'],
     ['<section id="panel"', '<section on:click="state.count.set(0)" id="panel"', "bubbling is unsupported"],
+    ['<p id="selection">', '<input bind="state.selection"><p id="selection">', "support display bindings only"],
   ]) {
     assert.ok(good.includes(before));
     const broken = good.replace(before, after);

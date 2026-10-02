@@ -82,11 +82,11 @@ and performs this translation; keeping token spans alone would not suffice.
 ## Compiler responsibilities and backend callbacks
 
 Implement `Backend` with `version()` returning the literal contract version it
-was written against (currently **1**, equal to `backend::VERSION`).
+was written against (currently **2**, equal to `backend::VERSION`).
 An incompatible version fails before emission. Its callbacks provide:
 
-- `runtime`: explicit paths for the external scope, error, children factory and
-  construction-error conversion function.
+- `runtime`: explicit paths for the external scope, error, children factory,
+  construction-error conversion function and optional coherent frame.
 - `supports` and `validate_binding`: capability decisions with the operation's
   anchor, static template and authored origin. The latter supports restrictions
   such as button-only click handlers. Rejections happen before any Rust emission.
@@ -113,11 +113,11 @@ attribute has its authored origin. This is explicit authored nesting, not a
 browser HTML tree-builder's implicit element insertion; a renderer must reject
 markup it cannot interpret. CSS interpretation belongs to the backend.
 
-The v1 operation set is text, attributes/properties/boolean values/classes,
-events, existing binding control kinds, branches, keyed lists, component tags
-and `Children`. A backend accepts only the subset it implements. Routing,
-hydration, JavaScript, coherent HTML `Async`/`Await`, `rust:render`, opaque slots
-and named projected content fail explicitly in v1. Templates use ordinary Rust
+The operation set is text, attributes/properties/boolean values/classes,
+events, existing binding control kinds, branches, keyed lists, component tags,
+`Children`, routing and coherent `Async`/`Await`. A backend accepts only the subset
+it implements. Hydration, JavaScript, `rust:render`, opaque slots
+and named projected content fail explicitly. Templates use ordinary Rust
 modules; inline and external script linkage is rejected by this entry point.
 These limitations do not change browser compilation of those features.
 
@@ -136,12 +136,16 @@ owns its mounting trait, scope and node types, independently of `dom::Component`
 one-shot constructor taking `OwnerHandle` and returning `Result<State, Error>`.
 The backend component hook wraps the body in its own implementation/entry point.
 
-`mount` creates a prepared scope. That scope supplies `owner()` and
-`retain_state(T) -> Rc<T>`; retaining state must tie its lifetime to scope
-cleanup. `Children` supplies `Default`, `Clone`, `take()` and
+`mount` creates a prepared scope implementing `fusor::render::Scope`.
+Both DOM and external generated code use `render::construct` to construct and
+retain state. The scope's `prepares_effects()` explicitly selects deferred
+candidate effects; its default preserves ordinary immediate execution.
+Retained state lives with the scope; renderer cleanup may release it earlier.
+`Children` supplies `Default`, `Clone`, `take()` and
 `new(Fn(&OwnerHandle) -> Result<Scope, Error>)`. `take()` transfers the incoming
 children factory from the renderer's mounting context. Context installation must
-restore its predecessor, including on panic; the fixture uses `Children::with`.
+restore its predecessor, including on panic. Use `render::Children<Scope, Error>`
+to share this implementation with the DOM renderer.
 
 Each operation receives ready-to-use closures. Branches read `(case_index, T)`
 and prepare from `(usize, Signal<T>, &OwnerHandle)`. Lists read `Vec<T>`, key
@@ -153,9 +157,52 @@ operations receive a typed constructor plus conditional identity and incoming
 children. The backend's conversion function maps each `FromInputs::Error` to its
 own error. Browser conversion remains `dom::IntoMountError`.
 
+`Router` supplies route patterns and captured factories taking an owner and a
+`fusor_router::pattern::Match`. Fusor generates parameter aliases and nested
+lexical captures. Backends wrap the factories in `fusor_router::view::RouteView`
+and provide a `RouteScope` adapter for attachment and activation. The shared
+view router owns selection, identity, nested retention and staged navigation;
+browser history remains a browser adapter.
+
+### Coherent frames
+
+Accepting `Capability::Async` requires `Runtime::coherent_frame = Some(path)`.
+This opts the scope into dual binding installation: `is_coherent()` selects
+`set_coherent_renderer(Fn(&mut Frame<'_>) -> Result<(), String>)` instead of ordinary
+effects. The renderer inherits that mode through owner context and returns true
+from `render::Scope::prepares_effects()` for candidate scopes. Other scopes keep
+ordinary effect timing.
+
+`Operation::mode` distinguishes `Reactive` statements operating on
+`__fusor_scope` from `Coherent` statements operating on `__fusor_frame`. The frame
+exposes `attempt: &fusor::coherence::Attempt` and `reject(&str) -> Result<(), String>`.
+Its remaining methods are chosen by the backend's operation emitter. Coherent
+readers and structural factories can borrow their enclosing evaluation; event
+handlers still outlive it. A renderer evaluates readers to prepare patches instead
+of installing independent binding effects.
+
+`OperationKind::Async` supplies a boundary and a captured frame callback. The
+backend attaches it through `AsyncBoundary::attach` and retains the returned
+mount. Fusor lowers Await reads, result aliases, nested captures, input structs,
+branches and row factories. A standalone `Await` creates an independent boundary;
+inside a coherent scope it joins the surrounding attempt. Nested `Async`
+boundaries, editable controls, router outlets, widgets and opaque content remain
+unsupported inside coherent regions, as in the DOM renderer. Directly authored
+violations fail compilation; a reusable component with incompatible bindings
+rejects coherent mounting at runtime.
+
+The renderer supplies `Publication`: validate a candidate, apply its scene changes
+without application callbacks or signal writes, then activate new scopes and
+retire old ones. It retains pending candidate scopes so async declarations survive
+read completion, discards obsolete candidates, preserves committed keyed identity,
+and blocks interaction with a pending scene. Core owns readiness, retry generations,
+read leases and source validation. The fixture executes this contract with
+`fusor_async::AsyncValue` and `fusor_test` controlled requests; no executor or
+terminal policy is added to the compiler.
+
 Invoke preparation and input-construction factories under `fusor::untrack`.
-Constructor reads must not subscribe the surrounding structural effect; effects
-created inside a factory still track their own reads and run immediately.
+Constructor reads must not subscribe the surrounding structural effect. Ordinary
+constructor effects still track their own reads and run immediately.
 
 Ordinary constructors run immediately, as they do in browser mounting. Their
 ordinary effects can execute before publication and can have run before a later
@@ -174,7 +221,13 @@ Use `TextValue`/`Checkbox` rather than introducing another parsing policy. Edito
 drafts, cursor/focus, propagation and unsupported control behavior remain explicit
 renderer responsibilities.
 
-The external compiler protocol is version 1, independently of the unchanged
-browser template format (version 3), coherence integration (version 1) and
+The external compiler protocol is version 2, independently of the unchanged
+browser template format (version 3), coherence integration (version 2) and
 `fusor_components` row/capture integration (version 1). Pin compatible fusor
 compiler/runtime releases; fixture emitters should assert the contracts they use.
+
+Version 1 backend implementations migrate by implementing `render::Scope`, adding
+`Runtime::coherent_frame` (`None` keeps ordinary-only emission), handling the new
+operation variants and returning `2` from `Backend::version`. Async-capable
+emitters handle both operation modes. The output/include format remains version 1;
+browser mounting traits and HTML delivery are unchanged.

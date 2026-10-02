@@ -1,4 +1,6 @@
-use fusor::{FromInputs, OwnerHandle, Registration, Signal, signal};
+use fusor::coherence::AsyncBoundary;
+use fusor::{Effect, FromInputs, Memo, OwnerHandle, Registration, Signal, effect, signal};
+use fusor_async::AsyncValue;
 use std::{cell::Cell, rc::Rc};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -45,6 +47,18 @@ pub struct Frame {
     #[input]
     title: &'static str,
 }
+
+#[derive(FromInputs)]
+pub struct Routing {
+    #[input]
+    title: String,
+    #[input]
+    visible: Signal<bool>,
+    #[input]
+    cleanups: Rc<Cell<usize>>,
+    #[input]
+    go: Rc<dyn Fn(&str)>,
+}
 impl FromInputs for Child {
     type Inputs = ChildInputs;
     type Error = &'static str;
@@ -59,6 +73,58 @@ impl FromInputs for Child {
             visible: inputs.visible,
             clicks: signal(0),
             _cleanup: cleanup,
+        })
+    }
+}
+
+pub type ReadRow = Rc<dyn Fn(&OwnerHandle, Memo<Row>) -> AsyncValue<String, String, String>>;
+
+#[derive(FromInputs)]
+pub struct AsyncPanel {
+    #[input]
+    prefix: String,
+    #[input]
+    selection: Signal<u32>,
+    #[input]
+    read: AsyncValue<u32, String, String>,
+    #[input]
+    boundary: AsyncBoundary,
+    #[input]
+    rows: Signal<Vec<Row>>,
+    #[input]
+    make_read: ReadRow,
+    #[input]
+    starts: Rc<Cell<usize>>,
+    #[input]
+    cleanups: Rc<Cell<usize>>,
+    #[input]
+    visible: Signal<bool>,
+    #[input]
+    clicks: Signal<u32>,
+}
+
+pub struct AsyncRow {
+    read: AsyncValue<String, String, String>,
+    _effect: Effect,
+    _cleanup: Registration,
+}
+pub struct AsyncRowInputs {
+    pub row: Memo<Row>,
+    pub make_read: ReadRow,
+    pub starts: Rc<Cell<usize>>,
+    pub cleanups: Rc<Cell<usize>>,
+}
+impl FromInputs for AsyncRow {
+    type Inputs = AsyncRowInputs;
+    type Error = &'static str;
+    fn from_inputs(inputs: Self::Inputs, owner: OwnerHandle) -> Result<Self, Self::Error> {
+        if inputs.row.get().label == "reject" {
+            return Err("rejected async row");
+        }
+        Ok(Self {
+            read: (inputs.make_read)(&owner, inputs.row),
+            _effect: effect(move || inputs.starts.set(inputs.starts.get() + 1)),
+            _cleanup: owner.on_cleanup(move || inputs.cleanups.set(inputs.cleanups.get() + 1)),
         })
     }
 }

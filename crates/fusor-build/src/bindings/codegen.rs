@@ -13,7 +13,7 @@ use super::{
 };
 use crate::{
     BindingLocation,
-    backend::{OperationKind, Runtime},
+    backend::{OperationKind, OperationMode, Runtime},
 };
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, quote_spanned};
@@ -29,7 +29,12 @@ trait CompilerBackend {
     fn binding(&self, binding: &Binding, ctx: Ctx<'_>, locals: &[Rust]) -> TokenStream;
     /// Install a structural operation whose captures and factories are already
     /// lowered.
-    fn operation(&self, binding: &Binding, operation: OperationKind) -> TokenStream;
+    fn operation(
+        &self,
+        binding: &Binding,
+        operation: OperationKind,
+        mode: OperationMode,
+    ) -> TokenStream;
     /// Wrap a canonical projected-content factory in the target's content type.
     fn content(&self, factory: TokenStream) -> TokenStream;
 }
@@ -41,6 +46,7 @@ struct Ctx<'a> {
     runtime: &'a Runtime,
     /// An enclosing await exposes a ready value to nested factories.
     ready: bool,
+    mode: OperationMode,
 }
 
 impl Ctx<'_> {
@@ -127,6 +133,23 @@ fn children_factory(index: Option<usize>, ctx: Ctx) -> TokenStream {
     }}
 }
 
+fn shared_children_factory(
+    id: fusor::template::MountId,
+    child: usize,
+    ctx: Ctx,
+) -> (Ident, TokenStream) {
+    let make = indexed("make_children", id.index());
+    let children = children_factory(Some(child), ctx);
+    let captures = captures(Span::call_site(), ctx, &ctx.components[child].async_locals);
+    let setup = quote! {
+        let #make = {
+            #captures
+            move || #children
+        };
+    };
+    (make, setup)
+}
+
 /// Prepare the selected case from the shared branch payload and lexical captures.
 fn branch_dispatch(
     span: Span,
@@ -189,6 +212,74 @@ fn order_bindings(bindings: &[Binding]) -> Vec<&Binding> {
         )
     });
     ordered
+}
+
+/// Await reads and aliases have the same lexical meaning in every renderer.
+fn await_binding(
+    item: &Binding,
+    ctx: Ctx,
+    locals: &[Rust],
+    emit: impl Fn(&Binding, Ctx, &[Rust]) -> TokenStream,
+) -> TokenStream {
+    let Binding::Region {
+        value,
+        kind: RegionKind::Await { alias },
+        bindings,
+        ..
+    } = item
+    else {
+        unreachable!("Await binding")
+    };
+    let mut nested = locals.to_vec();
+    if let Some(alias) = alias {
+        nested.push(alias.clone());
+    }
+    let resolved = emit::or(alias.as_ref(), quote! { ready });
+    let inner = Ctx {
+        ready: ctx.ready || alias.is_none(),
+        ..ctx
+    };
+    let bindings = bindings.iter().map(|binding| emit(binding, inner, &nested));
+    quote_spanned! {item.span()=>
+        if let ::fusor_async::AsyncRead::Ready(#resolved) = (#value).read(__fusor_attempt)? {
+            #(#bindings)*
+        }
+    }
+}
+
+fn coherent_rejection(binding: &Binding) -> Option<&'static str> {
+    match binding {
+        Binding::Region {
+            kind: RegionKind::Boundary,
+            ..
+        } => Some("nested coherent boundaries are unsupported"),
+        Binding::Invocation { inputs, .. } if has_content(inputs) => {
+            Some("projected content cannot participate in coherent rendering")
+        }
+        Binding::Router { .. }
+        | Binding::Island { .. }
+        | Binding::Property { .. }
+        | Binding::Value { .. }
+        | Binding::Checked { .. }
+        | Binding::Bind { .. }
+        | Binding::Slot { .. } => Some(
+            "editable controls, widgets, outlets and opaque content must remain outside coherent regions",
+        ),
+        _ => None,
+    }
+}
+
+fn coherent_renderer(body: TokenStream, ctx: Ctx) -> TokenStream {
+    let frame = ctx
+        .runtime
+        .coherent_frame
+        .as_ref()
+        .expect("coherent backend");
+    quote! { move |__fusor_frame: &mut #frame<'_>| {
+        let __fusor_attempt = __fusor_frame.attempt;
+        #body
+        ::std::result::Result::<(), ::std::string::String>::Ok(())
+    }}
 }
 
 fn branch(item: &Binding, ctx: Ctx, locals: &[Rust]) -> (TokenStream, OperationKind) {
@@ -333,12 +424,13 @@ fn invocation(binding: &Binding, children: TokenStream, ctx: Ctx, locals: &[Rust
     let key = emit::or(key.as_ref(), quote! { () });
     let construct = construct_inputs(span, ty, inputs, ctx);
     let local_clones = clone_locals(locals);
-    let identity = quote_spanned! {span=> { #local_clones move || {
+    let ready = ctx.clone_ready();
+    let identity = quote_spanned! {span=> { #local_clones #ready move || {
         let state = &__fusor_identity_state;
         if #condition { ::std::option::Option::Some({ #key }) }
         else { ::std::option::Option::None }
     }}};
-    let make = quote_spanned! {span=> { #local_clones move |owner| {
+    let make = quote_spanned! {span=> { #local_clones #ready move |owner| {
         let state = &__fusor_child_state;
         #construct
     }}};
@@ -350,6 +442,7 @@ fn invocation(binding: &Binding, children: TokenStream, ctx: Ctx, locals: &[Rust
             make,
             children: quote! { __fusor_supplied },
         },
+        ctx.mode,
     );
     quote_spanned! {span=> {
         #local_clones
@@ -365,6 +458,49 @@ fn has_content(inputs: &[Input]) -> bool {
     inputs
         .iter()
         .any(|input| matches!(input.value, InputValue::Content { .. }))
+}
+
+fn router(routes: &[RouteBranch], ctx: Ctx, locals: &[Rust]) -> OperationKind {
+    let routes = routes
+        .iter()
+        .map(|route| {
+            let prepare = Ctx {
+                ready: false,
+                ..ctx
+            }
+            .component(route.body);
+            let clones = clone_locals(locals);
+            let params = route.params.as_ref().map(|alias| {
+                let names = &route.names;
+                let keys = names.iter().map(|name| name.tokens.to_string());
+                quote! {
+                    #[derive(Clone)]
+                    struct __Params { #(pub #names: ::std::string::String),* }
+                    let #alias = __Params {
+                        #(#names: __fusor_match.params.get(#keys)
+                            .expect("validated route capture").clone()),*
+                    };
+                }
+            });
+            let handoff = handoff(Span::call_site(), quote! { &state });
+            let restore = restore(Span::call_site());
+            crate::backend::Route {
+                pattern: route.path.clone(),
+                prepare: quote! {{
+                    #handoff
+                    #clones
+                    move |__fusor_parent: &::fusor::OwnerHandle,
+                          __fusor_match: &::fusor_router::pattern::Match| {
+                        #restore
+                        #clones
+                        #params
+                        #prepare
+                    }
+                }},
+            }
+        })
+        .collect();
+    OperationKind::Router { routes }
 }
 
 /// Lower input structs and projected-content factories once for every target.
@@ -394,12 +530,13 @@ fn binding(item: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream {
     let (setup, operation) = match item {
         Binding::Branch { .. } => branch(item, ctx, locals),
         Binding::ForEach { .. } => list(item, ctx, locals),
+        Binding::Router { routes, .. } => (TokenStream::new(), router(routes, ctx, locals)),
         Binding::Invocation { children, .. } => {
             return invocation(item, children_factory(*children, ctx), ctx, locals);
         }
         _ => return ctx.backend.binding(item, ctx, locals),
     };
-    let operation = ctx.backend.operation(item, operation);
+    let operation = ctx.backend.operation(item, operation, ctx.mode);
     quote! { #setup #operation }
 }
 
@@ -424,6 +561,7 @@ fn generate_using(
         backend,
         runtime: &runtime,
         ready: false,
+        mode: OperationMode::Reactive,
     };
     let mut origins = Origins::default();
     for component in components {
@@ -484,8 +622,13 @@ mod tests {
             DomBackend.binding(binding, ctx, locals)
         }
 
-        fn operation(&self, binding: &Binding, operation: OperationKind) -> TokenStream {
-            DomBackend.operation(binding, operation)
+        fn operation(
+            &self,
+            binding: &Binding,
+            operation: OperationKind,
+            mode: OperationMode,
+        ) -> TokenStream {
+            DomBackend.operation(binding, operation, mode)
         }
 
         fn content(&self, factory: TokenStream) -> TokenStream {

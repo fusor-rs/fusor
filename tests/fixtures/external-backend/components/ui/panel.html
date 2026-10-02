@@ -29,6 +29,27 @@
     </ul>
   </section>
 </template>
+<template rust:component="AsyncPanel">
+  <div id="async-panel">
+    <Async boundary="{{ state.boundary }}"><section id="async-region">
+      <p id="selection">{{ state.selection.get() }}</p>
+      <Await value="{{ state.read }}" let="result"><div>
+        <p id="async-value">{{ result.as_str() }}</p>
+        <Await value="{{ state.read }}" let="again"><p id="nested-ready">{{ format!("{}:{}:{}", state.prefix, result.as_str(), again.as_str()) }}</p></Await>
+        <Frame title="Async"><Frame title="Nested"><span id="async-children">{{ result.as_str() }}</span></Frame></Frame>
+        <If condition="{{ state.visible.get() }}"><button id="async-remove" on:click="state.visible.set(false)">Remove</button></If>
+        <button id="async-click" on:click="state.clicks.update(|n| *n += 1)">{{ state.clicks.get() }}</button>
+      </div></Await>
+      <ul><ForEach items="{{ state.rows.get() }}" key="{{ |row| row.id }}"><li>
+        <span>{{ format!("{}:{}:{}", state.prefix, index.get(), item.get().label) }}</span>
+        <AsyncRow row="{{ item.clone() }}" make_read="{{ state.make_read.clone() }}" starts="{{ state.starts.clone() }}" cleanups="{{ state.cleanups.clone() }}"></AsyncRow>
+      </li></ForEach></ul>
+    </section></Async>
+  </div>
+</template>
+<template rust:component="AsyncRow">
+  <Await value="{{ state.read }}" let="row"><p class="async-row">{{ row.as_str() }}</p></Await>
+</template>
 <template rust:component="Frame">
   <div class="frame"><span>{{ state.title }}</span><Children></Children></div>
 </template>
@@ -37,4 +58,27 @@
     <button on:click="state.clicks.update(|clicks| *clicks += 1)">{{ state.label }} clicks {{ state.clicks.get() }}</button>
     <button class="remove" on:click="state.visible.set(false)">Remove</button>
   </div>
+</template>
+<template rust:component="Routing">
+  <div id="routing"><Router>
+    <Route path="/"><p id="home">Home</p></Route>
+    <Route path="/teams/:team/*" let="team">
+      <section id="team">
+        <p>{{ format!("{}:{}", state.title, team.team) }}</p>
+        <Child label="{{ team.team.clone() }}" visible="{{ state.visible.clone() }}" cleanups="{{ state.cleanups.clone() }}"></Child>
+        <div><Router>
+          <Route path="members/:id" let="member">
+            <div id="member">
+              <p id="member-name">{{ format!("{}:{}:{}", state.title, team.team, member.id) }}</p>
+              <Child label="{{ member.id.clone() }}" visible="{{ state.visible.clone() }}" cleanups="{{ state.cleanups.clone() }}"></Child>
+              <button id="leave" on:click='(state.go)("/")'>Leave</button>
+            </div>
+          </Route>
+          <Route fallback><p>Unknown member</p></Route>
+        </Router></div>
+      </section>
+    </Route>
+    <Route path="/broken"><Child label="{{ String::new() }}" visible="{{ state.visible.clone() }}" cleanups="{{ state.cleanups.clone() }}"></Child></Route>
+    <Route fallback><p id="missing-route">Missing</p></Route>
+  </Router></div>
 </template>

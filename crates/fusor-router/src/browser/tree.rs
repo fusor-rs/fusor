@@ -1,91 +1,90 @@
-//! The view tree behind every router: nested boundaries, each showing the
-//! view its URL selects, changed only through staged transactions.
-mod boundary;
-mod views;
-pub(super) use boundary::{Boundary, enclosing_view};
-pub(super) use views::{Selection, Views};
-
-use super::{
-    Flag, INACTIVE, NavigateOptions, PreparedNavigation, REENTRANT, context_error, error,
-    history::Browser,
-};
-use crate::{AppUrl, BasePath};
-use boundary::Plan;
+//! Browser history and DOM preparation around the shared route tree.
+use super::{NavigateOptions, PreparedNavigation, context_error, error, history::Browser};
+use crate::{AppUrl, BasePath, view};
 use fusor::dom::{MountPoint, Scope};
-use fusor::{ContextKey, OwnerHandle, Signal, batch, signal};
+use fusor::{ContextKey, OwnerHandle, Signal};
 use std::{
     any::Any,
     cell::{Cell, RefCell},
     rc::{Rc, Weak},
 };
+pub(super) use view::{Selection, Views};
 use wasm_bindgen::JsValue;
 use web_sys::Element;
 
-/// Provided on the owner that mounts a tree.
+impl view::RouteScope for Scope {
+    type Target = MountPoint;
+    type Error = JsValue;
+
+    fn error(message: &str) -> JsValue {
+        error(message)
+    }
+
+    fn prepare_at(&mut self, target: &MountPoint, parent_active: bool) -> Result<(), JsValue> {
+        if self.root().is_connected() {
+            return Err(error(
+                "route views must return a detached, prepared child of their supplied owner",
+            ));
+        }
+        self.attach_at(target)?;
+        self.finish_prepare()?;
+        if parent_active {
+            self.finish_prepare_subtree()?;
+        }
+        Ok(())
+    }
+
+    fn commit(&self) {
+        Scope::commit(self);
+    }
+}
+
 struct TreeContext;
 impl ContextKey for TreeContext {
     type Value = Weak<Tree>;
 }
 
 pub(super) struct Tree {
-    root: Rc<Boundary>,
-    location: Signal<AppUrl>,
+    inner: Rc<view::Tree<Scope>>,
     history: RefCell<Option<Rc<Browser>>>,
     disposed: Cell<bool>,
-    /// A transaction is staged; only one may exist at a time.
-    staged: Cell<bool>,
-    activating: Cell<bool>,
-    /// Registrations and anchors that live as long as the tree.
     kept: RefCell<Vec<Box<dyn Any>>>,
 }
 
 impl Tree {
-    /// Mount `views` at `target` for `url`. `parent` provides the tree to
-    /// descendants and gates its activation; its disposal disposes the tree.
     pub(super) fn mount(
         parent: &OwnerHandle,
         target: &MountPoint,
-        views: Box<dyn Views>,
+        views: Box<dyn Views<Scope>>,
         url: AppUrl,
     ) -> Result<Rc<Self>, JsValue> {
-        let tree = Rc::new(Self {
-            root: Boundary::new(parent.clone(), target.clone(), views, 0),
-            location: signal(url.clone()),
-            history: RefCell::new(None),
-            disposed: Cell::new(false),
-            staged: Cell::new(false),
-            activating: Cell::new(false),
-            kept: RefCell::new(Vec::new()),
-        });
-        parent
-            .provide::<TreeContext>(Rc::downgrade(&tree))
-            .map_err(context_error)?;
-        {
-            let _pending = Pending::new(tree.clone());
-            tree.root.prepare(&tree, &url)?.apply();
-        }
-        let weak = Rc::downgrade(&tree);
-        tree.keep(parent.on_activate(move || {
-            if let Some(tree) = weak.upgrade() {
-                tree.activate();
-            }
-        }));
-        let weak = Rc::downgrade(&tree);
-        tree.keep(parent.on_cleanup(move || {
-            if let Some(tree) = weak.upgrade() {
-                tree.dispose();
-            }
-        }));
+        let (_, tree) = view::Tree::mount_with(parent, target, views, url, |inner| {
+            let tree = Rc::new(Self {
+                inner: inner.clone(),
+                history: RefCell::new(None),
+                disposed: Cell::new(false),
+                kept: RefCell::new(Vec::new()),
+            });
+            parent
+                .provide::<TreeContext>(Rc::downgrade(&tree))
+                .map_err(context_error)?;
+            let weak = Rc::downgrade(&tree);
+            tree.keep(parent.on_cleanup(move || {
+                if let Some(tree) = weak.upgrade() {
+                    tree.dispose();
+                }
+            }));
+            Ok(tree)
+        })?;
         Ok(tree)
     }
-    /// Mount `views` as the page's router, owning browser history. Finish the
-    /// browser's mount before navigating.
+
     pub(super) fn mount_root(
         parent: &OwnerHandle,
         target: &MountPoint,
         base: &str,
         presentation: Element,
-        views: Box<dyn Views>,
+        views: Box<dyn Views<Scope>>,
     ) -> Result<(Rc<Self>, Rc<Browser>), JsValue> {
         let browser = Browser::prepare(parent, base, presentation)?;
         let url = browser.location.borrow().clone();
@@ -94,20 +93,20 @@ impl Tree {
         *tree.history.borrow_mut() = Some(browser.clone());
         Ok((tree, browser))
     }
-    /// [`Self::mount_root`] in `scope`: the mount finishes when the scope
-    /// commits, and dropping the scope disposes the router.
+
     pub(super) fn mount_root_in(
         scope: &mut Scope,
         target: &MountPoint,
         base: &str,
         presentation: Element,
-        views: Box<dyn Views>,
+        views: Box<dyn Views<Scope>>,
     ) -> Result<(), JsValue> {
         let (tree, browser) = Self::mount_root(&scope.owner(), target, base, presentation, views)?;
         browser.finish_on_commit(scope)?;
         scope.retain(Mounted(tree));
         Ok(())
     }
+
     pub(super) fn from_owner(owner: &OwnerHandle) -> Option<Rc<Self>> {
         if owner.is_disposed() {
             return None;
@@ -120,8 +119,11 @@ impl Tree {
     pub(super) fn keep(&self, value: impl Any) {
         self.kept.borrow_mut().push(Box::new(value));
     }
+    pub(super) fn navigation(&self) -> view::Navigation<Scope> {
+        view::Navigation::new(self.inner.clone(), None)
+    }
     pub(super) fn location(&self) -> Signal<AppUrl> {
-        self.location.clone()
+        self.inner.location()
     }
     pub(super) fn base(&self) -> Result<BasePath, JsValue> {
         let history = self.history.borrow();
@@ -134,15 +136,14 @@ impl Tree {
         self.history.borrow().as_ref()?.error.get()
     }
     pub(super) fn accepts_link(&self, url: &AppUrl) -> bool {
-        self.root.views.accepts_link(url)
+        self.inner.accepts_link(url)
     }
-    /// Navigate through browser history when the tree owns it, else directly.
     pub(super) fn navigate_url(
         self: &Rc<Self>,
         url: &str,
         options: NavigateOptions,
     ) -> Result<(), JsValue> {
-        self.idle()?;
+        self.inner.idle()?;
         let browser = self.history.borrow().clone();
         match browser {
             Some(browser) => browser.navigate(url, options),
@@ -153,39 +154,17 @@ impl Tree {
         self.prepare_navigation(&url)?.commit();
         Ok(())
     }
-    fn idle(&self) -> Result<(), JsValue> {
-        if self.disposed.get() {
-            return Err(error(INACTIVE));
-        }
-        if self.staged.get() || self.activating.get() {
-            return Err(error(REENTRANT));
-        }
-        Ok(())
-    }
-    /// Stage the views `url` shows. Dropping the result rolls back.
     pub(super) fn prepare_navigation(
         self: &Rc<Self>,
         url: &AppUrl,
     ) -> Result<Box<dyn PreparedNavigation>, JsValue> {
-        self.idle()?;
-        let pending = Pending::new(self.clone());
-        Ok(Box::new(Transaction {
-            plan: self.root.prepare(self, url)?,
-            url: url.clone(),
-            _pending: pending,
-        }))
-    }
-    fn activate(&self) {
-        let Ok(_activating) = Flag::take(&self.activating, REENTRANT) else {
-            return;
-        };
-        self.root.activate();
+        self.inner.prepare_navigation(url)
     }
     pub(super) fn dispose(&self) {
         if self.disposed.replace(true) {
             return;
         }
-        self.root.clear();
+        self.inner.dispose();
         if let Some(browser) = self.history.take() {
             browser.dispose();
         }
@@ -199,50 +178,9 @@ impl Drop for Tree {
     }
 }
 
-/// Disposes a tree when the scope that mounted it drops, even while other
-/// handles to the tree survive.
 pub(super) struct Mounted(pub(super) Rc<Tree>);
 impl Drop for Mounted {
     fn drop(&mut self) {
         self.0.dispose();
-    }
-}
-
-/// Marks the tree's one staged transaction. A failed or abandoned preparation
-/// drops it, leaving the current views and URL unchanged.
-struct Pending(Rc<Tree>);
-impl Pending {
-    fn new(tree: Rc<Tree>) -> Self {
-        tree.staged.set(true);
-        Self(tree)
-    }
-}
-impl Drop for Pending {
-    fn drop(&mut self) {
-        self.0.staged.set(false);
-    }
-}
-
-struct Transaction {
-    plan: Plan,
-    url: AppUrl,
-    _pending: Pending,
-}
-impl PreparedNavigation for Transaction {
-    fn commit(self: Box<Self>) {
-        let Self {
-            plan,
-            url,
-            _pending: pending,
-        } = *self;
-        let tree = &pending.0;
-        if tree.disposed.get() {
-            return;
-        }
-        batch(|| {
-            plan.apply();
-            tree.location.set(url);
-            tree.activate();
-        });
     }
 }

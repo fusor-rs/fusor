@@ -17,6 +17,7 @@ mod cleanup;
 pub mod coherence;
 mod owner;
 mod reactive;
+pub mod render;
 pub use cleanup::{Cleanup, CleanupEffect, effect_with_cleanup};
 pub use owner::{ContextError, ContextKey, Owner, OwnerHandle, Registration};
 /// Source-version snapshots for supported renderer and async-read integration.

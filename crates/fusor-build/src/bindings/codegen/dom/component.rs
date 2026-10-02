@@ -113,10 +113,7 @@ fn prepare(component: &Component, html: &TokenStream, ctx: Ctx) -> TokenStream {
                 let __fusor_nesting = ::fusor::dom::NestingGuard::enter()?;
                 #declarations
                 let (mut __fusor_scope, mut __fusor_nodes) = #mount;
-                let state = if __fusor_scope.prepares_effects() {
-                    ::fusor::coherence::prepare_state(__fusor_scope.owner(), make)?
-                } else { make(__fusor_scope.owner())? };
-                let state = __fusor_scope.retain_state(state);
+                let state = ::fusor::render::construct(&mut __fusor_scope, make)?;
                 #expose_capture
                 #javascript_inputs
                 #install

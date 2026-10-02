@@ -31,17 +31,14 @@ impl CompilerBackend for ExternalBackend<'_> {
             quote! { let state = ::std::rc::Rc::clone(state.as_ref()); }
         });
         let mount = self.backend.mount(&self.templates[component.id.index()]);
-        let bindings = order_bindings(&component.bindings)
-            .into_iter()
-            .map(|item| binding(item, ctx, &component.async_locals));
+        let bindings = self.install(component, ctx);
         let body = quote! {
             #local_clones
             #incoming
             let mut __fusor_scope = (#mount)?;
-            let state = make(__fusor_scope.owner())?;
-            let state = __fusor_scope.retain_state(state);
+            let state = ::fusor::render::construct(&mut __fusor_scope, make)?;
             #expose_capture
-            #(#bindings)*
+            #bindings
             ::std::result::Result::Ok(__fusor_scope)
         };
         if component.capture().is_some() || component.inline() {
@@ -58,6 +55,42 @@ impl CompilerBackend for ExternalBackend<'_> {
 
     fn binding(&self, binding: &Binding, ctx: Ctx<'_>, locals: &[Rust]) -> TokenStream {
         let span = binding.span();
+        if let Binding::Region {
+            kind,
+            value,
+            bindings,
+            ..
+        } = binding
+        {
+            if ctx.mode == OperationMode::Coherent {
+                return await_binding(binding, ctx, locals, |item, ctx, locals| {
+                    self.coherent_binding(item, ctx, locals)
+                });
+            }
+            let captures = captures(span, ctx, locals);
+            let coherent = Ctx {
+                mode: OperationMode::Coherent,
+                ..ctx
+            };
+            let (boundary, body) = match kind {
+                RegionKind::Boundary => (
+                    quote! { (#value).clone() },
+                    bindings
+                        .iter()
+                        .map(|item| self.coherent_binding(item, coherent, locals))
+                        .collect(),
+                ),
+                RegionKind::Await { alias: Some(_) } => (
+                    quote! { ::fusor::coherence::AsyncBoundary::coherent() },
+                    self.coherent_binding(binding, coherent, locals),
+                ),
+                RegionKind::Await { alias: None } => unreachable!("validated await ancestor"),
+            };
+            let render = coherent_renderer(body, ctx);
+            let operation =
+                self.operation(binding, OperationKind::Async { boundary, render }, ctx.mode);
+            return quote_spanned! {span=> { #captures #operation }};
+        }
         let captures = captures(span, ctx, locals);
         let read = |value: &Rust| quote_spanned! {span=> move || { #value } };
         let kind = match binding {
@@ -109,6 +142,7 @@ impl CompilerBackend for ExternalBackend<'_> {
                         value: quote! { __fusor_bound },
                         choice,
                     },
+                    ctx.mode,
                 );
                 return quote_spanned! {span=> {
                     #captures
@@ -120,20 +154,126 @@ impl CompilerBackend for ExternalBackend<'_> {
             }
             _ => unreachable!("validated structural bindings use common factories"),
         };
-        let operation = self.operation(binding, kind);
+        let operation = self.operation(binding, kind, ctx.mode);
         quote_spanned! {span=> { #captures #operation }}
     }
 
-    fn operation(&self, binding: &Binding, kind: OperationKind) -> TokenStream {
+    fn operation(
+        &self,
+        binding: &Binding,
+        kind: OperationKind,
+        mode: OperationMode,
+    ) -> TokenStream {
         self.backend.operation(Operation {
             anchor: binding_anchor(binding),
             origin: origin(self.source, binding.origin().offset),
             kind,
+            mode,
         })
     }
 
     fn content(&self, _factory: TokenStream) -> TokenStream {
         unreachable!("projected content is rejected by external backend validation")
+    }
+}
+
+impl ExternalBackend<'_> {
+    fn coherent_binding(&self, item: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream {
+        if let Some(message) = coherent_rejection(item) {
+            return quote_spanned! {item.span()=> __fusor_frame.reject(#message)?; };
+        }
+        binding(item, ctx, locals)
+    }
+
+    fn install(&self, component: &Component, ctx: Ctx) -> TokenStream {
+        let ordinary = Ctx {
+            mode: OperationMode::Reactive,
+            ..ctx
+        };
+        let coherent = Ctx {
+            mode: OperationMode::Coherent,
+            ..ctx
+        };
+        let locals = &component.async_locals;
+        if ctx.runtime.coherent_frame.is_none() {
+            return order_bindings(&component.bindings)
+                .into_iter()
+                .map(|item| binding(item, ordinary, locals))
+                .collect();
+        }
+        let (mut shared, mut reactive, mut staged) =
+            (TokenStream::new(), TokenStream::new(), TokenStream::new());
+        for item in order_bindings(&component.bindings) {
+            let supplied = match item {
+                Binding::Invocation {
+                    point,
+                    children: Some(child),
+                    inputs,
+                    ..
+                } if !ctx.components[*child].empty && !has_content(inputs) => {
+                    Some((*point, *child))
+                }
+                _ => None,
+            };
+            let structural = match item {
+                Binding::Branch { .. } => Some(branch(item, ctx, locals)),
+                Binding::ForEach { .. } => Some(list(item, ctx, locals)),
+                _ => None,
+            };
+            if let Some((setup, operation)) = structural {
+                shared.extend(setup);
+                reactive.extend(self.operation(item, operation.clone(), OperationMode::Reactive));
+                let borrowed = match operation {
+                    OperationKind::Branch { read, prepare } => OperationKind::Branch {
+                        read: quote! { &#read },
+                        prepare: quote! { &#prepare },
+                    },
+                    OperationKind::Keyed { read, key, prepare } => OperationKind::Keyed {
+                        read: quote! { &#read },
+                        key: quote! { &#key },
+                        prepare: quote! { &#prepare },
+                    },
+                    _ => unreachable!("structural operation"),
+                };
+                staged.extend(self.operation(item, borrowed, OperationMode::Coherent));
+            } else if let Some((point, child)) = supplied {
+                let (make, setup) = shared_children_factory(point, child, ctx);
+                shared.extend(setup);
+                reactive.extend(invocation(item, quote! { #make() }, ordinary, locals));
+                staged.extend(invocation(item, quote! { #make() }, coherent, locals));
+            } else if let Binding::Region {
+                node,
+                kind: RegionKind::Await { alias: Some(_) },
+                ..
+            } = item
+            {
+                let name = indexed("await_render", node.index());
+                let captures = captures(item.span(), ctx, locals);
+                let renderer =
+                    coherent_renderer(self.coherent_binding(item, coherent, locals), ctx);
+                shared.extend(quote! { let #name = { #captures #renderer }; });
+                reactive.extend(self.operation(
+                    item,
+                    OperationKind::Async {
+                        boundary: quote! { ::fusor::coherence::AsyncBoundary::coherent() },
+                        render: quote! { #name },
+                    },
+                    OperationMode::Reactive,
+                ));
+                staged.extend(quote_spanned! {item.span()=> #name(__fusor_frame)?; });
+            } else {
+                reactive.extend(binding(item, ordinary, locals));
+                staged.extend(self.coherent_binding(item, coherent, locals));
+            }
+        }
+        let renderer = coherent_renderer(staged, ctx);
+        let ordinary = (!reactive.is_empty()).then(|| quote! { else { #reactive } });
+        quote! {
+            #shared
+            if __fusor_scope.is_coherent() {
+                __fusor_scope.set_coherent_renderer(#renderer);
+            } #ordinary
+        }
     }
 }
 
@@ -161,7 +301,7 @@ pub(crate) fn generate(
                     return Err(error(
                         source,
                         value.span.start,
-                        "hydration is unsupported by backend v1",
+                        "hydration is unsupported by external backends",
                     ));
                 }
             }
@@ -204,7 +344,7 @@ pub(crate) fn generate(
     })
 }
 
-// The v1 facade delivers component trees, not a browser document shell. Refuse
+// The facade delivers component trees, not a browser document shell. Refuse
 // outside markup so head styles, links and static siblings cannot disappear.
 fn validate_source_coverage(source: &str, components: &[Component]) -> Result<(), ExtractError> {
     if components.is_empty() {
@@ -235,7 +375,7 @@ fn validate_source_coverage(source: &str, components: &[Component]) -> Result<()
             return Err(error(
                 source,
                 offset,
-                "backend v1 requires markup inside rust:component or App; document shells and external assets belong to the build helper",
+                "external compilation requires markup inside rust:component or App; document shells and external assets belong to the build helper",
             ));
         }
     }
@@ -268,14 +408,14 @@ fn validate(
         return Err(error(
             source,
             component.range.start,
-            "rust:render is a browser/server delivery contract; unsupported by backend v1",
+            "rust:render is a browser/server delivery contract; unsupported by external backends",
         ));
     }
     if component.javascript.is_some() {
         return Err(error(
             source,
             component.range.start,
-            "JavaScript component modules are unsupported by backend v1",
+            "JavaScript component modules are unsupported by external backends",
         ));
     }
     for binding in Binding::walk(&component.bindings) {
@@ -293,14 +433,26 @@ fn validate(
             Binding::ForEach { .. } => Capability::Keyed,
             Binding::Invocation { inputs, .. } if !has_content(inputs) => Capability::Component,
             Binding::Children { .. } => Capability::Children,
+            Binding::Router { .. } => Capability::Router,
+            Binding::Region { .. } => Capability::Async,
             _ => {
                 return Err(error(
                     source,
                     binding.origin().offset,
-                    "backend v1 does not support routing, hydration, coherent Async/Await, or opaque/projected content",
+                    "external backends do not support hydration or opaque/projected content",
                 ));
             }
         };
+        if matches!(capability, Capability::Async) && backend.runtime().coherent_frame.is_none() {
+            return Err(error(
+                source,
+                binding.origin().offset,
+                format!(
+                    "backend {} does not provide coherent Async/Await frames",
+                    backend.name()
+                ),
+            ));
+        }
         if !backend.supports(capability) {
             return Err(error(
                 source,
@@ -314,6 +466,32 @@ fn validate(
             binding_anchor(binding),
             &origin(source, binding.origin().offset),
         )?;
+    }
+    validate_regions(source, &component.bindings, false)?;
+    Ok(())
+}
+
+fn validate_regions(
+    source: &str,
+    bindings: &[Binding],
+    coherent: bool,
+) -> Result<(), ExtractError> {
+    for binding in bindings {
+        if coherent {
+            if let Some(message) = coherent_rejection(binding) {
+                return Err(error(source, binding.origin().offset, message));
+            }
+        }
+        if let Binding::Region { kind, bindings, .. } = binding {
+            if !coherent && matches!(kind, RegionKind::Await { alias: None }) {
+                return Err(error(
+                    source,
+                    binding.origin().offset,
+                    "rust:await requires a coherent boundary ancestor; use Await for independent loading",
+                ));
+            }
+            validate_regions(source, bindings, true)?;
+        }
     }
     Ok(())
 }

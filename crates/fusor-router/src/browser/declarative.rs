@@ -1,109 +1,36 @@
-//! Routing by URL pattern, shared by HTML routes and custom routers.
+//! Browser navigation around the shared pattern route tree.
 use super::{
-    NavigateOptions, NavigationDriver, PreparedNavigation, error,
-    tree::{Boundary, Mounted, Selection, Tree, Views, enclosing_view},
+    NavigateOptions, NavigationDriver, PreparedNavigation,
+    tree::{Mounted, Tree},
 };
 use crate::{
     AppUrl,
-    pattern::{Match, Pattern, ambiguous},
-    select::select,
+    view::{self, Routes},
 };
 use fusor::dom::{MountPoint, Scope};
-use fusor::{Derived, OwnerHandle, derived};
+use fusor::{Derived, OwnerHandle};
 use std::rc::Rc;
 use wasm_bindgen::JsValue;
 
-type Factory = dyn Fn(&OwnerHandle, &Match) -> Result<Scope, JsValue>;
-
-/// A lazy branch factory. Unmatched branches are never constructed.
-pub struct RouteView {
-    pattern: Option<Pattern>,
-    render: Box<Factory>,
-}
-
-impl RouteView {
-    pub fn new(
-        pattern: &str,
-        render: impl Fn(&OwnerHandle, &Match) -> Result<Scope, JsValue> + 'static,
-    ) -> Result<Self, JsValue> {
-        Ok(Self {
-            pattern: Some(Pattern::new(pattern)?),
-            render: Box::new(render),
-        })
-    }
-    pub fn fallback(
-        render: impl Fn(&OwnerHandle, &Match) -> Result<Scope, JsValue> + 'static,
-    ) -> Self {
-        Self {
-            pattern: None,
-            render: Box::new(render),
-        }
-    }
-}
-
-/// A router's routes, checked to be unambiguous.
-struct Routes(Vec<RouteView>);
-
-impl Routes {
-    fn new(routes: Vec<RouteView>) -> Result<Self, JsValue> {
-        for (index, route) in routes.iter().enumerate() {
-            let pattern = route.pattern.as_ref();
-            if routes[..index]
-                .iter()
-                .any(|other| ambiguous(pattern, other.pattern.as_ref()))
-            {
-                return Err(error(
-                    "Router contains ambiguous routes or multiple fallbacks",
-                ));
-            }
-        }
-        Ok(Self(routes))
-    }
-}
-
-impl Views for Routes {
-    fn select(&self, url: &AppUrl, prefix: usize) -> Result<Option<Selection<'_>>, JsValue> {
-        let patterns = self.0.iter().map(|route| route.pattern.as_ref());
-        Ok(select(patterns, url, prefix)?.map(|selected| {
-            let route = &self.0[selected.index];
-            Selection {
-                consumed: selected.matched.consumed,
-                render: Box::new({
-                    let matched = selected.matched.clone();
-                    move |owner| (route.render)(owner, &matched)
-                }),
-                identity: Box::new(selected),
-            }
-        }))
-    }
-}
+/// A lazy DOM route factory.
+pub type RouteView = view::RouteView<Scope>;
 
 /// Navigation shared by nested routers, independent of the declaring template file.
 #[derive(Clone)]
 pub struct Navigation {
     tree: Rc<Tree>,
-    /// Looked up from a view that is still prepared: its owner and the URL it
-    /// was prepared for, reported until the view activates.
-    prepared: Option<(OwnerHandle, AppUrl)>,
+    view: view::Navigation<Scope>,
 }
 
 impl Navigation {
     pub fn from_owner(owner: &OwnerHandle) -> Option<Self> {
         Some(Self {
             tree: Tree::from_owner(owner)?,
-            prepared: enclosing_view(owner),
+            view: view::Navigation::from_owner(owner)?,
         })
     }
     pub fn location(&self) -> Derived<AppUrl> {
-        let location = self.tree.location();
-        let prepared = self.prepared.clone();
-        derived(move || {
-            let current = location.get();
-            prepared
-                .as_ref()
-                .filter(|(owner, _)| !owner.is_active() && !owner.is_disposed())
-                .map_or(current, |(_, initial)| initial.clone())
-        })
+        self.view.location()
     }
     pub fn navigate_url(&self, url: &str, options: NavigateOptions) -> Result<(), JsValue> {
         self.tree.navigate_url(url, options)
@@ -134,7 +61,7 @@ impl ViewRouter {
     pub fn navigation(&self) -> Navigation {
         Navigation {
             tree: self.0.clone(),
-            prepared: None,
+            view: self.0.navigation(),
         }
     }
     pub fn navigate(&self, url: AppUrl) -> Result<(), JsValue> {
@@ -158,8 +85,9 @@ pub fn mount_routes(
     routes: Vec<RouteView>,
 ) -> Result<(), JsValue> {
     let routes = Box::new(Routes::new(routes)?);
-    if enclosing_view(&scope.owner()).is_some() {
-        return Boundary::nest(scope, target, routes);
+    if view::enclosing_view::<Scope>(&scope.owner()).is_some() {
+        scope.retain(view::Boundary::nest(&scope.owner(), target, routes)?);
+        return Ok(());
     }
     Tree::mount_root_in(scope, target, base, target.parent_element()?, routes)
 }
