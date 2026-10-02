@@ -1,11 +1,11 @@
-//! Typed application URLs. Parsing and formatting are ordinary Rust functions.
-//! Enable `browser` for an owned History API router and component outlet.
+//! Typed application URLs. Enable `browser` for History API navigation and DOM outlets.
 #[cfg(feature = "browser")]
 pub mod browser;
 pub mod pattern;
-#[cfg(any(feature = "browser", test))]
 mod select;
 mod url;
+#[doc(hidden)]
+pub mod view;
 pub use url::{AppUrl, BasePath, UrlError, encode_query, encode_segment};
 
 /// Application-defined route identity. Equal routes retain their mounted view.

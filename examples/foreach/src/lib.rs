@@ -98,6 +98,7 @@ struct TrackedRowInputs {
     live: Signal<i32>,
 }
 impl fusor::dom::FromInputs for TrackedRow {
+    type Error = fusor::dom::JsValue;
     type Inputs = TrackedRowInputs;
     fn from_inputs(
         inputs: Self::Inputs,

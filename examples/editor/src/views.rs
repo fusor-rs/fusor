@@ -57,6 +57,7 @@ pub struct EditorInputs {
 }
 impl fusor::dom::FromInputs for Editor {
     type Inputs = EditorInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         inputs: Self::Inputs,
         _owner: fusor::OwnerHandle,
@@ -73,6 +74,7 @@ impl fusor::dom::FromInputs for Editor {
 pub struct EmptyInputs {}
 impl fusor::dom::FromInputs for EditorPage {
     type Inputs = EmptyInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         _: Self::Inputs,
         owner: fusor::OwnerHandle,
@@ -82,6 +84,7 @@ impl fusor::dom::FromInputs for EditorPage {
 }
 impl fusor::dom::FromInputs for Away {
     type Inputs = EmptyInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(_: Self::Inputs, _: fusor::OwnerHandle) -> Result<Self, wasm_bindgen::JsValue> {
         Ok(Self)
     }

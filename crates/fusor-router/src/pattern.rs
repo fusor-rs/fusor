@@ -104,7 +104,6 @@ impl Pattern {
         })
     }
     /// Higher values win over less-specific patterns, independent of declaration order.
-    #[cfg(any(feature = "browser", test))]
     pub(crate) fn specificity(&self) -> &[Rank] {
         &self.specificity
     }

@@ -11,6 +11,7 @@ impl Drop for Badge {
 pub struct BadgeInputs {
 }
 impl fusor::dom::FromInputs for Badge {
+    type Error = fusor::dom::JsValue;
     type Inputs = BadgeInputs;
     fn from_inputs(_inputs: Self::Inputs, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(Self::new())

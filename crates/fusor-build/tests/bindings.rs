@@ -649,7 +649,7 @@ fn component_tags_lower_native_inputs_aliases_and_explicit_content() {
     let page = extract(&source).unwrap();
     let rust = tokens(&page.rust);
     assert!(rust.contains(&tokens(
-        "<widgets::CounterAlias as ::fusor::dom::FromInputs> ::Inputs"
+        "<widgets::CounterAlias as ::fusor::FromInputs> ::Inputs"
     )),);
     assert!(rust.contains(&tokens("count: { state.count.clone() }")));
     assert!(rust.contains(&tokens("title: { \"literal & text\" }")));
@@ -1272,8 +1272,8 @@ fn generated_native_and_template_roots_prepare_the_final_owner_before_the_factor
             .find("prepare_with_binding_bundle")
             .expect("prepared descriptor entry point");
         let factory = rust
-            .find(&tokens("prepare_state(__fusor_scope.owner(), make)"))
-            .expect("factory receives prepared owner");
+            .find(&tokens("construct(&mut __fusor_scope, make)"))
+            .expect("shared construction handoff");
         assert!(
             prepare < factory,
             "descriptor must validate before the factory"

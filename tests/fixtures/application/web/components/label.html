@@ -6,6 +6,7 @@ pub struct LabelInputs {
     pub text: Signal<String>,
 }
 impl fusor::dom::FromInputs for Label {
+    type Error = fusor::dom::JsValue;
     type Inputs = LabelInputs;
     fn from_inputs(inputs: Self::Inputs, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(Self { text: inputs.text })

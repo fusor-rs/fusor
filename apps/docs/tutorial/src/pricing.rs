@@ -47,6 +47,7 @@ pub struct PriceInputs {
     pub product: Signal<String>,
 }
 impl fusor::dom::FromInputs for Price {
+    type Error = fusor::dom::JsValue;
     type Inputs = PriceInputs;
     fn from_inputs(
         inputs: Self::Inputs,
@@ -60,6 +61,7 @@ pub struct StockInputs {
     pub product: Signal<String>,
 }
 impl fusor::dom::FromInputs for Stock {
+    type Error = fusor::dom::JsValue;
     type Inputs = StockInputs;
     fn from_inputs(
         inputs: Self::Inputs,

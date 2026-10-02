@@ -37,6 +37,7 @@ pub fn generate(manifest: &Path, out: &Path) -> Result<ArtifactManifest> {
         package_root: &package_root,
         out: &out,
         next_component: 0,
+        embedded_templates: false,
         linker: Linker::new(&package_root, &config.output, &out),
     };
     // Compiling a source writes nothing, so a rejected source leaves no new output.
@@ -53,6 +54,7 @@ struct Generator<'a> {
     package_root: &'a Path,
     out: &'a Path,
     next_component: usize,
+    embedded_templates: bool,
     linker: Linker<'a>,
 }
 
@@ -77,11 +79,14 @@ impl Generator<'_> {
     fn compile(&mut self, source: Source) -> Result<CompiledSource> {
         let html_path = &source.canonical;
         let text = fs::read_to_string(html_path)?;
+        if source.kind == SourceKind::Entry {
+            self.embedded_templates = validate::component_file(&text).is_ok();
+        }
         if source.kind != SourceKind::Entry {
             validate::component_file(&text)
                 .map_err(|error| SourceError::extracted(html_path, error))?;
         }
-        let mut page = extract_from(&text, self.next_component)
+        let mut page = extract_from(&text, self.next_component, self.embedded_templates)
             .map_err(|error| SourceError::extracted(html_path, error))?;
         let native = page.blocks.is_empty();
         if native && page.component_count == 0 {

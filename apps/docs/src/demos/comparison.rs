@@ -133,6 +133,7 @@ struct CoherentFieldInputs {
 }
 impl fusor::dom::FromInputs for CoherentField {
     type Inputs = CoherentFieldInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         inputs: Self::Inputs,
         owner: fusor::OwnerHandle,

@@ -30,6 +30,7 @@ struct Panel;
 struct PanelInputs {}
 impl FromInputs for Panel {
     type Inputs = PanelInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(_: PanelInputs, owner: OwnerHandle) -> Result<Self, JsValue> {
         owner.provide::<Location>("panel").unwrap();
         Ok(Self)
@@ -56,6 +57,7 @@ struct TrackedInputs {
 }
 impl FromInputs for Tracked {
     type Inputs = TrackedInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(inputs: Self::Inputs, owner: OwnerHandle) -> Result<Self, JsValue> {
         assert_eq!(*owner.context::<Location>().unwrap(), "panel");
         let live = inputs.live.clone();

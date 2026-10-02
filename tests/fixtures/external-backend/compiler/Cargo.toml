@@ -1,0 +1,15 @@
+[package]
+name = "memory-compiler"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[dependencies]
+fusor-build = { path = "../../../../crates/fusor-build" }
+quote = "=1.0.47"
+proc-macro2 = "=1.0.107"
+syn = { version = "=2.0.119", features = ["full"] }
+
+[lints.rust]
+unsafe_code = "forbid"

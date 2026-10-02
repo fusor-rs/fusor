@@ -58,6 +58,7 @@ impl Fixture {
 struct Generated;
 struct GeneratedInputs {}
 impl FromInputs for Generated {
+    type Error = fusor::dom::JsValue;
     type Inputs = GeneratedInputs;
     fn from_inputs(_: Self::Inputs, _: fusor::OwnerHandle) -> Result<Self, JsValue> {
         Ok(Self)
@@ -67,6 +68,7 @@ impl FromInputs for Generated {
 struct Manual;
 struct ManualInputs {}
 impl FromInputs for Manual {
+    type Error = fusor::dom::JsValue;
     type Inputs = ManualInputs;
     fn from_inputs(_: Self::Inputs, _: fusor::OwnerHandle) -> Result<Self, JsValue> {
         Ok(Self)

@@ -197,7 +197,7 @@ pub(super) fn remember(
     });
     PLANS.with(|plans| {
         let mut plans = plans.borrow_mut();
-        plans.retain(|previous| previous.component != descriptor.component);
+        plans.retain(|previous| !previous.matches(descriptor, mounts));
         if plans.len() >= 32 {
             plans.pop_front();
         }

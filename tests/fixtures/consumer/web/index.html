@@ -46,11 +46,8 @@ use wasm_bindgen::prelude::*;
 
 #[derive(Clone, PartialEq)]
 struct Item { id: u32, name: String }
-struct Row { item: Memo<Item> }
-impl fusor::dom::FromInputs for Row {
-    type Inputs = Self;
-    fn from_inputs(inputs: Self, _owner: OwnerHandle) -> Result<Self, JsValue> { Ok(inputs) }
-}
+#[derive(FromInputs)]
+struct Row { #[input] item: Memo<Item> }
 struct Application {
     count: Signal<i32>,
     name: Signal<String>,

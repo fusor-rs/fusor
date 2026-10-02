@@ -93,7 +93,20 @@ fn check_workspace(cx: &Context, root: &Path) -> Result {
         "warnings",
     ]))?;
     check_consumers(&run, root)?;
+    check_backend_consumer(&run, root)?;
     check_documentation(&run)
+}
+
+fn check_backend_consumer(run: &impl Fn(&mut Command) -> Result, root: &Path) -> Result {
+    let manifest = root.join("tests/fixtures/external-backend/Cargo.toml");
+    run(cargo()
+        .args(["fmt", "--all", "--check", "--manifest-path"])
+        .arg(&manifest))?;
+    run(cargo()
+        .args(["test", "--workspace", "--locked", "--manifest-path"])
+        .arg(&manifest)
+        .arg("--target-dir")
+        .arg(root.join("target/external-backend-tests")))
 }
 
 fn check_feature_isolation(run: &impl Fn(&mut Command) -> Result) -> Result {

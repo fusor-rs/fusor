@@ -40,10 +40,7 @@ pub struct NavigateOptions {
     pub keep_scroll: bool,
 }
 
-/// Prepared view work. Dropping it must roll back without disposing the current view.
-pub trait PreparedNavigation {
-    fn commit(self: Box<Self>);
-}
+pub use crate::view::PreparedNavigation;
 
 /// A view manager participating in the browser history transaction.
 pub trait NavigationDriver {

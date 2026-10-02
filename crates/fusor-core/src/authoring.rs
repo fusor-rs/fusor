@@ -14,6 +14,16 @@
 /// this module. Use `/` separators and the exact configured package-relative path.
 #[macro_export]
 macro_rules! template {
+    (backend = $backend:literal, $path:literal) => {
+        include!(concat!(
+            env!("OUT_DIR"),
+            "/fusor_backends/",
+            $backend,
+            "/",
+            $path,
+            ".rs"
+        ));
+    };
     ($path:literal) => {
         include!(concat!(env!("OUT_DIR"), "/fusor_templates/", $path, ".rs"));
     };

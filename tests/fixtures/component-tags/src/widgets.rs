@@ -25,6 +25,7 @@ pub struct CounterInputs {
     pub fail: bool,
 }
 impl FromInputs for Counter {
+    type Error = fusor::dom::JsValue;
     type Inputs = CounterInputs;
     fn from_inputs(inputs: Self::Inputs, owner: OwnerHandle) -> Result<Self, JsValue> {
         record(0);
@@ -58,6 +59,7 @@ pub struct PanelInputs {
     pub title: &'static str,
 }
 impl FromInputs for Panel {
+    type Error = fusor::dom::JsValue;
     type Inputs = PanelInputs;
     fn from_inputs(inputs: Self::Inputs, owner: OwnerHandle) -> Result<Self, JsValue> {
         owner
@@ -75,12 +77,13 @@ pub struct Badge {
 }
 pub struct BadgeInputs;
 impl FromInputs for Badge {
+    type Error = &'static str;
     type Inputs = BadgeInputs;
-    fn from_inputs(_: Self::Inputs, owner: OwnerHandle) -> Result<Self, JsValue> {
+    fn from_inputs(_: Self::Inputs, owner: OwnerHandle) -> Result<Self, Self::Error> {
         Ok(Self {
             theme: *owner
                 .context::<Theme>()
-                .ok_or_else(|| JsValue::from_str("missing receiving context"))?,
+                .ok_or("missing receiving context")?,
         })
     }
 }

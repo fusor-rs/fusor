@@ -24,6 +24,7 @@ pub struct IssueFieldInputs {
 
 impl FromInputs for IssueField {
     type Inputs = IssueFieldInputs;
+    type Error = fusor::dom::JsValue;
 
     fn from_inputs(inputs: Self::Inputs, owner: OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         let field = inputs.field;

@@ -107,6 +107,7 @@ fusor::bindings!(article);
 macro_rules! row_inputs {
     ($($row:ty),*) => {$(
         impl fusor::dom::FromInputs for $row {
+            type Error = fusor::dom::JsValue;
             type Inputs = Self;
             fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
                 Ok(inputs)
@@ -118,6 +119,7 @@ row_inputs!(Callout, MapGroup, ApiBody, Member);
 
 impl fusor::dom::FromInputs for Breadcrumb {
     type Inputs = Self;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(inputs)
     }
@@ -125,6 +127,7 @@ impl fusor::dom::FromInputs for Breadcrumb {
 
 impl fusor::dom::FromInputs for Section {
     type Inputs = Self;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(inputs)
     }
@@ -132,6 +135,7 @@ impl fusor::dom::FromInputs for Section {
 
 impl fusor::dom::FromInputs for Toc {
     type Inputs = Self;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(inputs)
     }
@@ -139,6 +143,7 @@ impl fusor::dom::FromInputs for Toc {
 
 impl fusor::dom::FromInputs for RelatedLink {
     type Inputs = Self;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(inputs)
     }
@@ -149,6 +154,7 @@ pub struct ArticleInputs {
 }
 impl fusor::dom::FromInputs for Article {
     type Inputs = ArticleInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(inputs: Self::Inputs, _: OwnerHandle) -> Result<Self, wasm_bindgen::JsValue> {
         Ok(Self::new(inputs.index))
     }

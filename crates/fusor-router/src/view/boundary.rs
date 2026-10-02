@@ -1,32 +1,27 @@
-//! A place in the page that shows one view at a time, and the staged plans
-//! that replace its view.
+//! Staged view replacement and nested route retention.
 use super::{
-    Tree,
+    RouteScope, Tree,
     views::{Identity, Selection, Views},
 };
-use crate::{
-    AppUrl,
-    browser::{context_error, error},
-};
-use fusor::dom::{MountPoint, Scope};
+use crate::AppUrl;
 use fusor::{ContextKey, Owner, OwnerHandle, untrack};
 use std::{
     cell::RefCell,
+    marker::PhantomData,
     rc::{Rc, Weak},
 };
-use wasm_bindgen::JsValue;
 
-type Children = Rc<RefCell<Vec<Weak<Boundary>>>>;
+type Children<S> = Rc<RefCell<Vec<Weak<Boundary<S>>>>>;
 
 /// Provided on each view's owner: where boundaries nested in the view attach.
-struct BranchContext;
-impl ContextKey for BranchContext {
-    type Value = Branch;
+struct BranchContext<S>(PhantomData<S>);
+impl<S: RouteScope> ContextKey for BranchContext<S> {
+    type Value = Branch<S>;
 }
-struct Branch {
-    tree: Weak<Tree>,
+struct Branch<S: RouteScope> {
+    tree: Weak<Tree<S>>,
     prefix: usize,
-    children: Children,
+    children: Children<S>,
     /// The URL the view was prepared for, reported until the view activates.
     initial: AppUrl,
     owner: OwnerHandle,
@@ -34,29 +29,30 @@ struct Branch {
 
 /// The router view that `owner` belongs to: that view's owner and the URL it
 /// was prepared for.
-pub(in crate::browser) fn enclosing_view(owner: &OwnerHandle) -> Option<(OwnerHandle, AppUrl)> {
+pub(crate) fn enclosing_view<S: RouteScope>(owner: &OwnerHandle) -> Option<(OwnerHandle, AppUrl)> {
     owner
-        .context::<BranchContext>()
+        .context::<BranchContext<S>>()
         .map(|branch| (branch.owner.clone(), branch.initial.clone()))
 }
 
-pub(in crate::browser) struct Boundary {
+pub(crate) struct Boundary<S: RouteScope> {
     parent: OwnerHandle,
-    target: MountPoint,
-    pub(super) views: Box<dyn Views>,
+    target: S::Target,
+    pub(super) views: Box<dyn Views<S>>,
     prefix: usize,
-    current: RefCell<Option<Rc<View>>>,
+    current: RefCell<Option<Rc<View<S>>>>,
+    registrations: RefCell<Vec<fusor::Registration>>,
 }
 
-pub(in crate::browser) struct View {
+pub(crate) struct View<S: RouteScope> {
     identity: Box<dyn Identity>,
-    scope: Scope,
+    scope: S,
     owner: Owner,
-    children: Children,
+    children: Children<S>,
 }
 
-impl View {
-    fn children(&self) -> Vec<Rc<Boundary>> {
+impl<S: RouteScope> View<S> {
+    fn children(&self) -> Vec<Rc<Boundary<S>>> {
         self.children
             .borrow()
             .iter()
@@ -67,12 +63,12 @@ impl View {
 }
 
 /// A staged change to a boundary and the boundaries nested in its view.
-pub(in crate::browser) enum Plan {
-    Keep(Vec<Plan>),
-    Replace(Rc<Boundary>, Option<Rc<View>>),
+pub(crate) enum Plan<S: RouteScope> {
+    Keep(Vec<Plan<S>>),
+    Replace(Rc<Boundary<S>>, Option<Rc<View<S>>>),
 }
 
-impl Plan {
+impl<S: RouteScope> Plan<S> {
     pub(super) fn apply(self) {
         match self {
             Self::Keep(children) => {
@@ -80,16 +76,20 @@ impl Plan {
                     child.apply();
                 }
             }
-            Self::Replace(boundary, view) => drop(boundary.current.replace(view)),
+            Self::Replace(boundary, view) => {
+                if !boundary.parent.is_disposed() {
+                    drop(boundary.current.replace(view));
+                }
+            }
         }
     }
 }
 
-impl Boundary {
+impl<S: RouteScope> Boundary<S> {
     pub(super) fn new(
         parent: OwnerHandle,
-        target: MountPoint,
-        views: Box<dyn Views>,
+        target: S::Target,
+        views: Box<dyn Views<S>>,
         prefix: usize,
     ) -> Rc<Self> {
         Rc::new(Self {
@@ -98,26 +98,26 @@ impl Boundary {
             views,
             prefix,
             current: RefCell::new(None),
+            registrations: RefCell::new(Vec::new()),
         })
     }
     /// Mount a boundary for `views` inside the router view that owns `scope`,
     /// matching after that view's prefix.
-    pub(in crate::browser) fn nest(
-        scope: &mut Scope,
-        target: &MountPoint,
-        views: Box<dyn Views>,
-    ) -> Result<(), JsValue> {
-        let branch = scope
-            .owner()
-            .context::<BranchContext>()
-            .ok_or_else(|| error("nested routes need an enclosing router view"))?;
+    pub(crate) fn nest(
+        parent: &OwnerHandle,
+        target: &S::Target,
+        views: Box<dyn Views<S>>,
+    ) -> Result<Rc<Self>, S::Error> {
+        let branch = parent
+            .context::<BranchContext<S>>()
+            .ok_or_else(|| S::error("nested routes need an enclosing router view"))?;
         let tree = branch
             .tree
             .upgrade()
-            .ok_or_else(|| error("parent router is disposed"))?;
-        let boundary = Self::new(scope.owner(), target.clone(), views, branch.prefix);
+            .ok_or_else(|| S::error("parent router is disposed"))?;
+        let boundary = Self::new(parent.clone(), target.clone(), views, branch.prefix);
         let url = if branch.owner.is_active() {
-            tree.location.get_untracked()
+            tree.location().get_untracked()
         } else {
             branch.initial.clone()
         };
@@ -127,17 +127,30 @@ impl Boundary {
         children.push(Rc::downgrade(&boundary));
         drop(children);
         let weak = Rc::downgrade(&boundary);
-        scope.retain(scope.owner().on_activate(move || {
+        let activation = parent.on_activate(move || {
             if let Some(boundary) = weak.upgrade() {
                 boundary.activate();
             }
-        }));
-        scope.retain(boundary);
-        Ok(())
+        });
+        let weak = Rc::downgrade(&boundary);
+        let cleanup = parent.on_cleanup(move || {
+            if let Some(boundary) = weak.upgrade() {
+                boundary.clear();
+            }
+        });
+        boundary
+            .registrations
+            .borrow_mut()
+            .extend([activation, cleanup]);
+        Ok(boundary)
     }
     /// Stage what `url` shows here: keep an unchanged view and plan for its
     /// nested boundaries, or build a replacement.
-    pub(super) fn prepare(self: &Rc<Self>, tree: &Rc<Tree>, url: &AppUrl) -> Result<Plan, JsValue> {
+    pub(super) fn prepare(
+        self: &Rc<Self>,
+        tree: &Rc<Tree<S>>,
+        url: &AppUrl,
+    ) -> Result<Plan<S>, S::Error> {
         let selection = self.views.select(url, self.prefix)?;
         let current = self.current.borrow().clone();
         if let (Some(view), Some(selection)) = (&current, &selection) {
@@ -158,38 +171,30 @@ impl Boundary {
     /// Prepare the selected view, attached but inactive.
     fn build(
         &self,
-        tree: &Rc<Tree>,
+        tree: &Rc<Tree<S>>,
         url: &AppUrl,
-        selection: Selection<'_>,
-    ) -> Result<Rc<View>, JsValue> {
+        selection: Selection<'_, S>,
+    ) -> Result<Rc<View<S>>, S::Error> {
         let owner = Owner::child(&self.parent);
-        let children = Children::default();
+        let children = Children::<S>::default();
         owner
             .handle()
-            .provide::<BranchContext>(Branch {
+            .provide::<BranchContext<S>>(Branch {
                 tree: Rc::downgrade(tree),
                 prefix: selection.consumed,
                 children: children.clone(),
                 initial: url.clone(),
                 owner: owner.handle(),
             })
-            .map_err(context_error)?;
+            .map_err(|error| S::error(&error.to_string()))?;
         let mut scope = untrack(|| (selection.render)(&owner.handle()))?;
         let child = scope.owner();
-        if child.is_active()
-            || child.is_disposed()
-            || !child.is_child_of(&owner.handle())
-            || scope.root().is_connected()
-        {
-            return Err(error(
+        if child.is_active() || child.is_disposed() || !child.is_child_of(&owner.handle()) {
+            return Err(S::error(
                 "route views must return a detached, prepared child of their supplied owner",
             ));
         }
-        scope.attach_at(&self.target)?;
-        scope.finish_prepare()?;
-        if self.parent.is_active() {
-            scope.finish_prepare_subtree()?;
-        }
+        scope.prepare_at(&self.target, self.parent.is_active())?;
         Ok(Rc::new(View {
             identity: selection.identity,
             scope,

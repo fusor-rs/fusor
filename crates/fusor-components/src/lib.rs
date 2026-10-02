@@ -8,6 +8,13 @@
 //! engine, including coherent publication and server rendering.
 use fusor::{Memo, Signal, memo};
 
+/// Version of the backend row/capture protocol: [`Entry`], [`Value`],
+/// [`RowValue`], [`Row`], [`ItemRow`], [`Captured`], and [`ForEach`]'s `entries`,
+/// `values`, `key`, `value_key`, `row`, and `item_row` helpers. Browser mounting
+/// and server-only helpers are separate contracts.
+#[doc(hidden)]
+pub const BACKEND_VERSION: u32 = 1;
+
 /// The built-in application boundary. Its state is ordinary inferred Rust.
 pub struct App;
 
@@ -55,7 +62,6 @@ pub struct Match;
 pub struct Case;
 
 /// One collection value and its current position. Compiler/runtime protocol.
-#[doc(hidden)]
 #[derive(Clone, PartialEq)]
 pub struct Entry<T> {
     pub value: T,
@@ -64,12 +70,10 @@ pub struct Entry<T> {
 
 /// One collection value of a row proven never to read its index. Without a
 /// position, moving the row leaves its source unchanged. Compiler/runtime protocol.
-#[doc(hidden)]
 #[derive(Clone, PartialEq)]
 pub struct Value<T>(pub T);
 
 /// The collection value a row source carries. Compiler/runtime protocol.
-#[doc(hidden)]
 pub trait RowValue {
     type Item;
     fn item(&self) -> &Self::Item;
@@ -90,7 +94,6 @@ impl<T> RowValue for Value<T> {
 }
 
 /// Lexical environment of an inline row. `parent` preserves the caller's scope.
-#[doc(hidden)]
 pub struct Row<P, T> {
     pub parent: P,
     pub item: Memo<T>,
@@ -99,20 +102,18 @@ pub struct Row<P, T> {
 
 /// Compiler environment for a forwarding row proven not to expose its index.
 /// Keep the same item Memo API without constructing an unreachable projection.
-#[doc(hidden)]
 pub struct ItemRow<P, T> {
     pub parent: P,
     pub item: Memo<T>,
 }
 
 impl ForEach {
-    #[doc(hidden)]
+    /// Evaluate an authored key against an entry's collection value.
     pub fn key<T, K>(entry: &Entry<T>, key: impl FnOnce(&T) -> K) -> K {
         key(&entry.value)
     }
 
     /// Attach positions to values without using positions as reconciliation keys.
-    #[doc(hidden)]
     pub fn entries<T>(items: Vec<T>) -> Vec<Entry<T>> {
         items
             .into_iter()
@@ -122,12 +123,11 @@ impl ForEach {
     }
 
     /// Values for rows proven never to read their index: a move is not an input.
-    #[doc(hidden)]
     pub fn values<T>(items: Vec<T>) -> Vec<Value<T>> {
         items.into_iter().map(Value).collect()
     }
 
-    #[doc(hidden)]
+    /// Evaluate an authored key against a row that does not read its index.
     pub fn value_key<T, K>(value: &Value<T>, key: impl FnOnce(&T) -> K) -> K {
         key(&value.0)
     }
@@ -159,9 +159,9 @@ impl ForEach {
         }
     }
 
-    /// Compiler-only live projection; reads still use the ordinary Memo path,
-    /// including speculative coherent values and equality suppression.
-    #[doc(hidden)]
+    /// Live item projection with ordinary Memo caching and equality suppression.
+    /// Update the source signal to publish a row change. A direct
+    /// [`Signal::with_render_value`] override does not invalidate a cached Memo.
     pub fn item_row<P, E: RowValue + 'static>(parent: P, source: Signal<E>) -> ItemRow<P, E::Item>
     where
         E::Item: Clone + PartialEq + 'static,
@@ -172,9 +172,10 @@ impl ForEach {
         }
     }
 
-    /// Project item and position from one atomic list update. Derived values also
-    /// follow a coherent renderer's speculative read values before publication.
-    #[doc(hidden)]
+    /// Project item and position from one atomic list update. Update the source
+    /// signal to publish the new row inputs; the projections suppress equal
+    /// values independently. A direct [`Signal::with_render_value`] override
+    /// does not invalidate their cached Memos.
     pub fn row<P, T: Clone + PartialEq + 'static>(
         parent: P,
         source: Signal<Entry<T>>,
@@ -188,9 +189,8 @@ impl ForEach {
     }
 }
 
-/// Compiler-only retained Await snapshot. Pointer identity avoids requiring
+/// Retained branch/Await snapshot. Pointer identity avoids requiring
 /// application response types to implement PartialEq or cloning their contents.
-#[doc(hidden)]
 pub struct Captured<T>(std::rc::Rc<T>);
 impl<T> Clone for Captured<T> {
     fn clone(&self) -> Self {

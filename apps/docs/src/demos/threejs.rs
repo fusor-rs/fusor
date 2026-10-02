@@ -45,6 +45,7 @@ pub struct ThreeJsInputs {}
 
 impl fusor::dom::FromInputs for ThreeJs {
     type Inputs = ThreeJsInputs;
+    type Error = fusor::dom::JsValue;
 
     fn from_inputs(
         _inputs: Self::Inputs,

@@ -202,7 +202,7 @@ struct Counter {
   const templateMarkup = minimal.match(/<section[\s\S]*?<\/section>/)[0]
     .replace(' rust:component="Counter"', '');
   const templateScript = minimal.match(/<script type="text\/rust">[\s\S]*?<\/script>/)[0]
-    .replace('</script>', 'struct App;\nstruct CounterInputs {}\nimpl fusor::dom::FromInputs for Counter { type Inputs = CounterInputs; fn from_inputs(_: Self::Inputs, _: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> { Ok(Self { count: signal(0) }) } }\n</script>');
+    .replace('</script>', 'struct App;\nstruct CounterInputs {}\nimpl fusor::dom::FromInputs for Counter { type Error = fusor::dom::JsValue; type Inputs = CounterInputs; fn from_inputs(_: Self::Inputs, _: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> { Ok(Self { count: signal(0) }) } }\n</script>');
   const templatePage = `<!doctype html><html><head><title>Template component</title></head>
     <body><App state="{{ App }}"><div id="host"><Counter></Counter></div></App><template rust:component="Counter">
     ${templateMarkup}${templateScript}</template></body></html>`;

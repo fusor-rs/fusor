@@ -1,18 +1,9 @@
-#![cfg(feature = "dom")]
+#![cfg(feature = "derive")]
 
-use fusor::dom::{Component, JsValue, Scope, TemplateComponent};
 use fusor::{FromInputs, Owner, Signal, signal};
 use std::cell::Cell;
 
-// Construction-only tests; browser integration tests exercise real templates.
-macro_rules! template_contract {
-    ($($ty:ty),* $(,)?) => {$(
-        impl Component for $ty {
-            fn mount(self) -> Result<Scope, JsValue> { unreachable!("construction-only test") }
-        }
-        impl TemplateComponent for $ty {}
-    )*};
-}
+// These constructors compile and execute with no DOM feature or mounting trait.
 
 mod child {
     use super::*;
@@ -23,7 +14,6 @@ mod child {
         #[local(init = signal(0))]
         pub(super) clicks: Signal<i32>,
     }
-    template_contract!(Counter);
 }
 
 #[test]
@@ -86,7 +76,6 @@ struct Recursive {
 impl Recursive {
     const SIZE: usize = 2;
 }
-template_contract!(Local, Empty, Braces, Recursive);
 
 #[test]
 fn local_expressions_run_once_in_declaration_order() {
@@ -131,8 +120,6 @@ mod renamed {
         #[input]
         pub(super) value: String,
     }
-    template_contract!(Renamed);
-    use super::{Component, JsValue, Scope, TemplateComponent};
 }
 
 #[test]
@@ -149,15 +136,14 @@ fn explicit_runtime_path_works_with_reexports() {
 
 #[derive(FromInputs)]
 struct Conditional {
-    #[cfg(not(feature = "dom"))]
+    #[cfg(not(feature = "derive"))]
     absent: MissingType,
-    #[cfg_attr(feature = "dom", input)]
+    #[cfg_attr(feature = "derive", input)]
     value: bool,
-    #[cfg(feature = "dom")]
+    #[cfg(feature = "derive")]
     #[local(init = 3)]
     local: u32,
 }
-template_contract!(Conditional);
 
 #[test]
 fn conditional_fields_follow_rust_configuration() {
@@ -165,4 +151,99 @@ fn conditional_fields_follow_rust_configuration() {
         Conditional::from_inputs(ConditionalInputs { value: true }, Owner::new().handle()).unwrap();
     assert!(value.value);
     assert_eq!(value.local, 3);
+}
+
+#[derive(Debug, PartialEq)]
+enum InputError {
+    Negative,
+}
+
+struct Manual {
+    value: i32,
+    _effect: fusor::Effect,
+    _cleanup: fusor::Registration,
+}
+
+struct ManualInputs {
+    value: i32,
+    observed: Signal<Vec<&'static str>>,
+}
+
+impl FromInputs for Manual {
+    type Inputs = ManualInputs;
+    type Error = InputError;
+
+    fn from_inputs(inputs: Self::Inputs, owner: fusor::OwnerHandle) -> Result<Self, Self::Error> {
+        if inputs.value < 0 {
+            return Err(InputError::Negative);
+        }
+        let observed = inputs.observed.clone();
+        let subscription = fusor::effect(move || observed.update(|log| log.push("effect")));
+        let cleanup = owner.on_cleanup(move || inputs.observed.update(|log| log.push("cleanup")));
+        Ok(Self {
+            value: inputs.value,
+            _effect: subscription,
+            _cleanup: cleanup,
+        })
+    }
+}
+
+#[test]
+fn manual_errors_are_portable_and_construction_does_not_defer_ordinary_effects() {
+    let owner = Owner::new();
+    let observed = signal(Vec::new());
+    assert!(matches!(
+        Manual::from_inputs(
+            ManualInputs {
+                value: -1,
+                observed: observed.clone(),
+            },
+            owner.handle(),
+        ),
+        Err(InputError::Negative)
+    ));
+    assert!(observed.get().is_empty());
+    let state = Manual::from_inputs(
+        ManualInputs {
+            value: 3,
+            observed: observed.clone(),
+        },
+        owner.handle(),
+    )
+    .unwrap();
+    assert_eq!(state.value, 3);
+    assert!(!owner.handle().is_active());
+    assert_eq!(observed.get(), ["effect"]);
+    owner.commit();
+    assert_eq!(observed.get(), ["effect"]);
+    owner.dispose();
+    assert_eq!(observed.get(), ["effect", "cleanup"]);
+}
+
+#[cfg(feature = "dom")]
+#[test]
+fn old_manual_jsvalue_error_and_explicit_browser_error_conversions_compile() {
+    use fusor::dom::{FromInputs as BrowserFromInputs, IntoMountError, JsValue};
+
+    struct OldBrowserComponent;
+    impl BrowserFromInputs for OldBrowserComponent {
+        type Inputs = ();
+        type Error = JsValue;
+
+        fn from_inputs(_: (), _: fusor::OwnerHandle) -> Result<Self, JsValue> {
+            Ok(Self)
+        }
+    }
+
+    // Compile every documented conversion without invoking JS on a native test.
+    fn accepts<E: IntoMountError>() {}
+    accepts::<JsValue>();
+    accepts::<std::convert::Infallible>();
+    accepts::<String>();
+    accepts::<&str>();
+    let owner = Owner::new();
+    assert!(OldBrowserComponent::from_inputs((), owner.handle()).is_ok());
+    let derived: Result<Empty, JsValue> =
+        Empty::from_inputs(EmptyInputs, owner.handle()).map_err(IntoMountError::into_mount_error);
+    assert!(derived.is_ok());
 }

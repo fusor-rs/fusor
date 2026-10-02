@@ -18,7 +18,8 @@ name = "fusor"
 [features]
 default = []
 islands = ["dom", "dep:js-sys"]
-dom = ["dep:wasm-bindgen", "dep:web-sys", "dep:fusor-macros", "dep:js-sys"]
+derive = ["dep:fusor-macros"]
+dom = ["dep:wasm-bindgen", "dep:web-sys", "derive", "dep:js-sys"]
 javascript = ["dom", "dep:js-sys", "web-sys/CustomEvent"]
 
 [dependencies]

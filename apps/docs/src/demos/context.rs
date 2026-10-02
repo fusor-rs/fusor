@@ -41,6 +41,7 @@ fusor::bindings!(context);
 struct PanelInputs {}
 impl fusor::dom::FromInputs for Panel {
     type Inputs = PanelInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         _inputs: Self::Inputs,
         _owner: fusor::OwnerHandle,
@@ -52,6 +53,7 @@ impl fusor::dom::FromInputs for Panel {
 struct BadgeInputs {}
 impl fusor::dom::FromInputs for Badge {
     type Inputs = BadgeInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         _inputs: Self::Inputs,
         owner: fusor::OwnerHandle,

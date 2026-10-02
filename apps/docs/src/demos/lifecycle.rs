@@ -63,6 +63,7 @@ struct TickingPanelInputs {
 }
 impl fusor::dom::FromInputs for TickingPanel {
     type Inputs = TickingPanelInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         inputs: Self::Inputs,
         owner: fusor::OwnerHandle,

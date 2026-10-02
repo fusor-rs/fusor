@@ -184,12 +184,13 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
     };
     Ok(quote! {
         #declaration
-        impl #runtime::dom::FromInputs for #name {
+        impl #runtime::FromInputs for #name {
             type Inputs = #inputs_name;
+            type Error = ::core::convert::Infallible;
             fn from_inputs(
                 #inputs_var: Self::Inputs,
                 #owner_var: #runtime::OwnerHandle,
-            ) -> ::core::result::Result<Self, #runtime::dom::JsValue> {
+            ) -> ::core::result::Result<Self, Self::Error> {
                 ::core::result::Result::Ok(#construct)
             }
         }

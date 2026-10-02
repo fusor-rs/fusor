@@ -30,6 +30,7 @@ pub struct PanelInputs {
     pub fail: bool,
 }
 impl fusor::dom::FromInputs for Panel {
+    type Error = fusor::dom::JsValue;
     type Inputs = PanelInputs;
     fn from_inputs(inputs: Self::Inputs, owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
         Ok(Self::new(owner, inputs.client, inputs.selected, inputs.text, inputs.count, inputs.fail))

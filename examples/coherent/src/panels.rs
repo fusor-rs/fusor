@@ -61,6 +61,7 @@ pub struct RowInputs {
 }
 impl fusor::dom::FromInputs for Row {
     type Inputs = RowInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         inputs: Self::Inputs,
         _owner: fusor::OwnerHandle,
@@ -74,6 +75,7 @@ pub struct PriceInputs {
 }
 impl fusor::dom::FromInputs for Price {
     type Inputs = PriceInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         inputs: Self::Inputs,
         owner: fusor::OwnerHandle,
@@ -87,6 +89,7 @@ pub struct StockInputs {
 }
 impl fusor::dom::FromInputs for Stock {
     type Inputs = StockInputs;
+    type Error = fusor::dom::JsValue;
     fn from_inputs(
         inputs: Self::Inputs,
         owner: fusor::OwnerHandle,

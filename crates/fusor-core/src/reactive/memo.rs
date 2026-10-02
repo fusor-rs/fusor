@@ -1,5 +1,5 @@
 use super::{
-    COMPUTING, TrackingGuard,
+    COMPUTING, RENDERING, RenderGuard, TrackingGuard,
     graph::{Observer, ObserverKind, Source, track},
     untrack,
 };
@@ -110,6 +110,8 @@ impl Drop for EvaluationGuard<'_> {
 
 impl<T: 'static> MemoNode for MemoInner<T> {
     fn refresh(&self) {
+        // Version validation must never publish a candidate into the cache.
+        let _committed = RenderGuard::replace(false);
         assert!(
             !self.running.get(),
             "reactive cycle: a memo depends on itself"
@@ -162,10 +164,34 @@ impl<T: 'static> Memo<T> {
     /// Borrow the current cached value and subscribe the consuming effect/memo.
     /// Do not change dependencies while this callback borrows the cache.
     pub fn with<R>(&self, read: impl FnOnce(&T) -> R) -> R {
+        if RENDERING.with(Cell::get) {
+            return self.with_candidate(read);
+        }
         self.0.refresh();
         // A successful refresh always initialized the graph before computation.
         track(&self.0.graph.get().expect("memo graph initialized").source);
         read(self.0.value.borrow().as_ref().expect("memo evaluated"))
+    }
+
+    fn with_candidate<R>(&self, read: impl FnOnce(&T) -> R) -> R {
+        struct Candidate<T>(Option<T>);
+        impl<T> Drop for Candidate<T> {
+            fn drop(&mut self) {
+                untrack(|| drop(self.0.take()));
+            }
+        }
+        let value = {
+            assert!(
+                !self.0.running.replace(true),
+                "reactive cycle: a memo depends on itself"
+            );
+            COMPUTING.with(|depth| depth.set(depth.get() + 1));
+            let _evaluation = EvaluationGuard(&self.0.running);
+            // Keep the caller's tracking context: candidate inputs belong to
+            // this evaluation, not to the memo's committed dependency graph.
+            Candidate(Some((self.0.compute)()))
+        };
+        read(value.0.as_ref().expect("candidate evaluated"))
     }
 
     /// Read without subscribing the caller. The memo still tracks its own inputs.

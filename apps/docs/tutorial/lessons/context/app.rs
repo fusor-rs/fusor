@@ -38,6 +38,7 @@ fusor::template!("web/index.html");
 
 struct BadgeInputs {}
 impl fusor::dom::FromInputs for Badge {
+    type Error = fusor::dom::JsValue;
     type Inputs = BadgeInputs;
     fn from_inputs(
         _inputs: Self::Inputs,

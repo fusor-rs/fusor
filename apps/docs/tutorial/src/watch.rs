@@ -27,6 +27,7 @@ pub struct WatchInputs {
     pub lifecycle: Signal<String>,
 }
 impl fusor::dom::FromInputs for Watch {
+    type Error = fusor::dom::JsValue;
     type Inputs = WatchInputs;
     fn from_inputs(
         inputs: Self::Inputs,

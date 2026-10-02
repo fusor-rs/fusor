@@ -18,6 +18,13 @@
     <table><tbody><Row count="{{ state.count.clone() }}"></Row></tbody></table>
     <Empty></Empty>
     <Button></Button>
+    <section id="event-parity">
+      <input id="event-text" on:input="state.input()" bind="state.text">
+      <select id="event-select" on:change="state.change()" bind="state.choice">
+        <option value="a">A</option>
+        <option value="b">B</option>
+      </select>
+    </section>
   </main>
 </App>
 </body></html>

@@ -6,7 +6,9 @@ Derive macros for fusor components.
 into its typed constructor inputs. `#[derive(JsInputs)]` does the same for the
 values a component passes to its JavaScript module.
 
-Use them through `fusor`, which re-exports both with its `dom` feature. You do
-not need to depend on this crate directly.
+Use them through `fusor`; no direct macro-crate dependency is needed.
+`FromInputs` is re-exported with the `derive` feature, which also comes with
+`dom`. Its constructor returns `Result<Self, Infallible>` and can compile
+without browser dependencies. `JsInputs` requires `javascript`.
 
 Part of [fusor](https://github.com/fusor-rs/fusor), which builds reactive web applications from HTML and ordinary Rust. Licensed under the [MIT License](LICENSE).

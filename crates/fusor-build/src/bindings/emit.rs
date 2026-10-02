@@ -1,11 +1,11 @@
-//! Token helpers shared by the browser and server lowerings: generated names,
-//! lint allowances and the statements both targets write the same way.
+//! Token helpers shared by compiler lowerings: generated names, lint allowances
+//! and portable typed construction.
 use super::{
     ir::{Anchor, Input, InputValue, InterpolatedString, StringPart},
     tokens::Rust,
 };
 use fusor::template::{ElementId, MountId, TextId};
-use proc_macro2::{Ident, Literal, Span, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
 
 /// A generated local, `__fusor_<kind>_<index>`.
@@ -62,16 +62,19 @@ pub(super) fn allow_generated(span: Span, extra: TokenStream) -> TokenStream {
     }
 }
 
-/// Construct a component from its typed inputs inside a `|owner|` closure.
-pub(super) fn from_inputs(
+/// Preserve the typed construction contract while letting a renderer convert
+/// errors at its own mounting boundary.
+pub(super) fn construct_inputs(
     span: Span,
     ty: &Rust,
     fields: impl IntoIterator<Item = TokenStream>,
+    converter: impl quote::ToTokens,
 ) -> TokenStream {
     let fields = fields.into_iter();
     quote_spanned! {span=>
-        type __FusorInputs = <#ty as ::fusor::dom::FromInputs>::Inputs;
-        <#ty as ::fusor::dom::FromInputs>::from_inputs(__FusorInputs { #(#fields),* }, owner)
+        type __FusorInputs = <#ty as ::fusor::FromInputs>::Inputs;
+        <#ty as ::fusor::FromInputs>::from_inputs(__FusorInputs { #(#fields),* }, owner)
+            .map_err(#converter)
     }
 }
 
@@ -145,22 +148,4 @@ pub(super) fn option(value: Option<TokenStream>) -> TokenStream {
         Some(value) => quote! { ::std::option::Option::Some(#value) },
         None => quote! { ::std::option::Option::None },
     }
-}
-
-/// Refuse a binding a coherent frame cannot render.
-pub(super) fn reject(span: Span, message: &str) -> TokenStream {
-    let message = literal(span, message);
-    quote_spanned! {span=> __fusor_frame.reject(#message)?; }
-}
-
-/// Fail the mount of a binding the browser cannot install.
-pub(super) fn fail(span: Span, message: &str) -> TokenStream {
-    let message = literal(span, message);
-    quote_spanned! {span=> return ::std::result::Result::Err(::fusor::dom::JsValue::from_str(#message)); }
-}
-
-fn literal(span: Span, value: &str) -> Literal {
-    let mut literal = Literal::string(value);
-    literal.set_span(span);
-    literal
 }

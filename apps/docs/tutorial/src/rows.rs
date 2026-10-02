@@ -26,6 +26,7 @@ pub struct RowInputs {
     pub item: fusor::Memo<Item>,
 }
 impl fusor::dom::FromInputs for Row {
+    type Error = fusor::dom::JsValue;
     type Inputs = RowInputs;
     fn from_inputs(
         inputs: Self::Inputs,

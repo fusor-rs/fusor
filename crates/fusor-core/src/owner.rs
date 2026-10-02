@@ -113,7 +113,10 @@ impl Default for Owner {
 }
 
 impl Owner {
-    /// Prepare a root lifetime. Work waits for [`Self::commit`].
+    /// Prepare a root lifetime. Registered activation callbacks wait for
+    /// [`Self::commit`]. Ordinary [`crate::effect`] calls still run immediately;
+    /// explicitly use [`crate::coherence::prepare_state`] to defer candidate
+    /// constructor effects.
     pub fn new() -> Self {
         Self::create(None)
     }
@@ -167,6 +170,8 @@ impl Owner {
     }
 
     /// Commit once preparation succeeds. Idempotent; cannot revive disposal.
+    /// This activates registered work; it does not validate a renderer's nodes,
+    /// publish a scene, or roll back already executed application side effects.
     pub fn commit(&self) {
         self.0.committed.set(true);
         activate(&self.0);

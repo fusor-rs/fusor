@@ -43,8 +43,11 @@ impl App {
         }
     }
 }
+#[derive(fusor::FromInputs)]
 struct Row {
+    #[input]
     item: fusor::Memo<MetricRow>,
+    #[input]
     percentile: Signal<bool>,
 }
 impl Row {
@@ -62,22 +65,10 @@ impl Row {
         self.item.with(|row| row.present[index])
     }
 }
+#[derive(fusor::FromInputs)]
 struct Memory {
+    #[input]
     item: fusor::Memo<MemoryRow>,
 }
 fusor::bindings!(app);
 include!(env!("FUSOR_MODULE"));
-
-impl fusor::dom::FromInputs for Row {
-    type Inputs = Self;
-    fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
-        Ok(inputs)
-    }
-}
-
-impl fusor::dom::FromInputs for Memory {
-    type Inputs = Self;
-    fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
-        Ok(inputs)
-    }
-}

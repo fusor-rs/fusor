@@ -218,7 +218,7 @@ impl TemplateDescriptor {
         mounts: &'static [MountId],
         parent: Option<&OwnerHandle>,
     ) -> Result<Mounted, JsValue> {
-        let mounted = self.mount_root(html, mounts, MountMode::Prepared(parent));
+        let mounted = self.mount_root(html, mounts, MountMode::Prepared(parent), false);
         finish_preparation(mounted, parent)
     }
 
@@ -235,7 +235,25 @@ impl TemplateDescriptor {
         } else {
             MountMode::Bundled(parent)
         };
-        finish_preparation(self.mount_root(html, &[], mode), parent)
+        finish_preparation(self.mount_root(html, &[], mode, false), parent)
+    }
+
+    /// Compiler entry point for a template library without its own browser document.
+    /// Package-local component IDs are not looked up in the consuming document.
+    #[doc(hidden)]
+    pub fn prepare_embedded(
+        &self,
+        html: &'static str,
+        mounts: &'static [MountId],
+        parent: Option<&OwnerHandle>,
+        bundled: bool,
+    ) -> Result<Mounted, JsValue> {
+        let mode = if bundled && !super::coherent::parent_is_coherent(parent) {
+            MountMode::Bundled(parent)
+        } else {
+            MountMode::Prepared(parent)
+        };
+        finish_preparation(self.mount_root(html, mounts, mode, true), parent)
     }
 
     /// Resolve a wrapper-free child group, adopting an existing native range
@@ -257,9 +275,10 @@ impl TemplateDescriptor {
 
     fn mount_root(
         &self,
-        _html: &'static str,
+        html: &'static str,
         mounts: &'static [MountId],
         mode: MountMode<'_>,
+        embedded: bool,
     ) -> Result<Mounted, JsValue> {
         #[cfg(feature = "islands")]
         {
@@ -282,18 +301,20 @@ impl TemplateDescriptor {
                 scope.hydrating = true;
                 return self.resolve(scope, mounts, mode.bundled());
             }
-            if super::delivery::enabled() {
-                let root = parse_html(_html)?.ok_or_else(|| invalid("empty delivery template"))?;
-                let scope = match self.kind {
-                    RootKind::Template => mode.clone_template(
-                        &root
-                            .dyn_into::<HtmlTemplateElement>()
-                            .map_err(|_| invalid("expected embedded HTML template"))?,
-                    )?,
-                    RootKind::Existing => mode.scope(root),
-                };
-                return self.resolve(scope, mounts, mode.bundled());
-            }
+        }
+        #[cfg(feature = "islands")]
+        let embedded = embedded || super::delivery::enabled();
+        if embedded {
+            let root = parse_html(html)?.ok_or_else(|| invalid("empty embedded template"))?;
+            let scope = match self.kind {
+                RootKind::Template => mode.clone_template(
+                    &root
+                        .dyn_into::<HtmlTemplateElement>()
+                        .map_err(|_| invalid("expected embedded HTML template"))?,
+                )?,
+                RootKind::Existing => mode.scope(root),
+            };
+            return self.resolve(scope, mounts, mode.bundled());
         }
         self.mount_document_root(mounts, mode)
     }

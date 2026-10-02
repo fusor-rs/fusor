@@ -46,6 +46,8 @@ jobs:
       - run: cargo check --manifest-path tests/fixtures/consumer/Cargo.toml --locked
       - run: cargo build --manifest-path tests/fixtures/application/Cargo.toml --target wasm32-unknown-unknown --locked
       - run: cargo check --manifest-path tests/fixtures/component-tags/Cargo.toml --target wasm32-unknown-unknown --locked
+      - run: cargo test --manifest-path tests/fixtures/external-backend/Cargo.toml --workspace --locked
+      - run: cargo check --manifest-path tests/fixtures/external-backend/Cargo.toml --features browser --target wasm32-unknown-unknown --locked
 
   browser:
     runs-on: ubuntu-latest
