@@ -37,13 +37,14 @@ pub(crate) fn compile(
     blocks: &[RustBlock],
     rust: &mut String,
     first_component: usize,
+    embedded_templates: bool,
 ) -> Result<Compiled, ExtractError> {
     let plan = parse::parse(source, blocks, first_component)?;
     let app = plan
         .components
         .iter()
         .find_map(|component| component.app().map(|_| component.range.start));
-    let locations = codegen::generate(source, &plan.components, rust);
+    let locations = codegen::generate(source, &plan.components, rust, embedded_templates);
     // Static delivery templates belong to the immutable unit protocol. Ordinary
     // app refresh compares the executable bindings, which precede them.
     let fingerprint = rust.clone();

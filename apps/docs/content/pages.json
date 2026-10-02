@@ -517,7 +517,7 @@
       {
         "id": "component",
         "title": "rust:component — associate HTML with a Rust type",
-        "body": "Static Rust type path on a component declaration. On `<template>`, it defines reusable HTML with exactly one native root element. On an ordinary element, it binds that existing root.\n\nThe type must be in the Rust module associated with the HTML; `template!(...)` supplies that association.",
+        "body": "Static Rust type path on a component declaration. On `<template>`, it defines reusable HTML with exactly one native root element. On an ordinary element, it binds that existing root.\n\nThe type must be in the Rust module associated with the HTML; `template!(...)` supplies that association.\n\nA Rust component library can call `compile_app()` with its metadata entry pointing to a file containing only named component templates and Rust scripts. Its browser code embeds those templates, including discovered component files, so the consuming application imports the Rust types without copying the library’s HTML into its own document. Ordinary document entries keep their document templates and validation.",
         "code": "<template rust:component=\"Counter\">\n  <section>{{ state.count.get() }}</section>\n</template>",
         "language": "HTML",
         "note": "Application startup uses `<App state=\"{{ ... }}\">` instead. Do not put `rust:component` on its native root.",

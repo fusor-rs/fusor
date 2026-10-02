@@ -47,6 +47,7 @@ struct Ctx<'a> {
     /// An enclosing await exposes a ready value to nested factories.
     ready: bool,
     mode: OperationMode,
+    embedded_templates: bool,
 }
 
 impl Ctx<'_> {
@@ -545,8 +546,9 @@ pub(super) fn generate(
     source: &str,
     components: &[Component],
     rust: &mut String,
+    embedded_templates: bool,
 ) -> Vec<BindingLocation> {
-    generate_using(source, components, rust, &DomBackend)
+    generate_using(source, components, rust, &DomBackend, embedded_templates)
 }
 
 fn generate_using(
@@ -554,6 +556,7 @@ fn generate_using(
     components: &[Component],
     rust: &mut String,
     backend: &dyn CompilerBackend,
+    embedded_templates: bool,
 ) -> Vec<BindingLocation> {
     let runtime = backend.runtime();
     let ctx = Ctx {
@@ -562,6 +565,7 @@ fn generate_using(
         runtime: &runtime,
         ready: false,
         mode: OperationMode::Reactive,
+        embedded_templates,
     };
     let mut origins = Origins::default();
     for component in components {
@@ -664,10 +668,11 @@ mod tests {
 <template rust:component="Panel"><section rust:slot="state.body.clone()"></section></template>"#;
         let plan = crate::bindings::parse::parse(source, &[], 0).unwrap();
         let mut direct = String::new();
-        let direct_origins = generate(source, &plan.components, &mut direct);
+        let direct_origins = generate(source, &plan.components, &mut direct, false);
         let recorder = RecordingDom::default();
         let mut delegated = String::new();
-        let delegated_origins = generate_using(source, &plan.components, &mut delegated, &recorder);
+        let delegated_origins =
+            generate_using(source, &plan.components, &mut delegated, &recorder, false);
 
         assert_eq!(delegated, direct);
         assert_eq!(delegated_origins, direct_origins);

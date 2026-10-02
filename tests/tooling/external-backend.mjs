@@ -1,12 +1,14 @@
 // Public consumer contract: execute native generated code, compile the same
-// component for the browser, and translate actual rustc diagnostics through the
+// component for the browser, execute it across a package boundary, and translate rustc diagnostics through the
 // versioned backend output manifest and source-map contracts.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
+import { chromium, firefox, webkit, expect } from "@playwright/test";
+import { reservePort, startProcess, stopProcess, waitFor } from "../../scripts/build.mjs";
 
 const exec = promisify(execFile);
 const root = process.cwd();
@@ -15,6 +17,72 @@ const scratch = await mkdtemp(join(tmpdir(), "fusor-external-backend-"));
 const cargo = process.env.CARGO || "cargo";
 const env = { ...process.env, CARGO_TARGET_DIR: join(root, "target/external-backend-tests") };
 const manifest = join(scratch, "Cargo.toml");
+let server, browser;
+
+async function browserConsumer() {
+  const app = join(scratch, "browser");
+  await mkdir(join(app, "src"), { recursive: true });
+  await mkdir(join(app, "web"));
+  const dep = name => JSON.stringify(join(root, "crates", name));
+  await writeFile(join(app, "Cargo.toml"), `[package]
+name="external-backend-browser"
+version="0.0.0"
+edition="2024"
+[workspace]
+[lib]
+crate-type=["cdylib","rlib"]
+[dependencies]
+fusor-core={path=${dep("fusor-core")},features=["dom","derive"]}
+fusor-components={path=${dep("fusor-components")},features=["browser"]}
+fixture-components={path="../components",features=["browser"]}
+wasm-bindgen="=0.2.117"
+[build-dependencies]
+fusor-build={path=${dep("fusor-build")}}
+[package.metadata.fusor]
+entry="web/index.html"
+`);
+  await writeFile(join(app, "build.rs"), "fn main()->Result<(),Box<dyn std::error::Error>>{fusor_build::compile_app()}\n");
+  await writeFile(join(app, "src/lib.rs"), `use fusor::{FromInputs, Signal, signal};
+use fixture_components::{Panel, Row};
+use std::{cell::Cell, rc::Rc};
+#[derive(FromInputs)] struct Local {}
+struct App { visible: Signal<bool>, number: Signal<i32>, checked: Signal<bool>, observed: Signal<i32>, rows: Signal<Vec<Row>>, cleanups: Rc<Cell<usize>> }
+impl App { fn new() -> Self { Self { visible: signal(true), number: signal(1), checked: signal(false), observed: signal(0), rows: signal(Vec::new()), cleanups: Rc::new(Cell::new(0)) } } }
+fusor::template!("web/index.html");
+`);
+  // Local and the independently compiled Panel both have component ID zero.
+  await writeFile(join(app, "web/index.html"), `<!doctype html><html><head><title>Library consumer</title></head><body>
+<template rust:component="Local"><p id="local">Application template</p></template>
+<App state="{{ App::new() }}"><main><Local></Local><Panel title='{{ "Library".to_owned() }}' visible="{{ state.visible.clone() }}" rows="{{ state.rows.clone() }}" cleanups="{{ state.cleanups.clone() }}" number="{{ state.number.clone() }}" checked="{{ state.checked.clone() }}" observed="{{ state.observed.clone() }}"></Panel></main></App>
+</body></html>`);
+  const cli = join(root, "target/debug", `fusor${process.platform === "win32" ? ".exe" : ""}`);
+  await exec(cargo, ["build", "-p", "fusor-cli", "--offline", "--locked"], { cwd: root, timeout: 180_000, maxBuffer: 8 * 1024 * 1024 });
+  await exec(cargo, ["generate-lockfile", "--offline"], { cwd: app, env });
+  await exec(cli, ["build", "--debug", "--offline", "--locked"], { cwd: app, env, timeout: 180_000, maxBuffer: 8 * 1024 * 1024 });
+  const port = await reservePort();
+  server = startProcess(cli, ["preview", "--port", String(port), "--offline", "--locked"], { cwd: app, env });
+  await waitFor(() => server.output.includes("Ctrl+C to stop."), "library preview startup", { timeout: 30_000, process: server });
+  for (const name of (process.env.PLAYWRIGHT_BROWSERS || "chromium").split(",")) {
+    browser = await ({ chromium, firefox, webkit })[name].launch(name === "chromium" && process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {});
+    const page = await browser.newPage(), errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
+    await page.goto(`http://127.0.0.1:${port}/`);
+    await expect(page.locator("#local")).toHaveText("Application template");
+    await expect(page.locator("#increment")).toHaveText("Library: 0");
+    await page.locator("#increment").click();
+    await expect(page.locator("#increment")).toHaveText("Library: 1");
+    await expect(page.locator("#projected")).toHaveText("Library");
+    await page.locator(".child button:not(.remove)").click();
+    await expect(page.locator(".child button:not(.remove)")).toHaveText("Library clicks 1");
+    await page.locator(".child .remove").click();
+    await expect(page.locator(".child")).toHaveCount(0);
+    assert.deepEqual(errors, []);
+    console.log(`PASS (${name}): independently compiled library templates, flat bindings, projected children and self-removal with colliding document IDs`);
+    await browser.close(); browser = undefined;
+  }
+  await stopProcess(server); server = undefined;
+}
 
 async function run(verb, extra = []) {
   let success = true;
@@ -70,6 +138,7 @@ try {
   assert.ok((await readFile(join(browser.out, "fusor_templates/ui/panel.html.rs"), "utf8")).includes("Component"));
   assert.ok((await readFile(join(browser.out, "fusor_backends/memory/ui/panel.html.rs"), "utf8")).includes("memory_renderer"));
   console.log("PASS: the component-owning crate compiles one HTML source for both browser and independent Wasm backends");
+  await browserConsumer();
 
   const htmlPath = join(scratch, "components/ui/panel.html");
   const good = await readFile(htmlPath, "utf8");
@@ -122,5 +191,7 @@ try {
     console.log(`PASS: unsupported feature rejected at authored line ${line}`);
   }
 } finally {
+  await browser?.close();
+  await stopProcess(server);
   await rm(scratch, { recursive: true, force: true });
 }

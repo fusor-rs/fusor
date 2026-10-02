@@ -10,7 +10,7 @@ pub(super) fn emit(component: &Component, ctx: Ctx<'_>) -> TokenStream {
     if let Some(forward) = forwarding_row(component, ctx) {
         return forward;
     }
-    // Fragments mount from their HTML; the others only deliver it.
+    // Fragments and independently compiled libraries mount from their own HTML.
     let html = if component.fragment() {
         let html = &component.html;
         quote! { #html }
@@ -86,7 +86,10 @@ fn prepare(component: &Component, html: &TokenStream, ctx: Ctx) -> TokenStream {
     } else {
         format_ident!("prepare_with_points")
     };
-    let mount = if bundle.is_some() {
+    let mount = if ctx.embedded_templates && !component.fragment() {
+        let bundled = bundle.is_some();
+        quote! { __FUSOR_TEMPLATE.prepare_embedded({ #template_html }, __FUSOR_MOUNTS, parent, #bundled)? }
+    } else if bundle.is_some() {
         quote! { __FUSOR_TEMPLATE.prepare_with_binding_bundle({ #template_html }, parent)? }
     } else {
         quote! { __FUSOR_TEMPLATE.#mount_method({ #template_html }, __FUSOR_MOUNTS, parent)? }

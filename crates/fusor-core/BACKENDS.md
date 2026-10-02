@@ -31,6 +31,15 @@ version rather than silently changing generated-code assumptions.
 This support does not expose DOM `Scope` internals, the DOM commit queue,
 mount-readiness flags, the private keyed movement planner, or a generic renderer
 trait. Existing owner primitives suffice for the synchronous external consumer.
+
+Browser component libraries compiled from a template-only entry use the additive
+`TemplateDescriptor::prepare_embedded` compiler entry point. It resolves the
+package's embedded HTML instead of looking up package-local component IDs in the
+consuming document. Descriptor validation, owner preparation, coherent mode and
+hydration keep the same behavior; this does not enable island delivery or defer
+ordinary constructor effects. Document applications retain their existing mount
+path, including document validation and the flat binding fast path. This adds no
+serialized HTML fields and leaves the browser template format at version 3.
 The renderer defines its own mounted-component contract; construction uses the
 portable `fusor::FromInputs` trait.
 

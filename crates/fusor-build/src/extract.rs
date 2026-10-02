@@ -6,7 +6,7 @@ use html5gum::{StartTag, Token};
 /// Rust, decoding HTML entities in code, or serializing it through an HTML DOM.
 /// Standard HTML script-content rules apply, including the `</script>` delimiter.
 pub fn extract(source: &str) -> Result<Page, ExtractError> {
-    let page = extract_from(source, 0)?;
+    let page = extract_from(source, 0, false)?;
     // Without a script there is nowhere to declare state; compile_app() allows it
     // for templates included from ordinary Rust modules.
     if page.component_count > 0 && page.blocks.is_empty() {
@@ -20,10 +20,20 @@ pub fn extract(source: &str) -> Result<Page, ExtractError> {
 }
 
 /// `first_component` continues the numbering of components from earlier sources.
-pub(crate) fn extract_from(source: &str, first_component: usize) -> Result<Page, ExtractError> {
+pub(crate) fn extract_from(
+    source: &str,
+    first_component: usize,
+    embedded_templates: bool,
+) -> Result<Page, ExtractError> {
     let scripts = scan_scripts(source)?;
     let mut rust = line_preserved_rust(source, &scripts.blocks);
-    let compiled = bindings::compile(source, &scripts.blocks, &mut rust, first_component)?;
+    let compiled = bindings::compile(
+        source,
+        &scripts.blocks,
+        &mut rust,
+        first_component,
+        embedded_templates,
+    )?;
     let mut edits = compiled.edits;
     edits.extend(scripts.blocks.iter().map(|block| bindings::Edit {
         range: block.element.clone(),

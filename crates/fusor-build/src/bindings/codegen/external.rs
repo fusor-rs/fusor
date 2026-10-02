@@ -337,6 +337,7 @@ pub(crate) fn generate(
             templates: &templates,
             source,
         },
+        false,
     );
     Ok(GeneratedSource {
         rust,

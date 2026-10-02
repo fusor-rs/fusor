@@ -103,6 +103,13 @@ projection, row projection, capture cloning and recursive factory generation.
 No downstream parser, capture visitor or copy of the private compiler IR is
 required. Rust types remain checked by rustc in the consuming application.
 
+For browser output, `compile_app()` recognizes a template-only entry using the
+same validation as discovered component files. All templates in that package
+then use embedded preparation, so a component-owning library does not depend on
+the consumer's document template IDs. A document entry retains ordinary document
+mounting. This choice is internal to the DOM backend; external renderer output
+and its versioned contracts are unchanged.
+
 A `Template` contains nodes in preorder with parent indices. Element attributes
 and text are HTML-decoded; static comments remain available. Typed anchor kinds
 separate element, text and child-region IDs. IDs are sparse and only meaningful
