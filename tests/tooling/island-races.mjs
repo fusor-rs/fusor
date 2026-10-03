@@ -138,6 +138,9 @@ export async function islandRaces(browser, origin) {
   // Removal during acquisition invalidates every late attachment path.
   {
     const { context, page } = await fresh();
+    const cancelledLoad = page.waitForEvent("requestfailed", {
+      predicate: request => request.url().endsWith("/cart/unit_bg.wasm"),
+    });
     let release, acquired;
     const seen = new Promise((resolve) => (acquired = resolve));
     await page.route("**/cart/unit_bg.wasm", async (route) => {
@@ -145,6 +148,7 @@ export async function islandRaces(browser, origin) {
         release = resolve;
         acquired();
       });
+      // Detaching the final claimant cancels the intercepted request.
       await route.continue().catch(() => {});
     });
     await page.evaluate(() => {
@@ -162,7 +166,7 @@ export async function islandRaces(browser, origin) {
     });
     assert.equal(await page.evaluate(() => waiting), "cancelled");
     release();
-    await page.waitForTimeout(30);
+    await cancelledLoad;
     assert(
       await page.evaluate(
         () =>

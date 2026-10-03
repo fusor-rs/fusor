@@ -32,6 +32,9 @@ pub(crate) const SITE_MANIFEST: &str = ".fusor-site.json";
 /// Editor-facing TypeScript declarations emitted by the compiler.
 pub(crate) const TYPES: &str = ".fusor/types";
 
+/// Ownership index for compiler-generated declarations inside TYPES.
+pub(crate) const TYPES_INDEX: &str = ".generated.json";
+
 /// Records a completed npm installation, keyed by manifest and lock contents.
 pub(crate) const NPM_STAMP: &str = ".fusor/npm-install.json";
 

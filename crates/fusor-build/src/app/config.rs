@@ -109,23 +109,7 @@ impl AppConfig {
 
     pub fn validate(&self) -> Result<()> {
         if let Some(delivery) = &self.delivery {
-            if delivery.units.is_empty() {
-                return Err(
-                    "islands delivery requires at least one independently built unit".into(),
-                );
-            }
-            let mut packages = BTreeSet::new();
-            for (name, unit) in &delivery.units {
-                if name.is_empty()
-                    || !name
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || b"-_".contains(&byte))
-                    || unit.package.is_empty()
-                    || !packages.insert(&unit.package)
-                {
-                    return Err("delivery unit names must be URL-safe and each unit must select a distinct Cargo package".into());
-                }
-            }
+            delivery.validate()?;
         }
         if self
             .assets_build
@@ -137,6 +121,42 @@ impl AppConfig {
         if !self.assets_build.is_empty() && self.assets.is_none() {
             return Err("assets-build requires an assets output directory".into());
         }
+        self.validate_paths()?;
+        if !self.base_path.starts_with('/')
+            || !self.base_path.ends_with('/')
+            || !self
+                .base_path
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"/-_".contains(&b))
+            || self.base_path.contains("//")
+        {
+            return Err("base-path must be '/' or a slash-delimited URL path such as '/tools/issues/' (letters, numbers, '-' and '_' only)".into());
+        }
+        for prefix in &self.history_fallback {
+            if !prefix.starts_with('/')
+                || prefix.contains("//")
+                || !prefix
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"/-_".contains(&b))
+                || prefix != "/" && prefix.ends_with('/')
+            {
+                return Err(
+                    "history-fallback entries must be route prefixes such as '/issues' or '/'"
+                        .into(),
+                );
+            }
+        }
+        for name in self.components.keys() {
+            // Restrict module names to portable snake_case; rustc owns all types
+            // and imports *inside* these modules.
+            if name == ENTRY_NAME || !valid_module_name(name) {
+                return Err(format!("invalid component module {name:?}; use a non-keyword snake_case Rust identifier other than 'app'").into());
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_paths(&self) -> Result<()> {
         for path in std::iter::once(&self.entry)
             .chain(self.components.values())
             .chain(self.templates.iter())
@@ -173,37 +193,6 @@ impl AppConfig {
                 return Err("output cannot overlap an application source or assets path".into());
             }
         }
-        if !self.base_path.starts_with('/')
-            || !self.base_path.ends_with('/')
-            || !self
-                .base_path
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"/-_".contains(&b))
-            || self.base_path.contains("//")
-        {
-            return Err("base-path must be '/' or a slash-delimited URL path such as '/tools/issues/' (letters, numbers, '-' and '_' only)".into());
-        }
-        for prefix in &self.history_fallback {
-            if !prefix.starts_with('/')
-                || prefix.contains("//")
-                || !prefix
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"/-_".contains(&b))
-                || prefix != "/" && prefix.ends_with('/')
-            {
-                return Err(
-                    "history-fallback entries must be route prefixes such as '/issues' or '/'"
-                        .into(),
-                );
-            }
-        }
-        for name in self.components.keys() {
-            // Restrict module names to portable snake_case; rustc owns all types
-            // and imports *inside* these modules.
-            if name == ENTRY_NAME || !valid_module_name(name) {
-                return Err(format!("invalid component module {name:?}; use a non-keyword snake_case Rust identifier other than 'app'").into());
-            }
-        }
         Ok(())
     }
 
@@ -235,30 +224,26 @@ impl AppConfig {
                 canonical,
             });
         }
-        fn visit(directory: &Path, files: &mut BTreeSet<PathBuf>) -> Result<()> {
-            for entry in fs::read_dir(directory)? {
-                let entry = entry?;
-                let kind = entry.file_type()?;
-                let path = entry.path();
-                if kind.is_symlink() {
-                    return Err(SourceError::new(
-                        &path,
-                        "template discovery does not follow symlinks",
-                    )
-                    .into());
-                }
-                if kind.is_dir() {
-                    visit(&path, files)?;
-                } else if kind.is_file()
-                    && path
-                        .extension()
-                        .is_some_and(|extension| extension == "html")
-                {
-                    files.insert(path);
-                }
+        let files = self.discovered_files(&root)?;
+        for path in files {
+            let canonical = path.canonicalize()?;
+            if seen.insert(canonical.clone()) {
+                let relative = path.strip_prefix(&root)?.to_owned();
+                sources.push(Source {
+                    name: format!(
+                        "{DISCOVERED_PREFIX}{}",
+                        relative.to_string_lossy().replace('\\', "/")
+                    ),
+                    kind: SourceKind::Discovered,
+                    path: relative,
+                    canonical,
+                });
             }
-            Ok(())
         }
+        Ok(sources)
+    }
+
+    fn discovered_files(&self, root: &Path) -> Result<BTreeSet<PathBuf>> {
         let mut files = BTreeSet::new();
         for directory in &self.templates {
             let path = root.join(directory);
@@ -284,24 +269,9 @@ impl AppConfig {
                     .into());
                 }
             }
-            visit(&path, &mut files)?;
+            visit_templates(&path, &mut files)?;
         }
-        for path in files {
-            let canonical = path.canonicalize()?;
-            if seen.insert(canonical.clone()) {
-                let relative = path.strip_prefix(&root)?.to_owned();
-                sources.push(Source {
-                    name: format!(
-                        "{DISCOVERED_PREFIX}{}",
-                        relative.to_string_lossy().replace('\\', "/")
-                    ),
-                    kind: SourceKind::Discovered,
-                    path: relative,
-                    canonical,
-                });
-            }
-        }
-        Ok(sources)
+        Ok(files)
     }
 
     /// Entry first, then explicitly registered modules in deterministic order.
@@ -335,3 +305,47 @@ const KEYWORDS: &[&str] = &[
     "where", "while", "abstract", "become", "box", "do", "final", "gen", "macro", "override",
     "priv", "try", "typeof", "unsized", "virtual", "yield",
 ];
+
+impl DeliveryConfig {
+    fn validate(&self) -> Result<()> {
+        if self.units.is_empty() {
+            return Err("islands delivery requires at least one independently built unit".into());
+        }
+        let mut packages = BTreeSet::new();
+        for (name, unit) in &self.units {
+            if name.is_empty()
+                || !name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"-_".contains(&byte))
+                || unit.package.is_empty()
+                || !packages.insert(&unit.package)
+            {
+                return Err("delivery unit names must be URL-safe and each unit must select a distinct Cargo package".into());
+            }
+        }
+        Ok(())
+    }
+}
+
+fn visit_templates(directory: &Path, files: &mut BTreeSet<PathBuf>) -> Result<()> {
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let kind = entry.file_type()?;
+        let path = entry.path();
+        if kind.is_symlink() {
+            return Err(
+                SourceError::new(&path, "template discovery does not follow symlinks").into(),
+            );
+        }
+        if kind.is_dir() {
+            visit_templates(&path, files)?;
+        } else if kind.is_file()
+            && path
+                .extension()
+                .is_some_and(|extension| extension == "html")
+        {
+            files.insert(path);
+        }
+    }
+    Ok(())
+}

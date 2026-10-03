@@ -127,7 +127,8 @@ from_foreign!(
     glob::PatternError,
     glob::GlobError,
     fusor_build::SourceMapError,
-    Box<dyn std::error::Error>,
+    fusor_build::BuildError,
+    fusor_npm::BundleError,
 );
 
 /// `fusor_islands` reports validation failures as text.

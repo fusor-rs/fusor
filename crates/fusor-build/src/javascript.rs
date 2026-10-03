@@ -4,12 +4,11 @@ use crate::{
     app::{JavaScriptArtifact, SourceError},
 };
 use std::{
-    error::Error,
     fs,
     path::{Path, PathBuf},
 };
 use syn::{GenericArgument, Item, PathArguments, Type};
-type Result<T> = std::result::Result<T, Box<dyn Error>>;
+type Result<T> = std::result::Result<T, crate::BuildError>;
 
 fn typescript(ty: &Type) -> Option<String> {
     let Type::Path(path) = ty else {
@@ -77,7 +76,13 @@ fn declaration(rust: &str, component: &str) -> String {
     let input = if declarations.contains_key(component) {
         format!("{component}Inputs")
     } else if declarations.len() == 1 {
-        format!("{}Inputs", declarations.keys().next().unwrap())
+        format!(
+            "{}Inputs",
+            declarations
+                .keys()
+                .next()
+                .expect("one declaration was counted")
+        )
     } else if declarations.is_empty() {
         "Record<string, never>".into()
     } else {
@@ -158,11 +163,10 @@ pub(crate) fn plan(
     package: &Path,
     output: &Path,
     html: &Path,
-    rust: &str,
+    page: &crate::Page,
     external: Option<&Path>,
-    modules: &[JavaScriptModule],
 ) -> Result<Vec<PlannedModule>> {
-    if modules.is_empty() {
+    if page.javascript.is_empty() {
         return Ok(Vec::new());
     }
     let native = if external.is_none() {
@@ -175,10 +179,10 @@ pub(crate) fn plan(
         .as_ref()
         .map(fs::read_to_string)
         .transpose()?
-        .unwrap_or_else(|| rust.to_owned());
+        .unwrap_or_else(|| page.rust.clone());
     let directory = output.join("fusor_javascript");
     let source_name = file_name_part(&html.strip_prefix(package)?.to_string_lossy(), false);
-    modules
+    page.javascript
         .iter()
         .map(|module| {
             let component_name = file_name_part(&module.component, true);

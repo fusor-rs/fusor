@@ -22,23 +22,105 @@ pub(crate) enum Event {
     End(Result<(), JobError<Payload>>),
     Progress(Payload),
 }
+#[derive(Clone)]
+pub(crate) enum Target {
+    Shared,
+    Dedicated,
+    Bound {
+        endpoint: Weak<Endpoint>,
+        instance: u64,
+    },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Requirement {
+    Ordinary,
+    Pool,
+}
+impl From<bool> for Requirement {
+    fn from(pool: bool) -> Self {
+        if pool { Self::Pool } else { Self::Ordinary }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JobKind {
+    Single,
+    Stream,
+}
+
+pub(crate) enum Completion {
+    Pending,
+    Ready,
+    Aborted(WorkerError),
+    Consumed,
+}
+
+impl Completion {
+    pub fn error(&self) -> Option<&WorkerError> {
+        match self {
+            Self::Aborted(error) => Some(error),
+            _ => None,
+        }
+    }
+
+    pub fn take_error(&mut self) -> Option<WorkerError> {
+        match std::mem::replace(self, Self::Consumed) {
+            Self::Aborted(error) => Some(error),
+            previous => {
+                *self = previous;
+                None
+            }
+        }
+    }
+}
+
+enum Submission {
+    Waiting(Arguments),
+    Encoding(Arguments),
+    Sent,
+}
+
+pub(crate) struct Admission {
+    pub id: u64,
+    endpoint: EndpointLink,
+}
+
+enum EndpointLink {
+    Borrowed(Weak<Endpoint>),
+    Owned(Rc<Endpoint>),
+}
+
+impl Admission {
+    pub fn new(id: u64, endpoint: &Rc<Endpoint>) -> Self {
+        Self {
+            id,
+            endpoint: EndpointLink::Borrowed(Rc::downgrade(endpoint)),
+        }
+    }
+
+    pub fn retain(&mut self, endpoint: Rc<Endpoint>) {
+        self.endpoint = EndpointLink::Owned(endpoint);
+    }
+
+    fn endpoint(&self) -> Option<Rc<Endpoint>> {
+        match &self.endpoint {
+            EndpointLink::Borrowed(endpoint) => endpoint.upgrade(),
+            EndpointLink::Owned(endpoint) => Some(Rc::clone(endpoint)),
+        }
+    }
+}
+
 pub(crate) struct State {
     pub owner: OwnerHandle,
     pub entry: &'static str,
-    pub pool_required: bool,
-    pub endpoint: Weak<Endpoint>,
-    pub keepalive: Option<Rc<Endpoint>>,
-    pub dedicated: bool,
-    pub bound: bool,
-    pub instance: u64,
-    pub id: Option<u64>,
-    pub arguments: Option<Arguments>,
+    pub requirement: Requirement,
+    pub target: Target,
+    pub admission: Option<Admission>,
+    submission: Submission,
     pub events: VecDeque<Event>,
-    pub abort: Option<WorkerError>,
-    pub committed: bool,
-    pub terminal: bool,
-    pub submitted: bool,
-    pub stream: bool,
+    pub completion: Completion,
+    pub kind: JobKind,
     pub capacity: usize,
     pub batch_bytes: usize,
     pub waker: Option<Waker>,
@@ -50,27 +132,20 @@ impl State {
     pub fn new(
         owner: &OwnerHandle,
         entry: &'static str,
-        pool_required: bool,
+        requirement: Requirement,
         arguments: Arguments,
-        stream: bool,
+        kind: JobKind,
     ) -> Rc<RefCell<Self>> {
         let state = Rc::new(RefCell::new(Self {
             owner: owner.clone(),
             entry,
-            pool_required,
-            endpoint: Weak::new(),
-            keepalive: None,
-            dedicated: false,
-            bound: false,
-            instance: 0,
-            id: None,
-            arguments: Some(arguments),
+            requirement,
+            target: Target::Shared,
+            admission: None,
+            submission: Submission::Waiting(arguments),
             events: VecDeque::new(),
-            abort: None,
-            committed: false,
-            terminal: false,
-            submitted: false,
-            stream,
+            completion: Completion::Pending,
+            kind,
             capacity: 4,
             batch_bytes: 1024 * 1024,
             waker: None,
@@ -81,6 +156,25 @@ impl State {
         Self::scope(&state, owner);
         state
     }
+    pub fn endpoint(&self) -> Option<Rc<Endpoint>> {
+        match &self.admission {
+            Some(admission) => admission.endpoint(),
+            None => match &self.target {
+                Target::Bound { endpoint, .. } => endpoint.upgrade(),
+                _ => None,
+            },
+        }
+    }
+
+    pub fn take_arguments(&mut self) -> Arguments {
+        let Submission::Encoding(arguments) =
+            std::mem::replace(&mut self.submission, Submission::Sent)
+        else {
+            unreachable!("started jobs encode their arguments once")
+        };
+        arguments
+    }
+
     pub fn scope(state: &Rc<RefCell<Self>>, owner: &OwnerHandle) {
         let weak = Rc::downgrade(state);
         let registration = owner.on_cleanup(move || {
@@ -93,13 +187,13 @@ impl State {
     pub fn abort(state: &Rc<RefCell<Self>>, error: WorkerError) {
         let (endpoint, id, wake, discarded) = {
             let mut state = state.borrow_mut();
-            if state.committed || state.terminal || state.abort.is_some() {
+            if !matches!(state.completion, Completion::Pending) {
                 return;
             }
-            state.abort = Some(error);
+            state.completion = Completion::Aborted(error);
             (
-                state.endpoint.upgrade(),
-                state.id,
+                state.endpoint(),
+                state.admission.as_ref().map(|admission| admission.id),
                 state.waker.take(),
                 std::mem::take(&mut state.events),
             )
@@ -117,7 +211,7 @@ impl State {
         }
     }
     pub fn configure(state: &Rc<RefCell<Self>>) -> bool {
-        if state.borrow().submitted {
+        if !matches!(state.borrow().submission, Submission::Waiting(_)) {
             Self::abort(
                 state,
                 crate::error::configuration("builders must be configured before their first poll"),
@@ -143,8 +237,8 @@ impl State {
         let (endpoint, ignored) = {
             let state = state.borrow();
             (
-                state.endpoint.upgrade(),
-                state.committed || state.terminal || state.abort.is_some(),
+                state.endpoint(),
+                !matches!(state.completion, Completion::Pending),
             )
         };
         let Some(endpoint) = endpoint else {
@@ -167,7 +261,7 @@ impl State {
             }
         } else {
             if matches!(event, Event::Result(_)) {
-                state.borrow_mut().terminal = true;
+                state.borrow_mut().completion = Completion::Ready;
             }
             state.borrow_mut().events.push_back(event);
             let wake = state.borrow_mut().waker.take();
@@ -177,11 +271,19 @@ impl State {
         }
     }
     pub fn start(state: &Rc<RefCell<Self>>) {
-        if state.borrow().submitted {
+        if !matches!(state.borrow().submission, Submission::Waiting(_)) {
             return;
         }
-        state.borrow_mut().submitted = true;
-        if state.borrow().abort.is_some() {
+        {
+            let mut state = state.borrow_mut();
+            let Submission::Waiting(arguments) =
+                std::mem::replace(&mut state.submission, Submission::Sent)
+            else {
+                unreachable!("only waiting jobs begin submission")
+            };
+            state.submission = Submission::Encoding(arguments);
+        }
+        if state.borrow().completion.error().is_some() {
             return;
         }
         let result = Endpoint::submit(state);
@@ -201,13 +303,13 @@ impl State {
 }
 impl Drop for State {
     fn drop(&mut self) {
-        if let Some(endpoint) = self.endpoint.upgrade() {
-            if let Some(id) = self.id {
-                endpoint.forget(id);
+        if let Some(endpoint) = self.endpoint() {
+            if let Some(admission) = &self.admission {
+                endpoint.forget(admission.id);
             }
-            if !self.committed && !self.terminal {
-                if let Some(id) = self.id {
-                    endpoint.cancel(id);
+            if !matches!(self.completion, Completion::Consumed | Completion::Ready) {
+                if let Some(admission) = &self.admission {
+                    endpoint.cancel(admission.id);
                 }
             }
             for event in self.events.drain(..) {

@@ -1,7 +1,7 @@
 use crate::{
     CancellationHandle, Close, WorkerError,
-    endpoint::{Endpoint, capabilities},
-    job::State,
+    endpoint::{DEFAULT_QUEUE_CAPACITY, Endpoint, RuntimeMode, capabilities},
+    job::{Requirement, State, Target},
 };
 use fusor::OwnerHandle;
 use fusor_async::{CancelRegistration, CancellationSource, CancellationToken};
@@ -19,7 +19,10 @@ pub struct Pool {
     threads: usize,
 }
 impl Pool {
-    #[allow(clippy::new_ret_no_self)]
+    #[expect(
+        clippy::new_ret_no_self,
+        reason = "pool creation returns an initialization future"
+    )]
     pub fn new(owner: &OwnerHandle) -> PoolInit {
         #[cfg(target_arch = "wasm32")]
         crate::bridge::require_pool();
@@ -29,7 +32,7 @@ impl Pool {
             tokens: Vec::new(),
             threads: capabilities().hardware_parallelism.min(4),
             active: 4,
-            capacity: 64,
+            capacity: DEFAULT_QUEUE_CAPACITY,
             future: None,
         }
     }
@@ -47,10 +50,11 @@ impl Pool {
         crate::bridge::require_pool();
         {
             let mut state = state.borrow_mut();
-            state.endpoint = Rc::downgrade(&self.endpoint);
-            state.pool_required = true;
-            state.bound = true;
-            state.dedicated = false;
+            state.target = Target::Bound {
+                endpoint: Rc::downgrade(&self.endpoint),
+                instance: 0,
+            };
+            state.requirement = Requirement::Pool;
         }
         State::scope(state, &self.owner);
     }
@@ -137,11 +141,17 @@ impl Future for PoolInit {
                 )));
             }
             let threads = self.threads.min(capabilities().hardware_parallelism);
-            let endpoint =
-                match Endpoint::create(&self.owner, true, threads, self.active, self.capacity) {
-                    Ok(endpoint) => endpoint,
-                    Err(error) => return Poll::Ready(Err(error)),
-                };
+            let endpoint = match Endpoint::create(
+                &self.owner,
+                RuntimeMode::Pool {
+                    threads,
+                    active: self.active,
+                    capacity: self.capacity,
+                },
+            ) {
+                Ok(endpoint) => endpoint,
+                Err(error) => return Poll::Ready(Err(error)),
+            };
             let pool = Pool {
                 endpoint,
                 owner: self.owner.clone(),
@@ -158,6 +168,10 @@ impl Future for PoolInit {
                 Ok(pool)
             }));
         }
-        self.future.as_mut().unwrap().as_mut().poll(cx)
+        self.future
+            .as_mut()
+            .expect("initialization was installed before polling")
+            .as_mut()
+            .poll(cx)
     }
 }

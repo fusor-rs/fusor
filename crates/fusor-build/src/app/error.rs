@@ -6,10 +6,11 @@ use std::{
 
 /// A problem with one file or directory of the application, shown as
 /// `path[:line:column]: message`.
-pub(crate) struct SourceError {
-    path: PathBuf,
-    location: Option<(usize, usize)>,
-    message: String,
+pub struct SourceError {
+    pub path: PathBuf,
+    /// One-based HTML line and character column, when available.
+    pub location: Option<(usize, usize)>,
+    pub message: String,
 }
 
 impl SourceError {

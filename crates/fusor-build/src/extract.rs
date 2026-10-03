@@ -63,10 +63,41 @@ struct Scripts {
     loader: Option<usize>,
 }
 
+impl Scripts {
+    fn validate(self, source: &str) -> Result<Self, ExtractError> {
+        if self.blocks.len() > 1 && self.blocks.iter().any(|block| block.external.is_some()) {
+            return Err(error(
+                source,
+                self.blocks[1].element.start,
+                "use one external Rust source or inline Rust blocks per HTML module; compose external code with ordinary mod and use declarations",
+            ));
+        }
+        Ok(self)
+    }
+}
+
 struct UnclosedScript {
     element_start: usize,
     content_start: usize,
     external: Option<ExternalRust>,
+}
+
+impl UnclosedScript {
+    fn close(self, source: &str, end: html5gum::Span<usize>) -> Result<RustBlock, ExtractError> {
+        let content = self.content_start..end.start;
+        if self.external.is_some() && !source[content.clone()].trim().is_empty() {
+            return Err(error(
+                source,
+                self.content_start,
+                "a Rust script with src must have an empty body",
+            ));
+        }
+        Ok(RustBlock {
+            element: self.element_start..end.end,
+            content,
+            external: self.external,
+        })
+    }
 }
 
 fn scan_scripts(source: &str) -> Result<Scripts, ExtractError> {
@@ -106,19 +137,7 @@ fn scan_scripts(source: &str) -> Result<Scripts, ExtractError> {
             }
             Token::EndTag(tag) if &*tag.name == b"script" => {
                 if let Some(script) = unclosed.take() {
-                    let content = script.content_start..tag.span.start;
-                    if script.external.is_some() && !source[content.clone()].trim().is_empty() {
-                        return Err(error(
-                            source,
-                            script.content_start,
-                            "a Rust script with src must have an empty body",
-                        ));
-                    }
-                    blocks.push(RustBlock {
-                        element: script.element_start..tag.span.end,
-                        content,
-                        external: script.external,
-                    });
+                    blocks.push(script.close(source, tag.span)?);
                 }
             }
             Token::Error(problem) => {
@@ -138,14 +157,7 @@ fn scan_scripts(source: &str) -> Result<Scripts, ExtractError> {
             "Rust script is missing its closing </script> tag",
         ));
     }
-    if blocks.len() > 1 && blocks.iter().any(|block| block.external.is_some()) {
-        return Err(error(
-            source,
-            blocks[1].element.start,
-            "use one external Rust source or inline Rust blocks per HTML module; compose external code with ordinary mod and use declarations",
-        ));
-    }
-    Ok(Scripts { blocks, loader })
+    Scripts { blocks, loader }.validate(source)
 }
 
 fn parse_external(

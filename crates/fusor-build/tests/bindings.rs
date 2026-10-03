@@ -393,17 +393,19 @@ fn server_direct_text_uses_escaped_writer_content_and_preserves_anchored_sibling
         let rust = tokens(&page.rust);
         let direct = tokens(
             r#"__fusor_writer.static_markup("<main data-fusor-component=\"0\" data-fusor-version=\"3\"><p data-fusor-text=\"0\">", ::std::option::Option::Some(5usize), false);
-                __fusor_writer.text(&(state.value));"#,
+                { let __fusor_value = &(state.value); __fusor_writer.text(__fusor_value); }"#,
         );
         assert!(rust.contains(&direct), "{target}: {rust}");
         assert_eq!(
-            rust.matches(&tokens("__fusor_writer.text(&(state.value))"))
-                .count(),
+            rust.matches(&tokens(
+                "let __fusor_value = &(state.value); __fusor_writer.text(__fusor_value);"
+            ))
+            .count(),
             1
         );
         assert!(rust.contains(&tokens(
             r#"__fusor_writer.static_markup("</p><p>prefix <!--fusor:1-->", ::std::option::Option::Some(6usize), false);
-                __fusor_writer.text(&(state.other));
+                { let __fusor_value = &(state.other); __fusor_writer.text(__fusor_value); }
                 __fusor_writer.static_markup("<!--/fusor:1--></p></main>", ::std::option::Option::None, false);"#
         )));
         assert!(!page.html.contains("<!--fusor:0-->"));
@@ -888,8 +890,13 @@ fn async_components_infer_boundaries_and_name_values_without_dom_wrappers() {
     let page = extract(&source).unwrap();
     let rust = tokens(&page.rust);
     assert!(rust.contains("AsyncBoundary :: coherent"));
-    assert!(rust.contains("AsyncRead :: Ready (result)"));
-    assert!(rust.contains("AsyncRead :: Ready (other)"));
+    assert_eq!(
+        rust.matches("AsyncRead :: Ready (__fusor_ready_value)")
+            .count(),
+        2
+    );
+    assert!(rust.contains("let result = __fusor_ready_value"));
+    assert!(rust.contains("let other = __fusor_ready_value"));
     assert!(!page.html.contains("<Async"));
     assert!(!page.html.contains("<Await"));
     assert!(!page.html.contains("let="));
@@ -954,8 +961,13 @@ fn native_root_keeps_text_optimization_and_region_finalization_together() {
     ))
     .unwrap();
     let rust = tokens(&page.rust);
-    assert!(rust.contains(&tokens("AsyncRead::Ready(outer)")));
-    assert!(rust.contains(&tokens("AsyncRead::Ready(inner)")));
+    assert_eq!(
+        rust.matches(&tokens("AsyncRead::Ready(__fusor_ready_value)"))
+            .count(),
+        2
+    );
+    assert!(rust.contains(&tokens("let outer = __fusor_ready_value")));
+    assert!(rust.contains(&tokens("let inner = __fusor_ready_value")));
     assert_eq!(rust.matches(&tokens(".read(__fusor_attempt)")).count(), 2);
     syn::parse_file(&page.rust).unwrap();
 }
@@ -1304,7 +1316,7 @@ fn binding_bundle_uses_dense_ordinals_and_defers_typed_extraction_to_fallback() 
         "__fusor_scope.bundle_attr_value(&__fusor_bundle, 0u32, \"title\", move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.title))).__fusor_into_text() })? ;"
     )), "{rust}");
     assert!(rust.contains(&tokens(
-        "__fusor_scope.bundle_on(&__fusor_bundle, 1u32, \"click\", move |event| { state.click() })? ;"
+        "__fusor_scope.bundle_on(&__fusor_bundle, 1u32, \"click\", move | #[allow(unused_variables, reason = \"handlers may ignore the event\")] event| { state.click() })? ;"
     )));
     assert!(rust.contains(&tokens(
         "__fusor_scope.bundle_text_node_value(&__fusor_bundle, 3u32, move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.direct))).__fusor_into_text() })? ;"

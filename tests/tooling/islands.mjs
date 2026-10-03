@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
 import { chromium, firefox, webkit } from "playwright";
+import { observeFetch } from "../../scripts/observe-fetch.mjs";
 const root = resolve("examples/islands/site/dist");
 const requests = [],
   api = [];
@@ -96,6 +97,7 @@ try {
     await native.close();
     const context = await browser.newContext();
     const page = await context.newPage();
+    const fetches = await observeFetch(page, "/api/");
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => {
@@ -148,13 +150,22 @@ try {
     assert(cartLoads >= 2);
     await page.locator("#cart-one input[name=quantity]").focus();
     await page.evaluate(() => {
+      const add = document.addEventListener;
+      globalThis.compositionWaiterAttached = false;
+      document.addEventListener = function (type, listener, options) {
+        add.call(this, type, listener, options);
+        if (type === "compositionend" && options === true) {
+          document.addEventListener = add;
+          globalThis.compositionWaiterAttached = true;
+        }
+      };
       const input = document.querySelector("#cart-one input[name=quantity]");
       input.dispatchEvent(
         new CompositionEvent("compositionstart", { bubbles: true }),
       );
       globalThis.activating = __fusor_islands.activate("cart-one").promise;
     });
-    await page.waitForTimeout(50);
+    await page.waitForFunction(() => compositionWaiterAttached);
     assert.equal(
       await page.getAttribute("#cart-one", "data-fusor-status"),
       "requested",
@@ -289,8 +300,9 @@ try {
         () => document.querySelector("#designer .preview") === originalPreview,
       ),
     );
-    api.find((request) => request.url.includes("/price/")).res.end("price-A");
-    await page.waitForTimeout(30);
+    const price = api.find((request) => request.url.includes("/price/"));
+    price.res.end("price-A");
+    await fetches.consumed(price.url);
     assert.equal(await page.locator("#designer .designer").count(), 0);
     assert(
       await page.evaluate(
@@ -313,16 +325,24 @@ try {
     await page.evaluate(() => controllerUnit.exercise_control("retry"));
     assert.equal(await page.locator("#designer .designer").count(), 1);
     // A same-document move preserves the registration. Reusing an ID does not.
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       const host = document.querySelector("#cart-two");
       globalThis.oldToken = __fusor_islands.lookup(
         "cart-two",
         host.dataset.fusorIsland,
         host.dataset.fusorSchema,
       );
-      document.querySelector("main").append(host);
+      const main = document.querySelector("main");
+      const moved = new Promise(resolve => {
+        const observer = new MutationObserver(() => {
+          observer.disconnect();
+          resolve();
+        });
+        observer.observe(main, { childList: true });
+      });
+      main.append(host);
+      await moved;
     });
-    await page.waitForTimeout(30);
     assert.equal(
       await page.evaluate(() => __fusor_islands.status(oldToken)),
       "active",
@@ -332,18 +352,14 @@ try {
       globalThis.copy = host.cloneNode(true);
       host.remove();
     });
-    await page.waitForTimeout(30);
-    assert.equal(
-      await page.evaluate(() => {
-        try {
-          __fusor_islands.status(oldToken);
-          return false;
-        } catch (error) {
-          return error.code === "stale-instance";
-        }
-      }),
-      true,
-    );
+    await page.waitForFunction(() => {
+      try {
+        __fusor_islands.status(oldToken);
+        return false;
+      } catch (error) {
+        return error.code === "stale-instance";
+      }
+    });
     await page.evaluate(() => document.querySelector("main").append(copy));
     await page.waitForFunction(
       () => document.querySelector("#cart-two").dataset.fusorStatus === "dormant",

@@ -9,7 +9,7 @@ type-checks. Compiler errors point back at the HTML line they came from.
 Applications call it from `build.rs`; `fusor new` sets this up for you:
 
 ```rust
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), fusor_build::BuildError> {
     fusor_build::compile_app()
 }
 ```

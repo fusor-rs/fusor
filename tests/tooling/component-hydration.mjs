@@ -39,7 +39,7 @@ fusor-build={path=${dep('fusor-build')}}
 entry="web/index.html"
 `);
   await writeFile(join(scratch, 'build.rs'),
-    'fn main()->Result<(),Box<dyn std::error::Error>>{fusor_build::compile_app()}\n');
+    'fn main()->Result<(),fusor_build::BuildError>{fusor_build::compile_app()}\n');
   await writeFile(join(scratch, 'src/bin/render.rs'),
     'fn main(){print!("{}",component_hydration_consumer::render().unwrap());}\n');
   await writeFile(join(scratch, 'src/lib.rs'), String.raw`

@@ -30,7 +30,10 @@ mod authoring {
         #[cfg_attr(all(), cfg_attr(all(), cfg(any())))]
         pub fn close(&mut self) {}
         #[cfg_attr(all(), inline)]
-        #[allow(clippy::needless_arbitrary_self_type)] // Exercise explicit receiver syntax.
+        #[expect(
+            clippy::needless_arbitrary_self_type,
+            reason = "exercise explicit receiver syntax"
+        )]
         pub fn add(self: &mut Self, input: super::Input) -> TaskResult<self::Output> {
             self.0 += input;
             Ok(self.0)

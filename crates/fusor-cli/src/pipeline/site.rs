@@ -100,18 +100,7 @@ pub(crate) fn check_mount(path: &str, project: &Project) -> Result {
 
 /// Assemble the mounts into `site` and publish them together.
 pub(crate) fn publish(cx: &Context, site: &Path, mut mounts: Vec<Mount>) -> Result {
-    for (index, mount) in mounts.iter().enumerate() {
-        if let Some(other) = mounts[..index]
-            .iter()
-            .find(|other| other.base_path == mount.base_path)
-        {
-            return Err(Error::project(format!(
-                "{} and {} are both served at {}",
-                other.name, mount.name, mount.base_path
-            ))
-            .remedy("give each site application its own base-path"));
-        }
-    }
+    validate_mounts(&mounts)?;
     // Parents first, so a parent's files can be checked against each child's mount.
     mounts.sort_by_key(|mount| {
         mount
@@ -165,6 +154,22 @@ pub(crate) fn publish(cx: &Context, site: &Path, mut mounts: Vec<Mount>) -> Resu
     };
     fs::write(&manifest, serde_json::to_vec_pretty(&record)?)?;
     publish::swap(cx, site, &staging)
+}
+
+fn validate_mounts(mounts: &[Mount]) -> Result {
+    for (index, mount) in mounts.iter().enumerate() {
+        if let Some(other) = mounts[..index]
+            .iter()
+            .find(|other| other.base_path == mount.base_path)
+        {
+            return Err(Error::project(format!(
+                "{} and {} are both served at {}",
+                other.name, mount.name, mount.base_path
+            ))
+            .remedy("give each site application its own base-path"));
+        }
+    }
+    Ok(())
 }
 
 /// The site's own ownership marker, the counterpart of an application's output
@@ -300,6 +305,7 @@ pub(crate) fn route<'a, T>(mounts: &'a [(String, T)], url: &str) -> Option<&'a T
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     #[test]
     fn requests_go_to_the_most_specific_mount() {
@@ -332,7 +338,10 @@ mod tests {
     }
 
     fn scratch() -> (PathBuf, Staging) {
-        let root = std::env::temp_dir().join(format!("fusor-site-{}", publish::generation()));
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+        let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
+        let root =
+            std::env::temp_dir().join(format!("fusor-site-{}-{sequence}", publish::generation()));
         fs::create_dir(&root).unwrap();
         (root.clone(), Staging(root))
     }

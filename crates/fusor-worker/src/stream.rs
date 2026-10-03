@@ -2,7 +2,7 @@ use crate::{
     Bound, CancellationHandle, Job, JobError, Message, NoError, Pool, TaskResult, Unbound,
     WorkerError,
     context::Control,
-    job::{Event, State, decode_result},
+    job::{Completion, Event, State, decode_result},
 };
 use fusor::OwnerHandle;
 use fusor_async::CancellationToken;
@@ -119,28 +119,30 @@ impl<T: Message, E: Message, P: Message, M> Stream for ResultStream<T, E, P, M> 
         let raw = &self.job.state;
         State::start(raw);
         let mut state = raw.borrow_mut();
-        if state.committed {
+        if matches!(state.completion, Completion::Consumed) {
             return Poll::Ready(None);
         }
-        if let Some(error) = state.abort.take() {
-            state.committed = true;
+        if let Some(error) = state.completion.take_error() {
             return Poll::Ready(Some(Err(error.into())));
         }
-        let endpoint = state.endpoint.upgrade();
+        let endpoint = state.endpoint();
         let codec = endpoint
             .as_ref()
             .map(|e| e.codec.clone())
             .unwrap_or_default();
         match state.events.pop_front() {
             Some(Event::Item(payload)) => {
-                let id = state.id.unwrap();
+                let id = state
+                    .admission
+                    .as_ref()
+                    .expect("stream events arrive only after job admission")
+                    .id;
                 drop(state);
                 let result = decode_result(Ok(payload), &codec);
                 if let Err(JobError::Worker(error)) = &result {
                     State::abort(raw, error.clone());
                     let mut state = raw.borrow_mut();
-                    state.abort = None;
-                    state.committed = true;
+                    state.completion = Completion::Consumed;
                 }
                 if let Some(endpoint) = endpoint {
                     endpoint.credit(id);
@@ -148,9 +150,15 @@ impl<T: Message, E: Message, P: Message, M> Stream for ResultStream<T, E, P, M> 
                 Poll::Ready(Some(result))
             }
             Some(Event::End(result)) => {
-                state.committed = true;
+                state.completion = Completion::Consumed;
                 if let Some(endpoint) = endpoint {
-                    endpoint.forget(state.id.unwrap());
+                    endpoint.forget(
+                        state
+                            .admission
+                            .as_ref()
+                            .expect("stream events arrive only after job admission")
+                            .id,
+                    );
                 }
                 drop(state);
                 Poll::Ready(match result {
@@ -159,7 +167,7 @@ impl<T: Message, E: Message, P: Message, M> Stream for ResultStream<T, E, P, M> 
                 })
             }
             Some(Event::Result(Err(error))) => {
-                state.committed = true;
+                state.completion = Completion::Consumed;
                 drop(state);
                 Poll::Ready(Some(decode_result(Err(error), &codec)))
             }

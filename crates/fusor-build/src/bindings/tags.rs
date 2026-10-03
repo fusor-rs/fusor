@@ -57,6 +57,145 @@ impl BuiltIn {
     }
 }
 
+const NATIVE_TAGS: &[&str] = &[
+    "a",
+    "abbr",
+    "acronym",
+    "address",
+    "applet",
+    "area",
+    "article",
+    "aside",
+    "audio",
+    "b",
+    "base",
+    "basefont",
+    "bdi",
+    "bdo",
+    "bgsound",
+    "big",
+    "blockquote",
+    "body",
+    "br",
+    "button",
+    "canvas",
+    "caption",
+    "center",
+    "cite",
+    "code",
+    "col",
+    "colgroup",
+    "data",
+    "datalist",
+    "dd",
+    "del",
+    "details",
+    "dfn",
+    "dialog",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "embed",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "font",
+    "footer",
+    "form",
+    "frame",
+    "frameset",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hgroup",
+    "hr",
+    "html",
+    "i",
+    "iframe",
+    "img",
+    "input",
+    "ins",
+    "kbd",
+    "label",
+    "legend",
+    "li",
+    "link",
+    "listing",
+    "main",
+    "map",
+    "mark",
+    "marquee",
+    "math",
+    "menu",
+    "meta",
+    "meter",
+    "nav",
+    "nobr",
+    "noembed",
+    "noframes",
+    "noscript",
+    "object",
+    "ol",
+    "optgroup",
+    "option",
+    "output",
+    "p",
+    "param",
+    "picture",
+    "plaintext",
+    "pre",
+    "progress",
+    "q",
+    "rb",
+    "rp",
+    "rt",
+    "rtc",
+    "ruby",
+    "s",
+    "samp",
+    "script",
+    "search",
+    "section",
+    "select",
+    "slot",
+    "small",
+    "source",
+    "span",
+    "strike",
+    "strong",
+    "style",
+    "sub",
+    "summary",
+    "sup",
+    "svg",
+    "table",
+    "tbody",
+    "td",
+    "template",
+    "textarea",
+    "tfoot",
+    "th",
+    "thead",
+    "time",
+    "title",
+    "tr",
+    "track",
+    "tt",
+    "u",
+    "ul",
+    "var",
+    "video",
+    "wbr",
+    "xmp",
+];
+
 pub(super) fn is_component(name: &str) -> bool {
     if name.contains("::") {
         return true;
@@ -69,144 +208,7 @@ pub(super) fn is_component(name: &str) -> bool {
     if name.chars().any(char::is_lowercase) {
         return true;
     }
-    !matches!(
-        name.to_ascii_lowercase().as_str(),
-        "a" | "abbr"
-            | "acronym"
-            | "address"
-            | "applet"
-            | "area"
-            | "article"
-            | "aside"
-            | "audio"
-            | "b"
-            | "base"
-            | "basefont"
-            | "bdi"
-            | "bdo"
-            | "bgsound"
-            | "big"
-            | "blockquote"
-            | "body"
-            | "br"
-            | "button"
-            | "canvas"
-            | "caption"
-            | "center"
-            | "cite"
-            | "code"
-            | "col"
-            | "colgroup"
-            | "data"
-            | "datalist"
-            | "dd"
-            | "del"
-            | "details"
-            | "dfn"
-            | "dialog"
-            | "dir"
-            | "div"
-            | "dl"
-            | "dt"
-            | "em"
-            | "embed"
-            | "fieldset"
-            | "figcaption"
-            | "figure"
-            | "font"
-            | "footer"
-            | "form"
-            | "frame"
-            | "frameset"
-            | "h1"
-            | "h2"
-            | "h3"
-            | "h4"
-            | "h5"
-            | "h6"
-            | "head"
-            | "header"
-            | "hgroup"
-            | "hr"
-            | "html"
-            | "i"
-            | "iframe"
-            | "img"
-            | "input"
-            | "ins"
-            | "kbd"
-            | "label"
-            | "legend"
-            | "li"
-            | "link"
-            | "listing"
-            | "main"
-            | "map"
-            | "mark"
-            | "marquee"
-            | "math"
-            | "menu"
-            | "meta"
-            | "meter"
-            | "nav"
-            | "nobr"
-            | "noembed"
-            | "noframes"
-            | "noscript"
-            | "object"
-            | "ol"
-            | "optgroup"
-            | "option"
-            | "output"
-            | "p"
-            | "param"
-            | "picture"
-            | "plaintext"
-            | "pre"
-            | "progress"
-            | "q"
-            | "rb"
-            | "rp"
-            | "rt"
-            | "rtc"
-            | "ruby"
-            | "s"
-            | "samp"
-            | "script"
-            | "search"
-            | "section"
-            | "select"
-            | "slot"
-            | "small"
-            | "source"
-            | "span"
-            | "strike"
-            | "strong"
-            | "style"
-            | "sub"
-            | "summary"
-            | "sup"
-            | "svg"
-            | "table"
-            | "tbody"
-            | "td"
-            | "template"
-            | "textarea"
-            | "tfoot"
-            | "th"
-            | "thead"
-            | "time"
-            | "title"
-            | "tr"
-            | "track"
-            | "tt"
-            | "u"
-            | "ul"
-            | "var"
-            | "video"
-            | "wbr"
-            | "xmp"
-    )
+    !NATIVE_TAGS.contains(&name.to_ascii_lowercase().as_str())
 }
 
 pub(super) fn snake_case_ident(name: &str) -> bool {
@@ -232,26 +234,7 @@ pub(super) fn invocation(
     point: MountId,
     hydrated: bool,
 ) -> Result<Binding, ExtractError> {
-    let name = name(source, tag.span.start);
-    let path = syn::parse_str::<syn::Path>(name).map_err(|_| {
-        error(
-            source,
-            tag.span.start,
-            "component tags require a Rust type path or imported alias",
-        )
-    })?;
-    if path
-        .segments
-        .iter()
-        .any(|part| !matches!(part.arguments, syn::PathArguments::None))
-    {
-        return Err(error(
-            source,
-            tag.span.start,
-            "use a Rust type alias for a generic component",
-        ));
-    }
-    let ty = Rust::parse(source, name, tag.span.start)?;
+    let ty = component_type(source, tag)?;
     let mut inputs = Vec::new();
     let mut condition = None;
     let mut key = None;
@@ -282,19 +265,7 @@ pub(super) fn invocation(
             "rust:key" => key = Some(Rust::parse(source, &value_text, value_offset)?),
             _ => {
                 let name = field(source, &name, offset)?;
-                let parts = interpolations(source, &value_text, value_offset, false)?;
-                let value = if parts.is_empty() {
-                    let text = value_text.as_ref();
-                    InputValue::Literal(Rust::synthetic(quote! { #text }, value_offset))
-                } else {
-                    literal_or_expression(exact_expression(
-                        source,
-                        &value_text,
-                        parts,
-                        value_offset,
-                        "component inputs require a literal string or exactly one {{ Rust value }}; use format! explicitly for formatted strings",
-                    )?)
-                };
+                let value = input_value(source, &value_text, value_offset)?;
                 inputs.push(Input { name, value });
             }
         }
@@ -306,6 +277,48 @@ pub(super) fn invocation(
         inputs,
         condition,
         key,
+    })
+}
+
+fn component_type(source: &str, tag: &StartTag<usize>) -> Result<Rust, ExtractError> {
+    let name = name(source, tag.span.start);
+    let path = syn::parse_str::<syn::Path>(name).map_err(|_| {
+        error(
+            source,
+            tag.span.start,
+            "component tags require a Rust type path or imported alias",
+        )
+    })?;
+    if path
+        .segments
+        .iter()
+        .any(|part| !matches!(part.arguments, syn::PathArguments::None))
+    {
+        return Err(error(
+            source,
+            tag.span.start,
+            "use a Rust type alias for a generic component",
+        ));
+    }
+    Rust::parse(source, name, tag.span.start)
+}
+
+fn input_value(
+    source: &str,
+    value_text: &str,
+    value_offset: usize,
+) -> Result<InputValue, ExtractError> {
+    let parts = interpolations(source, value_text, value_offset, false)?;
+    Ok(if parts.is_empty() {
+        InputValue::Literal(Rust::synthetic(quote! { #value_text }, value_offset))
+    } else {
+        literal_or_expression(exact_expression(
+            source,
+            value_text,
+            parts,
+            value_offset,
+            "component inputs require a literal string or exactly one {{ Rust value }}; use format! explicitly for formatted strings",
+        )?)
     })
 }
 

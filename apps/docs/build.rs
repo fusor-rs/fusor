@@ -112,7 +112,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .next()
                                     .is_some_and(continuation))
                     });
-                    if found && seen.insert(reference["href"].as_str().unwrap()) {
+                    if found
+                        && seen.insert(
+                            reference["href"]
+                                .as_str()
+                                .ok_or("reference href required")?,
+                        )
+                    {
                         source.push_str(&format!(
                             "LinkData {{ href: {}, label: {} }},",
                             text(reference, "href"),
@@ -185,7 +191,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PathBuf::from(env::var("OUT_DIR")?).join("content.rs"),
         source,
     )?;
-    fusor_build::compile_app()
+    fusor_build::compile_app()?;
+    Ok(())
 }
 
 fn validate_pages(pages: &[serde_json::Value]) -> Result<(), Box<dyn std::error::Error>> {
@@ -205,7 +212,7 @@ fn validate_pages(pages: &[serde_json::Value]) -> Result<(), Box<dyn std::error:
     }
     for page in pages {
         let mut seen = std::collections::BTreeSet::new();
-        seen.insert(page["slug"].as_str().unwrap());
+        seen.insert(page["slug"].as_str().ok_or("page slug required")?);
         let mut current = page;
         while let Some(parent) = current["parent"].as_str() {
             if !seen.insert(parent) {
@@ -234,13 +241,13 @@ fn validate_reference(
         .ok_or("reference must point to a section")?;
     let page = pages
         .as_array()
-        .unwrap()
+        .ok_or("pages must be an array")?
         .iter()
         .find(|page| page["slug"] == slug)
         .ok_or_else(|| format!("unknown reference page: {href}"))?;
     if !page["sections"]
         .as_array()
-        .unwrap()
+        .ok_or("sections required")?
         .iter()
         .any(|section| section["id"] == id)
     {

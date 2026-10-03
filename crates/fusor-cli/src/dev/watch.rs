@@ -71,7 +71,7 @@ fn rebuild(cx: &Context, project: &Project) -> Result<Project> {
         return Err(Error::project("base-path changed")
             .remedy("restart `fusor dev` to serve from the new URL"));
     }
-    crate::commands::build::run(cx, &next, true, true)?;
+    crate::commands::build::run(cx, &next, crate::pipeline::BuildMode::Development)?;
     Ok(next)
 }
 

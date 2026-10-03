@@ -8,12 +8,15 @@ pub mod app;
 #[doc(hidden)]
 pub mod backend;
 mod bindings;
+mod build_error;
 mod cargo;
 mod extract;
 mod html;
 mod javascript;
 mod source_map;
 
+pub use app::SourceError;
+pub use build_error::BuildError;
 pub use cargo::{compile, compile_app};
 pub use extract::extract;
 pub use source_map::{SourceMap, SourceMapError};

@@ -14,8 +14,8 @@ pub(super) fn route(input: &TagInput) -> Result<Declaration, ExtractError> {
         &["path", "let", "fallback"],
         "path and optional let, or fallback",
     )?;
-    if input.has("fallback") {
-        if input.has("path") || input.has("let") || !input.text("fallback").unwrap().0.is_empty() {
+    if let Some((fallback, _)) = input.text("fallback") {
+        if input.has("path") || input.has("let") || !fallback.is_empty() {
             return Err(input.error("write <Route fallback> without path or let"));
         }
         return Ok(Declaration {

@@ -8,12 +8,16 @@ use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use std::collections::BTreeMap;
 
+pub(super) struct ControlElement<'a> {
+    pub name: &'a str,
+    pub attributes: &'a BTreeMap<String, (String, usize)>,
+    pub node: ElementId,
+}
+
 /// Parse `bind` on a native element, given its attributes and where each value starts.
 pub(super) fn parse(
     source: &str,
-    element: &str,
-    attributes: &BTreeMap<String, (String, usize)>,
-    node: ElementId,
+    element: ControlElement,
     value: &str,
     offset: usize,
 ) -> Result<Binding, ExtractError> {
@@ -21,16 +25,40 @@ pub(super) fn parse(
     if value.trim().is_empty() {
         return fail("bind requires a Rust value, such as bind=\"state.name\"");
     }
-    let attribute = |name: &str| attributes.get(name);
+    let attribute = |name: &str| element.attributes.get(name);
     if attribute("rust:slot").is_some() {
         return fail("bind owns the control's contents; remove rust:slot");
     }
+    let control = parse_control(source, &element, offset)?;
+    // The control owns its value; a checkbox or radio keeps `value` as its choice.
+    let owned: &[&str] = match control {
+        Control::Checkbox(_) | Control::Radio(_) => &["checked"],
+        _ => &["value", "checked"],
+    };
+    if owned.iter().any(|name| attribute(name).is_some()) {
+        return fail("bind owns this control's value; remove the value or checked attribute");
+    }
+    Ok(Binding::Bind {
+        node: element.node,
+        control,
+        value: Rust::parse(source, value, offset)?,
+    })
+}
+
+fn parse_control(
+    source: &str,
+    element: &ControlElement,
+    offset: usize,
+) -> Result<Control, ExtractError> {
+    let fail = |message: &str| Err(error(source, offset, message));
+    let attribute = |name: &str| element.attributes.get(name);
+    let element = element.name;
     let choice = || {
         attribute("value")
             .map(|(value, offset)| interpolation::attribute(source, value, *offset))
             .transpose()
     };
-    let control = match element {
+    Ok(match element {
         "textarea" => Control::Text,
         "select" => match attribute("multiple") {
             None => Control::Select,
@@ -60,19 +88,6 @@ pub(super) fn parse(
             }
         }
         _ => return fail("bind requires an <input>, <textarea> or <select>"),
-    };
-    // The control owns its value; a checkbox or radio keeps `value` as its choice.
-    let owned: &[&str] = match control {
-        Control::Checkbox(_) | Control::Radio(_) => &["checked"],
-        _ => &["value", "checked"],
-    };
-    if owned.iter().any(|name| attribute(name).is_some()) {
-        return fail("bind owns this control's value; remove the value or checked attribute");
-    }
-    Ok(Binding::Bind {
-        node,
-        control,
-        value: Rust::parse(source, value, offset)?,
     })
 }
 

@@ -14,65 +14,8 @@ pub(super) fn pattern(input: &TagInput) -> Result<(Rust, Vec<Rust>), ExtractErro
     let pattern = syn::Pat::parse_multi_with_leading_vert
         .parse_str(&value)
         .map_err(|e| input.error_at(offset, format!("invalid Rust pattern: {e}")))?;
-    // Visit binding positions only. Paths and struct member names are not locals.
-    fn names(pat: &syn::Pat, result: &mut Vec<syn::Ident>) -> Result<(), &'static str> {
-        match pat {
-            syn::Pat::Ident(p) => {
-                if p.by_ref.is_some() || p.mutability.is_some() {
-                    return Err(
-                        "Case captures are owned read-only reactive values; use owned patterns without ref or mut",
-                    );
-                }
-                // syn cannot resolve a bare identifier as a unit variant,
-                // constant, or binding. Reserve snake_case for captures, as in
-                // ordinary Rust style; leave capitalized names (including None)
-                // to rustc's pattern/name resolution without inventing a local.
-                if !p.ident.to_string().chars().any(char::is_uppercase)
-                    && !result.contains(&p.ident)
-                {
-                    result.push(p.ident.clone());
-                }
-                if let Some((_, sub)) = &p.subpat {
-                    names(sub, result)?;
-                }
-            }
-            syn::Pat::Or(p) => {
-                for case in &p.cases {
-                    names(case, result)?;
-                }
-            }
-            syn::Pat::Paren(p) => names(&p.pat, result)?,
-            syn::Pat::Slice(p) => {
-                for item in &p.elems {
-                    names(item, result)?;
-                }
-            }
-            syn::Pat::Struct(p) => {
-                for field in &p.fields {
-                    names(&field.pat, result)?;
-                }
-            }
-            syn::Pat::Tuple(p) => {
-                for item in &p.elems {
-                    names(item, result)?;
-                }
-            }
-            syn::Pat::TupleStruct(p) => {
-                for item in &p.elems {
-                    names(item, result)?;
-                }
-            }
-            syn::Pat::Reference(_) | syn::Pat::Macro(_) | syn::Pat::Verbatim(_) => {
-                return Err(
-                    "Case requires an owned Rust pattern without references or pattern macros",
-                );
-            }
-            _ => {}
-        }
-        Ok(())
-    }
     let mut bindings = Vec::new();
-    names(&pattern, &mut bindings).map_err(|e| input.error_at(offset, e))?;
+    pattern_names(&pattern, &mut bindings).map_err(|e| input.error_at(offset, e))?;
     let bindings = bindings
         .into_iter()
         .map(|name| {
@@ -138,9 +81,11 @@ pub(super) fn projections(
     let fields = case.names.iter().enumerate().map(|(i, name)| {
         let field = field(i);
         quote! {
+            #[allow(unused_variables, reason = "a Case may not read every captured field")]
             let #name = {
                 let __fusor_data = __fusor_data.clone();
                 ::fusor::memo(move || __fusor_data.with(|__fusor_data| {
+                    #[allow(clippy::clone_on_copy, reason = "pattern captures have inferred types and may not be Copy")]
                     __fusor_data.0 #variant .as_ref().expect("active branch data") #field .clone()
                 }))
             };
@@ -148,7 +93,80 @@ pub(super) fn projections(
     });
     let environment = snapshots.iter().enumerate().map(|(index, (name, _))| {
         let field = field(index);
-        quote! { let #name = { let __fusor_data = __fusor_data.clone(); ::fusor::derived(move || __fusor_data.with(|__fusor_data| __fusor_data.1 #field .get())) }; }
+        quote! {
+            #[allow(unused_variables, reason = "a Case may not read every enclosing capture")]
+            let #name = { let __fusor_data = __fusor_data.clone(); ::fusor::derived(move || __fusor_data.with(|__fusor_data| __fusor_data.1 #field .get())) };
+        }
     });
     quote! { #(#fields)* #(#environment)* }
+}
+
+// Visit binding positions only. Paths and struct member names are not locals.
+fn pattern_names(pat: &syn::Pat, result: &mut Vec<syn::Ident>) -> Result<(), &'static str> {
+    match pat {
+        syn::Pat::Ident(p) => {
+            if p.by_ref.is_some() || p.mutability.is_some() {
+                return Err(
+                    "Case captures are owned read-only reactive values; use owned patterns without ref or mut",
+                );
+            }
+            // syn cannot resolve a bare identifier as a unit variant,
+            // constant, or binding. Reserve snake_case for captures, as in
+            // ordinary Rust style; leave capitalized names (including None)
+            // to rustc's pattern/name resolution without inventing a local.
+            if !p.ident.to_string().chars().any(char::is_uppercase) && !result.contains(&p.ident) {
+                result.push(p.ident.clone());
+            }
+            if let Some((_, sub)) = &p.subpat {
+                pattern_names(sub, result)?;
+            }
+        }
+        syn::Pat::Or(p) => {
+            for case in &p.cases {
+                pattern_names(case, result)?;
+            }
+        }
+        syn::Pat::Paren(p) => pattern_names(&p.pat, result)?,
+        syn::Pat::Slice(p) => {
+            for item in &p.elems {
+                pattern_names(item, result)?;
+            }
+        }
+        syn::Pat::Struct(p) => {
+            for field in &p.fields {
+                pattern_names(&field.pat, result)?;
+            }
+        }
+        syn::Pat::Tuple(p) => {
+            for item in &p.elems {
+                pattern_names(item, result)?;
+            }
+        }
+        syn::Pat::TupleStruct(p) => {
+            for item in &p.elems {
+                pattern_names(item, result)?;
+            }
+        }
+        syn::Pat::Reference(_) | syn::Pat::Macro(_) | syn::Pat::Verbatim(_) => {
+            return Err("Case requires an owned Rust pattern without references or pattern macros");
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+pub(super) fn value(
+    source: &str,
+    tag: &html5gum::StartTag<usize>,
+    builtin: super::tags::BuiltIn,
+) -> Result<Rust, ExtractError> {
+    use super::tags::BuiltIn;
+    let input = TagInput::new(source, tag, builtin.spelling());
+    let attribute = if builtin == BuiltIn::If {
+        "condition"
+    } else {
+        "value"
+    };
+    input.accepts(&[attribute], &format!("only {attribute}"))?;
+    input.expression(attribute)
 }

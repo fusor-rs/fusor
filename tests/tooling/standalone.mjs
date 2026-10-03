@@ -259,8 +259,11 @@ try {
   const production = await readFile(join(app, "site/.fusor-output.json"), "utf8");
   const generation = JSON.parse(production).generation;
   assert.ok(!(await readFile(join(app, "site/__fusor", generation, "boot.js"), "utf8")).includes("setInterval"));
-  await page.waitForTimeout(1000); // More than two source-snapshot intervals.
-  assert.equal(await version(), devVersion, "release output must not trigger a dev rebuild");
+  await writeFile(join(app, "public/app.css"), "body { font-family: monospace; color: navy; }\n");
+  await waitFor(async () => (await version()) !== devVersion, "watcher processes the next authored edit");
+  const [devGeneration, devRevision] = devVersion.split(":");
+  assert.equal(await version(), `${devGeneration}:${Number(devRevision) + 1}`,
+    "only the authored CSS refresh may advance the development revision");
   assert.equal(await readFile(join(app, "site/.fusor-output.json"), "utf8"), production);
   await browser.close(); browser = undefined;
   await stop();

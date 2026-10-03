@@ -41,6 +41,35 @@ pub(super) fn lower(component: &Component, ctx: Ctx) -> TemplateCode {
             id: ::fusor::template::TextId::new(#id), host: #host, tag: #tag,
         } }
     });
+    let mounts: Vec<MountId> = Binding::walk(&component.bindings)
+        .into_iter()
+        .filter_map(|binding| match binding.anchor() {
+            Anchor::Mount(point) => Some(point),
+            _ => None,
+        })
+        .collect();
+    let mount_ids = mounts.iter().map(|id| {
+        let id = id.index();
+        quote! { ::fusor::template::MountId::new(#id) }
+    });
+    TemplateCode {
+        declarations: quote! {
+            const __FUSOR_TEMPLATE: ::fusor::template::TemplateDescriptor = ::fusor::template::TemplateDescriptor {
+                version: #version,
+                component: ::fusor::template::ComponentId::new(#id),
+                kind: ::fusor::template::RootKind::#kind,
+                elements: &[#(#elements),*],
+                texts: &[#(#texts),*],
+                text_elements: &[#(#text_elements),*],
+            };
+            const __FUSOR_MOUNTS: &[::fusor::template::MountId] = &[#(#mount_ids),*];
+        },
+        typed_handles: typed_handles(component, &mounts),
+        bundle: binding_bundle(component, ctx, &component.async_locals),
+    }
+}
+
+fn typed_handles(component: &Component, mounts: &[MountId]) -> TokenStream {
     let handles = component.elements.iter().map(|node| {
         let name = element(node.id);
         let id = node.id.index();
@@ -59,40 +88,15 @@ pub(super) fn lower(component: &Component, ctx: Ctx) -> TemplateCode {
             let id = id.index();
             quote! { let #name = __fusor_nodes.take_text(::fusor::template::TextId::new(#id))?; }
         });
-    let mounts: Vec<MountId> = Binding::walk(&component.bindings)
-        .into_iter()
-        .filter_map(|binding| match binding.anchor() {
-            Anchor::Mount(point) => Some(point),
-            _ => None,
-        })
-        .collect();
-    let mount_ids = mounts.iter().map(|id| {
-        let id = id.index();
-        quote! { ::fusor::template::MountId::new(#id) }
-    });
     let mount_handles = mounts.iter().map(|id| {
         let name = point(*id);
         let id = id.index();
         quote! { let #name = __fusor_nodes.take_mount_point(::fusor::template::MountId::new(#id))?; }
     });
-    TemplateCode {
-        declarations: quote! {
-            const __FUSOR_TEMPLATE: ::fusor::template::TemplateDescriptor = ::fusor::template::TemplateDescriptor {
-                version: #version,
-                component: ::fusor::template::ComponentId::new(#id),
-                kind: ::fusor::template::RootKind::#kind,
-                elements: &[#(#elements),*],
-                texts: &[#(#texts),*],
-                text_elements: &[#(#text_elements),*],
-            };
-            const __FUSOR_MOUNTS: &[::fusor::template::MountId] = &[#(#mount_ids),*];
-        },
-        typed_handles: quote! {
-            #(#handles)*
-            #(#text_handles)*
-            #(#mount_handles)*
-        },
-        bundle: binding_bundle(component, ctx, &component.async_locals),
+    quote! {
+        #(#handles)*
+        #(#text_handles)*
+        #(#mount_handles)*
     }
 }
 

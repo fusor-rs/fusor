@@ -1,7 +1,7 @@
 //! A native renderer plus independently compiled Wasm units. The build fails
 //! unless both halves report the same registrations.
 use super::{
-    Publication,
+    BuildMode, Publication,
     cargo::{Mode, compile},
     manifest::{Delivery, OutputManifest},
     wasm,
@@ -26,9 +26,10 @@ pub(crate) fn check(cx: &Context, project: &Project) -> Result {
     Ok(())
 }
 
-pub(crate) fn build(cx: &Context, project: &Project, debug: bool, dev: bool) -> Result {
+pub(crate) fn build(cx: &Context, project: &Project, mode: BuildMode) -> Result {
+    let dev = mode == BuildMode::Development;
     let bindgen = toolchain::bindgen::resolve()?;
-    let (executable, native_registrations) = build_renderer(cx, project, debug)?;
+    let (executable, native_registrations) = build_renderer(cx, project, mode)?;
 
     let publication = Publication::begin(cx, project)?;
     // A page holds props and markup from the generation it was served; pairing
@@ -41,14 +42,7 @@ pub(crate) fn build(cx: &Context, project: &Project, debug: bool, dev: bool) -> 
         units: BTreeMap::new(),
     };
     for unit in units(cx, project)? {
-        let built = build_unit(
-            &unit,
-            &bindgen,
-            publication.generated(),
-            &prefix,
-            debug,
-            dev,
-        )?;
+        let built = build_unit(&unit, &bindgen, &publication, mode)?;
         delivery.units.insert(unit.name, built);
     }
     delivery.validate()?;
@@ -80,9 +74,15 @@ pub(crate) fn build(cx: &Context, project: &Project, debug: bool, dev: bool) -> 
 fn build_renderer(
     cx: &Context,
     project: &Project,
-    debug: bool,
+    mode: BuildMode,
 ) -> Result<(std::path::PathBuf, UnitWitness)> {
-    let native = compile(cx, project, Mode::Build { release: !debug })?;
+    let native = compile(
+        cx,
+        project,
+        Mode::Build {
+            release: mode == BuildMode::Release,
+        },
+    )?;
     reject_javascript(&native.manifest)?;
     let executable = native.executable.ok_or_else(|| {
         Error::project("Cargo produced no native renderer executable for this islands application")
@@ -137,25 +137,31 @@ fn units(cx: &Context, project: &Project) -> Result<Vec<Selected>> {
 fn build_unit(
     unit: &Selected,
     bindgen: &Path,
-    generated: &Path,
-    prefix: &str,
-    debug: bool,
-    dev: bool,
+    publication: &Publication<'_>,
+    mode: BuildMode,
 ) -> Result<Unit> {
     let name = &unit.name;
-    let compilation = compile(&unit.cx, &unit.project, Mode::Build { release: !debug })?;
+    let prefix = publication.url_prefix();
+    let generated = publication.generated();
+    let compilation = compile(
+        &unit.cx,
+        &unit.project,
+        Mode::Build {
+            release: mode == BuildMode::Release,
+        },
+    )?;
     reject_javascript(&compilation.manifest)?;
     let wasm_path = compilation
         .wasm
         .ok_or_else(|| Error::project(format!("delivery unit {name} emitted no Wasm artifact")))?;
     let destination = generated.join(name);
     fs::create_dir(&destination)?;
-    wasm::bindgen(bindgen, &wasm_path, &destination, "unit", debug, dev).map_err(|error| {
+    wasm::bindgen(bindgen, &wasm_path, &destination, "unit", mode).map_err(|error| {
         Error::tooling(format!("delivery unit {name}: {error}")).remedy(
             "units reserve wasm-bindgen's start slot; remove the unit's application start function",
         )
     })?;
-    wasm::optimize(&destination.join("unit_bg.wasm"), debug, dev)?;
+    wasm::optimize(&destination.join("unit_bg.wasm"), mode)?;
     fs::write(destination.join("package.json"), "{\"type\":\"module\"}\n")?;
 
     let node = env::var_os("FUSOR_NODE").unwrap_or_else(|| "node".into());

@@ -14,6 +14,13 @@ use std::{any::Any, cell::RefCell, collections::BTreeMap, rc::Rc};
 use web_sys::{Element, Event, Node, Text};
 
 type Renderer = dyn Fn(&mut Frame<'_>) -> Result<(), String>;
+
+/// A coherent binding's stable slot and validated DOM target.
+#[doc(hidden)]
+pub struct RenderSlot<'a, T> {
+    pub index: usize,
+    pub target: &'a T,
+}
 struct Context;
 impl ContextKey for Context {
     type Value = BoundaryContext;

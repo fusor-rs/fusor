@@ -163,8 +163,27 @@ pub(crate) fn try_refresh(cx: &Context, project: &Project, changed: &[PathBuf]) 
         return Ok(false);
     }
 
-    publish_revision(cx, project, &artifact, output, &html, changed, started)?;
+    let effect = publish_revision(
+        cx,
+        project,
+        &artifact,
+        output,
+        Changes {
+            html: &html,
+            paths: changed,
+        },
+    )?;
+    cx.reporter.done(format!(
+        "Refreshed {} in {}, {effect}",
+        project.name,
+        crate::reporter::elapsed_text(started.elapsed())
+    ));
     Ok(true)
+}
+
+struct Changes<'a> {
+    html: &'a [PathBuf],
+    paths: &'a [PathBuf],
 }
 
 fn publish_revision(
@@ -172,10 +191,8 @@ fn publish_revision(
     project: &Project,
     artifact: &ArtifactManifest,
     mut output: OutputManifest,
-    html: &[PathBuf],
-    changed: &[PathBuf],
-    started: std::time::Instant,
-) -> Result {
+    changes: Changes,
+) -> Result<&'static str> {
     let site = project.output(cx);
     let publication = Publication::revise(cx, project, output.generation.clone())?;
     let revision = output
@@ -184,9 +201,10 @@ fn publish_revision(
         .ok_or_else(|| Error::internal("the refresh revision counter overflowed"))?;
     // Only CSS and authored HTML are patched live. Anything else needs a
     // reload, and the barrier catches clients that missed an update.
-    if changed
+    if changes
+        .paths
         .iter()
-        .any(|path| !html.contains(path) && path.extension().is_none_or(|ext| ext != "css"))
+        .any(|path| !changes.html.contains(path) && path.extension().is_none_or(|ext| ext != "css"))
     {
         output.reload_after = Some(revision);
     }
@@ -206,17 +224,11 @@ fn publish_revision(
         )?,
     )?;
     publication.commit(&output)?;
-    let effect = if output.reload_after == Some(revision) {
+    Ok(if output.reload_after == Some(revision) {
         "page reloads"
     } else {
         "page kept its state"
-    };
-    cx.reporter.done(format!(
-        "Refreshed {} in {}, {effect}",
-        project.name,
-        crate::reporter::elapsed_text(started.elapsed())
-    ));
-    Ok(())
+    })
 }
 
 /// Locations matter as much as tokens: `line!()` changes behavior without

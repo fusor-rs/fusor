@@ -112,16 +112,21 @@ pub(super) fn previous_positions<K: Ord>(previous: &[K], next: &SortedKeys<'_, K
 /// every key is cheaper than the per-key work.
 const SMALL_EDIT: usize = 32;
 
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct EditPlan {
+    pub positions: Vec<usize>,
+    pub removed: Vec<usize>,
+}
+
 /// A small edit to `previous`, planned without sorting every key: the
 /// previous position of each `next` key (or [`NEW`]) and the previous indices
 /// whose keys are gone. `known` answers whether a key is among `previous`.
 /// `None` when too many keys changed; `Some(Err(()))` for a duplicate key.
-#[allow(clippy::type_complexity)]
 pub(super) fn small_edit<K: Ord>(
     previous: &[K],
     next: &[K],
     known: impl Fn(&K) -> bool,
-) -> Option<Result<(Vec<usize>, Vec<usize>), ()>> {
+) -> Option<Result<EditPlan, ()>> {
     let (mut positions, previous_middle, next_middle) = matching_edges(previous, next);
     let kept = |index: usize| previous_middle.contains(&index) && previous[index] == next[index];
     let mut unmatched = Vec::new();
@@ -170,7 +175,7 @@ pub(super) fn small_edit<K: Ord>(
             return Some(Err(()));
         }
     }
-    Some(Ok((positions, removed)))
+    Some(Ok(EditPlan { positions, removed }))
 }
 
 /// Order at most [`SMALL_EDIT`] indices by their keys, without instantiating
@@ -419,7 +424,10 @@ mod tests {
                     // The sorted path then validates every key.
                     None => assert!(next.len() + previous.len() > SMALL_EDIT),
                     Some(Err(())) => assert!(!distinct(next), "{previous:?} -> {next:?}"),
-                    Some(Ok((positions, mut removed))) => {
+                    Some(Ok(EditPlan {
+                        positions,
+                        mut removed,
+                    })) => {
                         assert!(distinct(next), "{previous:?} -> {next:?}");
                         assert_eq!(
                             positions,
@@ -445,9 +453,10 @@ mod tests {
         let mut repeated = long.clone();
         repeated.insert(500, 7);
         for (next, gone) in [(swapped, vec![]), (inserted, vec![]), (deleted, vec![500])] {
-            let (positions, removed) = small_edit(&long, &next, |key| long.contains(key))
-                .expect("small edit")
-                .expect("distinct keys");
+            let EditPlan { positions, removed } =
+                small_edit(&long, &next, |key| long.contains(key))
+                    .expect("small edit")
+                    .expect("distinct keys");
             let expected: Vec<usize> = next
                 .iter()
                 .map(|key| long.iter().position(|old| old == key).unwrap_or(NEW))

@@ -283,29 +283,28 @@ pub trait Fields: sealed::Sealed + Clone + 'static {
     fn dirty(&self) -> bool;
 }
 macro_rules! fields {
-    ($($type:ident:$index:tt),+) => {
+    ($($type:ident:$value:ident:$index:tt),+) => {
         impl<$($type: 'static),+> sealed::Sealed for ($(TextField<$type>,)+) {}
         impl<$($type: 'static),+> Fields for ($(TextField<$type>,)+) {
             type Values = ($($type,)+);
             fn stamps(&self) -> Vec<FieldStamp> { vec![$(self.$index.stamp()),+] }
             fn values(&self) -> Result<Self::Values, $crate::forms::FormError> {
-                $(let $type = self.$index.validated();)+
-                Ok(($($type.map_err(|_| $crate::forms::FormError::Invalid)?,)+))
+                $(let $value = self.$index.validated();)+
+                Ok(($($value.map_err(|_| $crate::forms::FormError::Invalid)?,)+))
             }
             fn mark_submitted(&self) { batch(|| { $(self.$index.submitted();)+ }); }
             fn dirty(&self) -> bool { $(self.$index.dirty())|+ }
         }
     };
 }
-#[allow(non_snake_case)]
 mod tuples {
     use super::*;
-    fields!(A:0);
-    fields!(A:0,B:1);
-    fields!(A:0,B:1,C:2);
-    fields!(A:0,B:1,C:2,D:3);
-    fields!(A:0,B:1,C:2,D:3,E:4);
-    fields!(A:0,B:1,C:2,D:3,E:4,F:5);
-    fields!(A:0,B:1,C:2,D:3,E:4,F:5,G:6);
-    fields!(A:0,B:1,C:2,D:3,E:4,F:5,G:6,H:7);
+    fields!(A:a:0);
+    fields!(A:a:0,B:b:1);
+    fields!(A:a:0,B:b:1,C:c:2);
+    fields!(A:a:0,B:b:1,C:c:2,D:d:3);
+    fields!(A:a:0,B:b:1,C:c:2,D:d:3,E:e:4);
+    fields!(A:a:0,B:b:1,C:c:2,D:d:3,E:e:4,F:f:5);
+    fields!(A:a:0,B:b:1,C:c:2,D:d:3,E:e:4,F:f:5,G:g:6);
+    fields!(A:a:0,B:b:1,C:c:2,D:d:3,E:e:4,F:f:5,G:g:6,H:h:7);
 }

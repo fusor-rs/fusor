@@ -43,30 +43,16 @@ impl<'a> Method<'a> {
                 )),
             })
             .collect::<syn::Result<Vec<_>>>()?;
-        let context = types
-            .last()
-            .and_then(|ty| signature::arguments(ty, "TaskContext"));
-        let progress = if let Some(args) = &context {
-            if args.len() > 1 {
-                return Err(syn::Error::new(
-                    item.sig.span(),
-                    "context takes one progress type",
-                ));
-            }
-            types.pop();
-            args.first()
-                .cloned()
-                .unwrap_or_else(|| syn::parse_quote!(()))
-        } else {
-            syn::parse_quote!(())
-        };
+        let context = signature::take_context(&mut types, "TaskContext")?;
+        let has_context = context.is_some();
+        let progress = context.unwrap_or_else(|| syn::parse_quote!(()));
         if types.len() != 1 {
             return Err(syn::Error::new(
                 item.sig.span(),
                 "worker calls take one owned input; use () for no input",
             ));
         }
-        let input = types.pop().unwrap();
+        let input = types.pop().expect("exactly one owned input was validated");
         signature::owned(&input)?;
         signature::owned(&progress)?;
         Ok(Self {
@@ -75,7 +61,7 @@ impl<'a> Method<'a> {
             output,
             error,
             progress,
-            context: context.is_some(),
+            context: has_context,
         })
     }
 }
@@ -83,54 +69,14 @@ impl<'a> Method<'a> {
 pub fn expand(attributes: TokenStream, item: TokenStream) -> syn::Result<TokenStream> {
     let flags = Flags::parse(attributes, false)?;
     let implementation: ItemImpl = syn::parse2(item)?;
-    if implementation.trait_.is_some()
-        || !implementation.generics.params.is_empty()
-        || implementation.generics.where_clause.is_some()
-    {
-        return Err(syn::Error::new(
-            implementation.span(),
-            "worker requires a nongeneric inherent impl",
-        ));
-    }
-    let Type::Path(path) = &*implementation.self_ty else {
-        return Err(syn::Error::new(
-            implementation.self_ty.span(),
-            "expected a worker type",
-        ));
-    };
-    if path
+    let path = worker_type(&implementation)?;
+    let name = &path
         .path
         .segments
-        .iter()
-        .any(|part| !matches!(part.arguments, syn::PathArguments::None))
-    {
-        return Err(syn::Error::new(
-            path.span(),
-            "worker types cannot be generic",
-        ));
-    }
-    let name = &path.path.segments.last().unwrap().ident;
-    let identity = path
-        .path
-        .segments
-        .iter()
-        .map(|part| {
-            let ident = part.ident.to_string();
-            let ident = ident.trim_start_matches("r#");
-            format!("{}_{}", ident.len(), ident)
-        })
-        .collect::<Vec<_>>()
-        .join("_");
-    let module = format_ident!("__fusor_worker_{identity}");
-    let mut scoped = path.clone();
-    if scoped.path.leading_colon.is_none() && scoped.path.segments[0].ident != "crate" {
-        if scoped.path.segments[0].ident == "self" {
-            scoped.path.segments[0].ident = format_ident!("super");
-        } else {
-            scoped.path.segments.insert(0, syn::parse_quote!(super));
-        }
-    }
-    let scoped = Type::Path(scoped);
+        .last()
+        .expect("parsed Rust type paths are nonempty")
+        .ident;
+    let (module, scoped) = worker_scope(path);
     let mut methods = Vec::new();
     for item in &implementation.items {
         let ImplItem::Fn(item) = item else {
@@ -161,9 +107,9 @@ pub fn expand(attributes: TokenStream, item: TokenStream) -> syn::Result<TokenSt
     Ok(quote! {
         #implementation
         #[doc(hidden)]
-        #[allow(non_snake_case)]
+        #[allow(non_snake_case, reason = "the generated module includes the worker type name")]
         pub mod #module {
-            #[allow(unused_imports)] use super::*;
+            #[allow(unused_imports, reason = "generated adapters resolve types in the worker's module")] use super::*;
             macro_rules! __ID_PREFIX { () => { concat!(env!("CARGO_PKG_NAME"), "@", env!("CARGO_PKG_VERSION"), ":", module_path!(), "::") }; }
             pub(super) const __CONSTRUCTOR: &str = concat!(__ID_PREFIX!(), "new");
             #metadata
@@ -265,7 +211,7 @@ fn adapter(method: &Method<'_>, ty: &Type, pool: bool, constructor: bool) -> Tok
         ::fusor_worker::__private::inventory::submit! {
             ::fusor_worker::__private::Registration { id: concat!(__ID_PREFIX!(), stringify!(#name)), pool: #pool, kind: #kind, invoke: #adapter }
         }
-        #[allow(deprecated)]
+        #[allow(deprecated, reason = "an adapter must remain callable for a deprecated worker method")]
         fn #adapter(args: Vec<::fusor_worker::__private::Payload>, ctx: ::fusor_worker::__private::Context) -> ::fusor_worker::__private::Invocation {
             Box::pin(async move {
                 let mut args = ::fusor_worker::__private::Inputs::new(args, ctx.codec());
@@ -275,4 +221,59 @@ fn adapter(method: &Method<'_>, ty: &Type, pool: bool, constructor: bool) -> Tok
             })
         }
     }
+}
+
+fn worker_type(implementation: &ItemImpl) -> syn::Result<&syn::TypePath> {
+    if implementation.trait_.is_some()
+        || !implementation.generics.params.is_empty()
+        || implementation.generics.where_clause.is_some()
+    {
+        return Err(syn::Error::new(
+            implementation.span(),
+            "worker requires a nongeneric inherent impl",
+        ));
+    }
+    let Type::Path(path) = &*implementation.self_ty else {
+        return Err(syn::Error::new(
+            implementation.self_ty.span(),
+            "expected a worker type",
+        ));
+    };
+    if path
+        .path
+        .segments
+        .iter()
+        .any(|part| !matches!(part.arguments, syn::PathArguments::None))
+    {
+        return Err(syn::Error::new(
+            path.span(),
+            "worker types cannot be generic",
+        ));
+    }
+    Ok(path)
+}
+
+fn worker_scope(path: &syn::TypePath) -> (syn::Ident, Type) {
+    let identity = path
+        .path
+        .segments
+        .iter()
+        .map(|part| {
+            let ident = part.ident.to_string();
+            let ident = ident.trim_start_matches("r#");
+            format!("{}_{}", ident.len(), ident)
+        })
+        .collect::<Vec<_>>()
+        .join("_");
+    let module = format_ident!("__fusor_worker_{identity}");
+    let mut scoped = path.clone();
+    if scoped.path.leading_colon.is_none() && scoped.path.segments[0].ident != "crate" {
+        if scoped.path.segments[0].ident == "self" {
+            scoped.path.segments[0].ident = format_ident!("super");
+        } else {
+            scoped.path.segments.insert(0, syn::parse_quote!(super));
+        }
+    }
+    let scoped = Type::Path(scoped);
+    (module, scoped)
 }

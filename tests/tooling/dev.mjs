@@ -54,7 +54,9 @@ try {
   await waitForPublishedPage();
   await page.waitForSelector('[data-ready="true"]');
   assert.equal(await page.locator("#count").textContent(), "0");
-  await page.waitForTimeout(900); // Establish the development client's version.
+  const polledVersion = await page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/__fusor/version" && response.ok());
+  await polledVersion.finished();
 
   const path = join(scratch, "examples/playground/web/index.html");
   // An in-place write exposes a truncated file to the watcher. If generation

@@ -19,11 +19,24 @@ use crate::{
     transaction::Staging,
     workspace::Project,
 };
-use manifest::OutputManifest;
+use manifest::{Javascript, OutputManifest};
 use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BuildMode {
+    Development,
+    Debug,
+    Release,
+}
+
+impl From<bool> for BuildMode {
+    fn from(debug: bool) -> Self {
+        if debug { Self::Debug } else { Self::Release }
+    }
+}
 
 pub(crate) struct Publication<'a> {
     cx: &'a Context,
@@ -36,6 +49,29 @@ pub(crate) struct Publication<'a> {
 }
 
 impl<'a> Publication<'a> {
+    pub fn output_manifest(
+        &self,
+        artifact: &fusor_build::app::ArtifactManifest,
+        bundle: Javascript,
+        mode: BuildMode,
+    ) -> Result<OutputManifest> {
+        let mut output = OutputManifest::new(self.generation.clone(), &self.project.config);
+        if !artifact.javascript.is_empty() {
+            output.javascript = Some(bundle);
+        }
+        if mode != BuildMode::Development {
+            return Ok(output);
+        }
+        output.revision = Some(0);
+        output.reload_after = Some(0);
+        // Recorded only when reuse is possible, so the watcher does not
+        // re-establish eligibility on every edit.
+        if crate::dev::refresh::enabled(self.cx, self.project, artifact)? {
+            output.rust_signature = Some(crate::dev::refresh::signature(artifact)?);
+        }
+        Ok(output)
+    }
+
     pub fn begin(cx: &'a Context, project: &'a Project) -> Result<Self> {
         let publication = Self::stage(cx, project, publish::generation())?;
         std::fs::create_dir(publication.staging.join(layout::GENERATED))?;

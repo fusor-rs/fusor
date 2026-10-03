@@ -8,6 +8,13 @@ use web_sys::{Document, Element, HtmlElement, HtmlInputElement};
 
 type EncodeKey<K> = dyn Fn(&K) -> Result<String, JsValue>;
 
+/// Key extraction and serialization used to match server-rendered rows.
+#[doc(hidden)]
+pub struct HydratedKeys<F, E> {
+    pub key: F,
+    pub encode: E,
+}
+
 /// How a reconcile finds the previous rows whose keys are gone.
 enum Removal<'a, K> {
     /// Merge every key against the ordered map.
@@ -38,7 +45,15 @@ impl Scope {
         T: Clone + PartialEq + 'static,
         K: Ord + Clone + 'static,
     {
-        self.keyed_inner(target, items, key, render, None)
+        self.keyed_inner(
+            target,
+            items,
+            key,
+            RowFactory {
+                render,
+                encode: None,
+            },
+        )
     }
 
     /// Generated shared templates carry serialized row identities in native HTML.
@@ -47,189 +62,273 @@ impl Scope {
         &mut self,
         target: impl ElementTarget,
         items: impl Fn() -> Vec<T> + 'static,
-        key: impl Fn(&T) -> K + 'static,
+        keys: HydratedKeys<
+            impl Fn(&T) -> K + 'static,
+            impl Fn(&K) -> Result<String, JsValue> + 'static,
+        >,
         render: impl Fn(Signal<T>) -> Result<Scope, JsValue> + 'static,
-        encode: impl Fn(&K) -> Result<String, JsValue> + 'static,
     ) -> Result<(), JsValue>
     where
         T: Clone + PartialEq + 'static,
         K: Ord + Clone + 'static,
     {
-        self.keyed_inner(target, items, key, render, Some(Box::new(encode)))
+        self.keyed_inner(
+            target,
+            items,
+            keys.key,
+            RowFactory {
+                render,
+                encode: Some(Box::new(keys.encode)),
+            },
+        )
     }
 
-    fn keyed_inner<T, K>(
+    fn keyed_inner<T, K, R>(
         &mut self,
         target: impl ElementTarget,
         items: impl Fn() -> Vec<T> + 'static,
         key: impl Fn(&T) -> K + 'static,
-        render: impl Fn(Signal<T>) -> Result<Scope, JsValue> + 'static,
-        encode: Option<Box<EncodeKey<K>>>,
+        factory: RowFactory<K, R>,
     ) -> Result<(), JsValue>
     where
         T: Clone + PartialEq + 'static,
         K: Ord + Clone + 'static,
+        R: Fn(Signal<T>) -> Result<Scope, JsValue> + 'static,
     {
         let hydrating = self.is_hydrating();
-        let container = target.resolve(self)?;
-        // `rows` owns the rows and orders their lifecycle by key. `order` and
-        // `states` hold the same keys in DOM order with each row's signal, so
-        // rows that keep their index are updated without a map lookup.
-        let mut rows: BTreeMap<K, Row<T>> = BTreeMap::new();
-        let mut order: Vec<K> = Vec::new();
-        let mut states: Vec<Signal<T>> = Vec::new();
-        let mut initialized = false;
-        // Every row in `rows` was committed by a reconcile that completed.
-        let mut settled = false;
-        let queue = self.mount_queue.clone();
+        let mut list = KeyedRows {
+            container: target.resolve(self)?,
+            rows: BTreeMap::new(),
+            order: Vec::new(),
+            states: Vec::new(),
+            initialized: false,
+            settled: false,
+            hydrating,
+            factory,
+            queue: self.mount_queue.clone(),
+        };
         self.bind(move || {
             let items = items();
             untrack(|| {
-                let keys: Vec<K> = items.iter().map(&key).collect();
-                let duplicate = || JsValue::from_str("fusor: duplicate key in list");
-                // A small edit resolves its few changed keys directly. Any other
-                // change validates and merges through every key in order.
-                let (retained, mut removal) =
-                    match reconcile::small_edit(&order, &keys, |key| rows.contains_key(key)) {
-                        Some(plan) => {
-                            let (positions, removed) = plan.map_err(|()| duplicate())?;
-                            (positions, Removal::Direct(removed))
-                        }
-                        None => {
-                            let unique = reconcile::SortedKeys::new(&keys).ok_or_else(duplicate)?;
-                            let positions = reconcile::previous_positions(&order, &unique);
-                            (positions, Removal::Sorted(unique))
-                        }
-                    };
-                let native_rows = if hydrating && !initialized {
-                    let encode = encode.as_ref().ok_or_else(|| {
-                        JsValue::from_str("hydrated lists require generated key metadata")
-                    })?;
-                    server_rows(&container, &keys, encode)?
-                } else {
-                    Vec::new()
-                };
-                let document = document()?;
-                let focused = focused(&document, &container);
-                // Stage new scopes before touching the visible list. A failing
-                // render drops all staged listeners and leaves old rows intact.
-                let mut staged = BTreeMap::new();
-                let mut positions = retained.clone();
-                let mut fresh = Vec::new();
-                for (index, (key, item)) in keys.iter().zip(&items).enumerate() {
-                    if retained[index] != reconcile::NEW {
-                        continue;
-                    }
-                    let state = signal(item.clone());
-                    let native = native_rows.get(index);
-                    let scope = with_native_root(native, || render(state.clone()))?;
-                    // Server rows already occupy their final positions. Newly
-                    // rendered roots are detached and must be inserted.
-                    if native.is_some() {
-                        positions[index] = index;
-                    }
-                    fresh.push(state.clone());
-                    staged.insert(
-                        key.clone(),
-                        Row {
-                            _state: state,
-                            scope,
-                        },
-                    );
-                }
-                for row in staged.values() {
-                    row.scope.finish_prepare()?;
-                }
-                if !initialized {
-                    if !hydrating {
-                        #[cfg(feature = "islands")]
-                        super::delivery::dispose_tree(&container);
-                        container.set_text_content(None);
-                    }
-                    initialized = true;
-                }
-                // Release the previous order before removed rows drop, as
-                // their own rows hold the remaining references.
-                let mut previous: Vec<_> =
-                    std::mem::take(&mut states).into_iter().map(Some).collect();
-                let mut fresh = fresh.into_iter();
-                let next: Vec<Signal<T>> = retained
-                    .iter()
-                    .map(|&position| match position {
-                        reconcile::NEW => fresh.next().expect("staged row"),
-                        position => previous[position].take().expect("retained row"),
-                    })
-                    .collect();
-                drop(previous);
-                match &mut removal {
-                    Removal::Sorted(unique) => rows.retain(|key, row| {
-                        let keep = unique.contains_next(key);
-                        if !keep {
-                            remove_tree(&row.scope.root);
-                        }
-                        keep
-                    }),
-                    Removal::Direct(removed) => {
-                        // In ascending key order, as `retain` visits the map.
-                        reconcile::sort_few(removed, &order);
-                        for &index in removed.iter() {
-                            if let Some(entry) = rows.remove_entry(&order[index]) {
-                                // Like retain, detach before dropping the owned
-                                // key, then release the row and its cleanup.
-                                remove_tree(&entry.1.scope.root);
-                                drop(entry);
-                            }
-                        }
-                    }
-                }
-                // Committing a settled row again only finishes setup that a
-                // descendant queued, so without pending setup only new rows
-                // need committing.
-                let fresh_keys: Option<Vec<K>> = settled.then(|| staged.keys().cloned().collect());
-                settled = false;
-                if rows.is_empty() {
-                    rows = staged;
-                } else if staged.len() <= rows.len() / (rows.len().ilog2() as usize + 1) {
-                    // Avoid rebuilding the existing tree for sparse additions;
-                    // keep the linear sorted merge when insertions are dense.
-                    rows.extend(staged);
-                } else {
-                    rows.append(&mut staged);
-                }
-                let stationary = reconcile::stationary(&positions);
-                for (state, item) in next.iter().zip(items) {
-                    state.set(item);
-                }
-                (order, states) = (keys, next);
-                for (index, keep) in stationary.iter().enumerate().rev() {
-                    if !keep {
-                        let anchor = order
-                            .get(index + 1)
-                            .map(|key| rows[key].scope.root.as_ref());
-                        strings::insert_before(
-                            &container,
-                            &rows[&order[index]].scope.root,
-                            anchor,
-                        )?;
-                    }
-                }
-                let idle = queue.as_ref().is_none_or(|queue| queue.is_idle());
-                match fresh_keys.filter(|_| idle) {
-                    Some(keys) => {
-                        for key in &keys {
-                            rows[key].scope.commit();
-                        }
-                    }
-                    None => {
-                        for row in rows.values() {
-                            row.scope.commit();
-                        }
-                    }
-                }
-                settled = true;
-                restore_focus(&document, &container, focused)
+                let keys = items.iter().map(&key).collect();
+                list.update(items, keys)
             })
         })
+    }
+}
+
+struct RowFactory<K, R> {
+    render: R,
+    encode: Option<Box<EncodeKey<K>>>,
+}
+
+struct KeyedRows<T, K, R> {
+    container: Element,
+    // The map orders cleanup by key; order and states mirror DOM order.
+    rows: BTreeMap<K, Row<T>>,
+    order: Vec<K>,
+    states: Vec<Signal<T>>,
+    initialized: bool,
+    settled: bool,
+    hydrating: bool,
+    factory: RowFactory<K, R>,
+    queue: Option<std::rc::Rc<super::commit::CommitQueue>>,
+}
+
+struct PreparedRows<T, K> {
+    rows: BTreeMap<K, Row<T>>,
+    positions: Vec<usize>,
+    states: Vec<Signal<T>>,
+}
+
+impl<T, K, R> KeyedRows<T, K, R>
+where
+    T: Clone + PartialEq + 'static,
+    K: Ord + Clone + 'static,
+    R: Fn(Signal<T>) -> Result<Scope, JsValue>,
+{
+    fn update(&mut self, items: Vec<T>, keys: Vec<K>) -> Result<(), JsValue> {
+        let (retained, removal) = self.plan(&keys)?;
+        let native_rows = self.native_rows(&keys)?;
+        let document = document()?;
+        let focused = focused(&document, &self.container);
+        let mut staged = self.prepare_rows(&items, &keys, &retained, &native_rows)?;
+        self.initialize();
+        let next = self.reorder_states(&retained, staged.states);
+        self.remove_rows(removal);
+        // Settled rows need committing again only when descendants queued setup.
+        let fresh_keys = self.settled.then(|| staged.rows.keys().cloned().collect());
+        self.settled = false;
+        self.merge_rows(&mut staged.rows);
+        let stationary = reconcile::stationary(&staged.positions);
+        for (state, item) in next.iter().zip(items) {
+            state.set(item);
+        }
+        (self.order, self.states) = (keys, next);
+        self.position_rows(&stationary)?;
+        self.commit_rows(fresh_keys);
+        self.settled = true;
+        restore_focus(&document, &self.container, focused)
+    }
+
+    fn plan<'a>(&self, keys: &'a [K]) -> Result<(Vec<usize>, Removal<'a, K>), JsValue> {
+        let duplicate = || JsValue::from_str("fusor: duplicate key in list");
+        // Small edits resolve their changed keys directly; other edits use a sorted merge.
+        match reconcile::small_edit(&self.order, keys, |key| self.rows.contains_key(key)) {
+            Some(plan) => {
+                let reconcile::EditPlan { positions, removed } = plan.map_err(|()| duplicate())?;
+                Ok((positions, Removal::Direct(removed)))
+            }
+            None => {
+                let unique = reconcile::SortedKeys::new(keys).ok_or_else(duplicate)?;
+                let positions = reconcile::previous_positions(&self.order, &unique);
+                Ok((positions, Removal::Sorted(unique)))
+            }
+        }
+    }
+
+    fn native_rows(&self, keys: &[K]) -> Result<Vec<Element>, JsValue> {
+        if !self.hydrating || self.initialized {
+            return Ok(Vec::new());
+        }
+        let encode =
+            self.factory.encode.as_ref().ok_or_else(|| {
+                JsValue::from_str("hydrated lists require generated key metadata")
+            })?;
+        server_rows(&self.container, keys, encode)
+    }
+
+    fn prepare_rows(
+        &self,
+        items: &[T],
+        keys: &[K],
+        retained: &[usize],
+        native_rows: &[Element],
+    ) -> Result<PreparedRows<T, K>, JsValue> {
+        // Stage and validate every scope before changing the visible list.
+        let mut staged = PreparedRows {
+            rows: BTreeMap::new(),
+            positions: retained.to_vec(),
+            states: Vec::new(),
+        };
+        for (index, (key, item)) in keys.iter().zip(items).enumerate() {
+            if retained[index] != reconcile::NEW {
+                continue;
+            }
+            let state = signal(item.clone());
+            let native = native_rows.get(index);
+            let scope = with_native_root(native, || (self.factory.render)(state.clone()))?;
+            // Adopted rows already occupy their final positions.
+            if native.is_some() {
+                staged.positions[index] = index;
+            }
+            staged.states.push(state.clone());
+            staged.rows.insert(
+                key.clone(),
+                Row {
+                    _state: state,
+                    scope,
+                },
+            );
+        }
+        for row in staged.rows.values() {
+            row.scope.finish_prepare()?;
+        }
+        Ok(staged)
+    }
+
+    fn initialize(&mut self) {
+        if self.initialized {
+            return;
+        }
+        if !self.hydrating {
+            #[cfg(feature = "islands")]
+            super::delivery::dispose_tree(&self.container);
+            self.container.set_text_content(None);
+        }
+        self.initialized = true;
+    }
+
+    fn reorder_states(&mut self, retained: &[usize], fresh: Vec<Signal<T>>) -> Vec<Signal<T>> {
+        // Release the old order before removed rows drop their remaining references.
+        let mut previous: Vec<_> = std::mem::take(&mut self.states)
+            .into_iter()
+            .map(Some)
+            .collect();
+        let mut fresh = fresh.into_iter();
+        retained
+            .iter()
+            .map(|&position| match position {
+                reconcile::NEW => fresh.next().expect("staged row"),
+                position => previous[position].take().expect("retained row"),
+            })
+            .collect()
+    }
+
+    fn remove_rows(&mut self, mut removal: Removal<'_, K>) {
+        match &mut removal {
+            Removal::Sorted(unique) => self.rows.retain(|key, row| {
+                let keep = unique.contains_next(key);
+                if !keep {
+                    remove_tree(&row.scope.root);
+                }
+                keep
+            }),
+            Removal::Direct(removed) => {
+                // Match retain's ascending key order and detach before dropping the key.
+                reconcile::sort_few(removed, &self.order);
+                for &index in removed.iter() {
+                    if let Some(entry) = self.rows.remove_entry(&self.order[index]) {
+                        remove_tree(&entry.1.scope.root);
+                        drop(entry);
+                    }
+                }
+            }
+        }
+    }
+
+    fn merge_rows(&mut self, staged: &mut BTreeMap<K, Row<T>>) {
+        if self.rows.is_empty() {
+            self.rows = std::mem::take(staged);
+        } else if staged.len() <= self.rows.len() / (self.rows.len().ilog2() as usize + 1) {
+            // Sparse insertions preserve the existing tree; dense insertions merge linearly.
+            self.rows.extend(std::mem::take(staged));
+        } else {
+            self.rows.append(staged);
+        }
+    }
+
+    fn position_rows(&self, stationary: &[bool]) -> Result<(), JsValue> {
+        for (index, keep) in stationary.iter().enumerate().rev() {
+            if !keep {
+                let anchor = self
+                    .order
+                    .get(index + 1)
+                    .map(|key| self.rows[key].scope.root.as_ref());
+                strings::insert_before(
+                    &self.container,
+                    &self.rows[&self.order[index]].scope.root,
+                    anchor,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn commit_rows(&self, fresh_keys: Option<Vec<K>>) {
+        let idle = self.queue.as_ref().is_none_or(|queue| queue.is_idle());
+        match fresh_keys.filter(|_| idle) {
+            Some(keys) => {
+                for key in &keys {
+                    self.rows[key].scope.commit();
+                }
+            }
+            None => {
+                for row in self.rows.values() {
+                    row.scope.commit();
+                }
+            }
+        }
     }
 }
 

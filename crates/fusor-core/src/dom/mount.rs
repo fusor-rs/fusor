@@ -455,25 +455,13 @@ impl TemplateDescriptor {
                 return self.finish_resolution(scope, handles, slots, mounts);
             }
         }
-        let (handles, slots, mounts) = scan::resolve(
-            self,
-            expected_mounts,
-            scope.root(),
-            scope.fragment.as_ref(),
-            scope.is_hydrating(),
-        )?;
+        let resolution = scan::resolve(self, expected_mounts, &scope)?;
         if cached {
             // Cache construction is optional; inability to retain an inert
             // certificate must not make a correctly validated mount fail.
-            let _ = cache::remember(
-                self,
-                expected_mounts,
-                scope.root(),
-                &handles,
-                &slots,
-                &mounts,
-            );
+            let _ = cache::remember(self, expected_mounts, scope.root(), &resolution);
         }
+        let (handles, slots, mounts) = resolution;
         self.finish_resolution(scope, handles, slots, mounts)
     }
 

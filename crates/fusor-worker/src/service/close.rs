@@ -49,6 +49,10 @@ impl Future for Close {
                 endpoint.close(instance, duration, &closing).await
             }));
         }
-        self.future.as_mut().unwrap().as_mut().poll(cx)
+        self.future
+            .as_mut()
+            .expect("close was started before polling")
+            .as_mut()
+            .poll(cx)
     }
 }

@@ -123,7 +123,13 @@ pub mod __private {
         arguments: impl FnOnce(&Codec) -> Result<Vec<Payload>, WorkerError> + 'static,
     ) -> Job<T, E, P, Unbound> {
         Job {
-            state: crate::job::State::new(owner, entry, pool, Box::new(arguments), false),
+            state: crate::job::State::new(
+                owner,
+                entry,
+                pool.into(),
+                Box::new(arguments),
+                crate::job::JobKind::Single,
+            ),
             marker: PhantomData,
         }
     }
@@ -134,7 +140,7 @@ pub mod __private {
         arguments: impl FnOnce(&Codec) -> Result<Vec<Payload>, WorkerError> + 'static,
     ) -> ResultStream<T, E, P> {
         let job = job(owner, entry, pool, arguments);
-        job.state.borrow_mut().stream = true;
+        job.state.borrow_mut().kind = crate::job::JobKind::Stream;
         ResultStream { job }
     }
 }

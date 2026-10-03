@@ -43,7 +43,7 @@ fusor-build = { path = ${rustPath("fusor-build")} }
 templates = ["web/demos"]
 assets = "public"
 `);
-  await writeFile(join(scratch, "build.rs"), 'fn main() -> Result<(), Box<dyn std::error::Error>> { fusor_build::compile_app() }\n');
+  await writeFile(join(scratch, "build.rs"), 'fn main() -> Result<(), fusor_build::BuildError> { fusor_build::compile_app() }\n');
   await writeFile(join(scratch, "src/lib.rs"), `mod app;
 mod demos;
 #[wasm_bindgen::prelude::wasm_bindgen]

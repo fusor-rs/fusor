@@ -1,6 +1,6 @@
 //! Worker discovery reads compiled metadata, never authored Rust text.
 use super::{
-    Publication,
+    BuildMode, Publication,
     cargo::{Mode, compile_worker},
     wasm,
 };
@@ -34,13 +34,10 @@ impl Artifacts {
 }
 
 pub(crate) fn build(
-    cx: &Context,
-    project: &Project,
     publication: &Publication<'_>,
     bindgen: &Path,
     managed_entry: bool,
-    debug: bool,
-    dev: bool,
+    mode: BuildMode,
 ) -> Result<Option<Artifacts>> {
     let package = publication.generated().join(layout::PACKAGE);
     let Some(pool) = capabilities(&package)? else {
@@ -51,11 +48,11 @@ pub(crate) fn build(
             .remedy("replace manual wasm_bindgen(start) mounting with an <App> entry"));
     }
     if pool {
-        ensure_toolchain(cx, dev)?;
+        ensure_toolchain(publication.cx, mode == BuildMode::Development)?;
     }
-    let ordinary = artifact(cx, project, publication, bindgen, debug, false)?;
+    let ordinary = artifact(publication, bindgen, mode, false)?;
     let threaded = pool
-        .then(|| artifact(cx, project, publication, bindgen, debug, true))
+        .then(|| artifact(publication, bindgen, mode, true))
         .transpose()?;
     if pool {
         fs::write(publication.staging().join(layout::WORKER_HEADERS), b"{}")?;
@@ -65,7 +62,7 @@ pub(crate) fn build(
         ordinary,
         threaded,
         generation: publication.generation.clone(),
-        base: project.config.base_path.clone(),
+        base: publication.project.config.base_path.clone(),
     }))
 }
 
@@ -114,14 +111,19 @@ fn pool_marker(path: &Path) -> Result<bool> {
 }
 
 fn artifact(
-    cx: &Context,
-    project: &Project,
     publication: &Publication<'_>,
     bindgen: &Path,
-    debug: bool,
+    mode: BuildMode,
     threaded: bool,
 ) -> Result<String> {
-    let compilation = compile_worker(cx, project, Mode::Build { release: !debug }, threaded)?;
+    let compilation = compile_worker(
+        publication.cx,
+        publication.project,
+        Mode::Build {
+            release: mode == BuildMode::Release,
+        },
+        threaded,
+    )?;
     let binary = compilation
         .wasm
         .ok_or_else(|| Error::compile("Cargo emitted no worker WebAssembly library"))?;
@@ -132,7 +134,7 @@ fn artifact(
     };
     let root = publication.generated().join(directory);
     let package = root.join(layout::PACKAGE);
-    wasm::bindgen(bindgen, &binary, &package, layout::APP_NAME, debug, false)?;
+    wasm::bindgen(bindgen, &binary, &package, layout::APP_NAME, mode)?;
     if threaded {
         patch_thread_host(&package)?;
     }
@@ -209,7 +211,13 @@ pub(crate) fn prepare(cx: &Context, project: &Project) -> Result {
     };
     let directory = project.target.join(layout::WORKER_DISCOVERY);
     let bindgen = crate::toolchain::bindgen::resolve()?;
-    wasm::bindgen(&bindgen, &wasm, &directory, layout::APP_NAME, true, false)?;
+    wasm::bindgen(
+        &bindgen,
+        &wasm,
+        &directory,
+        layout::APP_NAME,
+        BuildMode::Debug,
+    )?;
     if capabilities(&directory)? == Some(true) {
         ensure_toolchain(cx, true)?;
         compile_worker(cx, project, Mode::Build { release: false }, true)?;

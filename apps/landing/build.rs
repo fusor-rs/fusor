@@ -59,7 +59,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let destination = Path::new("public/source").join(format!("{source}.txt"));
         // Watched too: a fresh checkout with a cached target/ lacks the copy.
         println!("cargo:rerun-if-changed={}", destination.display());
-        fs::create_dir_all(destination.parent().unwrap())?;
+        fs::create_dir_all(
+            destination
+                .parent()
+                .expect("source destinations include a file name"),
+        )?;
         if fs::read_to_string(&destination).ok().as_deref() != Some(&code) {
             fs::write(destination, &code)?;
         }
@@ -68,5 +72,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Path::new(&env::var("OUT_DIR")?).join("highlighted.rs"),
         generated,
     )?;
-    fusor_build::compile_app()
+    fusor_build::compile_app()?;
+    Ok(())
 }

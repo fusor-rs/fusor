@@ -41,7 +41,7 @@ fusor-build={path=${dep("fusor-build")}}
 [package.metadata.fusor]
 entry="web/index.html"
 `);
-  await writeFile(join(app, "build.rs"), "fn main()->Result<(),Box<dyn std::error::Error>>{fusor_build::compile_app()}\n");
+  await writeFile(join(app, "build.rs"), "fn main()->Result<(),fusor_build::BuildError>{fusor_build::compile_app()}\n");
   await writeFile(join(app, "src/lib.rs"), `use fusor::{FromInputs, Signal, signal};
 use fixture_components::{Panel, Row};
 use std::{cell::Cell, rc::Rc};

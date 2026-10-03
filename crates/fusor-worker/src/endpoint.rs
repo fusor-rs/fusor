@@ -1,7 +1,7 @@
 use crate::bridge::*;
 use crate::{
     Capability, WorkerError,
-    job::{Event, State},
+    job::{Admission, Event, JobKind, Requirement, State, Target},
     shared::{Codec, Payload, RemoteLeases},
 };
 use fusor::{ContextKey, Owner, OwnerHandle, Registration};
@@ -34,6 +34,37 @@ pub fn capabilities() -> Capabilities {
             shared_memory: false,
             hardware_parallelism: 1,
         }
+    }
+}
+
+pub(crate) const DEFAULT_QUEUE_CAPACITY: usize = 64;
+
+pub(crate) enum RuntimeMode {
+    Ordinary,
+    Pool {
+        threads: usize,
+        active: usize,
+        capacity: usize,
+    },
+}
+
+impl RuntimeMode {
+    fn validate(&self, owner: &OwnerHandle) -> Result<(), WorkerError> {
+        if owner.is_disposed() {
+            return Err(WorkerError::OwnerDisposed);
+        }
+        let caps = capabilities();
+        if !caps.dedicated_workers {
+            return Err(WorkerError::Unsupported {
+                capability: Capability::DedicatedWorkers,
+            });
+        }
+        if matches!(self, Self::Pool { .. }) && !caps.shared_memory {
+            return Err(WorkerError::Unsupported {
+                capability: Capability::SharedMemory,
+            });
+        }
+        Ok(())
     }
 }
 
@@ -87,27 +118,16 @@ pub(crate) enum Command {
     },
 }
 impl Endpoint {
-    pub fn create(
-        owner: &OwnerHandle,
-        pool: bool,
-        threads: usize,
-        active: usize,
-        capacity: usize,
-    ) -> Result<Rc<Self>, WorkerError> {
-        if owner.is_disposed() {
-            return Err(WorkerError::OwnerDisposed);
-        }
-        let caps = capabilities();
-        if !caps.dedicated_workers {
-            return Err(WorkerError::Unsupported {
-                capability: Capability::DedicatedWorkers,
-            });
-        }
-        if pool && !caps.shared_memory {
-            return Err(WorkerError::Unsupported {
-                capability: Capability::SharedMemory,
-            });
-        }
+    pub fn create(owner: &OwnerHandle, mode: RuntimeMode) -> Result<Rc<Self>, WorkerError> {
+        mode.validate(owner)?;
+        let (pool, threads, active, capacity) = match mode {
+            RuntimeMode::Ordinary => (false, 1, 1, DEFAULT_QUEUE_CAPACITY),
+            RuntimeMode::Pool {
+                threads,
+                active,
+                capacity,
+            } => (true, threads, active, capacity),
+        };
         let holder: Rc<RefCell<Weak<Self>>> = Rc::new(RefCell::new(Weak::new()));
         let weak = Rc::clone(&holder);
         let callback: ResponseCallback = Closure::new(move |data: String| {
@@ -162,7 +182,7 @@ impl Endpoint {
                 return Ok(Rc::clone(&runtime.endpoint));
             }
         }
-        let endpoint = Self::create(owner, false, 1, 1, 64)?;
+        let endpoint = Self::create(owner, RuntimeMode::Ordinary)?;
         let marker = Owner::child(owner);
         marker.commit();
         owner
@@ -174,51 +194,30 @@ impl Endpoint {
         Ok(endpoint)
     }
     pub fn submit(raw: &Rc<RefCell<State>>) -> Result<(), WorkerError> {
-        let (endpoint, owner, dedicated, required) = {
+        let (owner, target, requirement) = {
             let state = raw.borrow();
-            (
-                state.endpoint.upgrade(),
-                state.owner.clone(),
-                state.dedicated,
-                state.pool_required,
-            )
+            (state.owner.clone(), state.target.clone(), state.requirement)
         };
-        let endpoint = match endpoint {
-            Some(endpoint) => endpoint,
-            None if raw.borrow().bound => return Err(WorkerError::Terminated),
-            None if required => return Err(WorkerError::PoolRequired),
-            None if dedicated => Self::create(&owner, false, 1, 1, 64)?,
-            None => Self::ordinary(&owner)?,
-        };
-        if let Some(error) = endpoint.error.borrow().clone() {
-            return Err(error);
-        }
-        if required && !endpoint.pool {
-            return Err(WorkerError::PoolRequired);
-        }
+        let dedicated = matches!(target, Target::Dedicated);
+        let endpoint = Self::select(&owner, target, requirement)?;
         let id = endpoint
             .next
             .get()
             .checked_add(1)
             .expect("worker job identity exhausted");
         endpoint.next.set(id);
-        let encode = raw.borrow_mut().arguments.take().expect("job submits once");
-        let arguments = encode(&endpoint.codec)?;
-        if let Some(error) = raw.borrow().abort.clone() {
-            for argument in arguments {
-                endpoint.codec.discard(argument);
-            }
-            return Err(error);
-        }
+        let arguments = endpoint.encode_arguments(raw)?;
         let frame = {
             let mut state = raw.borrow_mut();
-            state.endpoint = Rc::downgrade(&endpoint);
-            state.id = Some(id);
+            state.admission = Some(Admission::new(id, &endpoint));
             Command::Call {
                 id,
                 entry: state.entry,
-                instance: state.instance,
-                stream: state.stream,
+                instance: match state.target {
+                    Target::Bound { instance, .. } => instance,
+                    _ => 0,
+                },
+                stream: state.kind == JobKind::Stream,
                 capacity: state.capacity,
                 batch_bytes: state.batch_bytes,
                 arguments,
@@ -236,10 +235,46 @@ impl Endpoint {
         }
         // A dedicated constructor must remain owned through initialization.
         if dedicated {
-            raw.borrow_mut().keepalive = Some(endpoint);
+            raw.borrow_mut()
+                .admission
+                .as_mut()
+                .expect("sending a call records its admission")
+                .retain(endpoint);
         }
         Ok(())
     }
+    fn select(
+        owner: &OwnerHandle,
+        target: Target,
+        requirement: Requirement,
+    ) -> Result<Rc<Self>, WorkerError> {
+        let endpoint = match target {
+            Target::Bound { endpoint, .. } => endpoint.upgrade().ok_or(WorkerError::Terminated)?,
+            _ if requirement == Requirement::Pool => return Err(WorkerError::PoolRequired),
+            Target::Dedicated => Self::create(owner, RuntimeMode::Ordinary)?,
+            Target::Shared => Self::ordinary(owner)?,
+        };
+        if let Some(error) = endpoint.error.borrow().clone() {
+            return Err(error);
+        }
+        if requirement == Requirement::Pool && !endpoint.pool {
+            return Err(WorkerError::PoolRequired);
+        }
+        Ok(endpoint)
+    }
+
+    fn encode_arguments(&self, raw: &Rc<RefCell<State>>) -> Result<Vec<Payload>, WorkerError> {
+        let encode = raw.borrow_mut().take_arguments();
+        let arguments = encode(&self.codec)?;
+        if let Some(error) = raw.borrow().completion.error().cloned() {
+            for argument in arguments {
+                self.codec.discard(argument);
+            }
+            return Err(error);
+        }
+        Ok(arguments)
+    }
+
     fn receive(&self, data: &str) {
         let response = match serde_json::from_str::<Response>(data) {
             Ok(response) => response,

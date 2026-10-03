@@ -5,13 +5,11 @@ use crate::ExtractError;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
-    env,
-    error::Error,
-    fs,
+    env, fs,
     path::{Component, Path, PathBuf},
 };
 
-type Result<T> = std::result::Result<T, Box<dyn Error>>;
+type Result<T> = std::result::Result<T, crate::BuildError>;
 
 /// Version of the backend build manifest and namespaced include layout.
 pub const OUTPUT_VERSION: u32 = 1;
@@ -322,8 +320,10 @@ mod tests {
                 message: "unsupported operation".into(),
             })
         });
+        let error = result.unwrap_err();
+        assert!(matches!(error, crate::BuildError::Source(_)), "{error}");
         assert_eq!(
-            result.unwrap_err().to_string(),
+            error.to_string(),
             format!(
                 "{}:4:2: unsupported operation",
                 inputs.sources()[0].canonical().display()

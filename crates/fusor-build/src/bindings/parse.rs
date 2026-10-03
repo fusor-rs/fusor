@@ -366,6 +366,16 @@ fn replace_tag(span: &Span<usize>, replacement: impl Into<String>) -> Edit {
     }
 }
 
+struct ElementRegion {
+    id: ElementId,
+    region: Option<Region>,
+}
+
+struct ContentOwner {
+    fragment: usize,
+    invocation: (usize, usize),
+}
+
 struct TextHost {
     opening: Range<usize>,
     opening_edit: Option<usize>,
@@ -391,6 +401,55 @@ struct Lexicals {
 }
 
 impl Lexicals {
+    fn case(
+        &self,
+        source: &str,
+        tag: &StartTag<usize>,
+        builtin: BuiltIn,
+        rows: &[(Rust, Rust)],
+    ) -> Result<NewCase, ExtractError> {
+        let input = TagInput::new(source, tag, builtin.spelling());
+        let (pattern, names) = if builtin == BuiltIn::Case {
+            super::control::pattern(&input)?
+        } else {
+            input.accepts(&[], "no attributes")?;
+            (
+                Rust::synthetic(quote::quote! { false }, tag.span.start),
+                Vec::new(),
+            )
+        };
+        for alias in &names {
+            if self.shadows(alias, rows) {
+                return Err(error(
+                    source,
+                    alias.offset,
+                    "Case binding cannot shadow an enclosing local",
+                ));
+            }
+        }
+        Ok(NewCase {
+            pattern,
+            async_locals: self.async_locals.iter().chain(&names).cloned().collect(),
+            route_locals: self.route_locals.iter().chain(&names).cloned().collect(),
+            names,
+        })
+    }
+
+    fn with_route(mut self, alias: Option<&Rust>) -> Self {
+        if let Some(alias) = alias {
+            self.async_locals.push(alias.clone());
+            self.route_locals.push(alias.clone());
+        }
+        self
+    }
+
+    fn shadows(&self, name: &Rust, rows: &[(Rust, Rust)]) -> bool {
+        self.async_locals
+            .iter()
+            .chain(rows.iter().flat_map(|(item, index)| [item, index]))
+            .any(|other| other.same_tokens(name))
+    }
+
     /// A component opened here captures every lexical local visible at its tag.
     fn open(&self, component: Component) -> Component {
         Component {
@@ -502,7 +561,10 @@ impl Parser<'_> {
         if self.pending_module.is_some() {
             if let Token::EndTag(tag) = &token {
                 if &*tag.name == b"script" {
-                    let (owner, pending) = self.pending_module.take().unwrap();
+                    let (owner, pending) = self
+                        .pending_module
+                        .take()
+                        .expect("a pending script consumes its closing tag");
                     let (module, edit) =
                         pending.finish(self.source, tag.span.start..tag.span.end)?;
                     self.edits.push(edit);
@@ -657,24 +719,9 @@ impl Parser<'_> {
 
     fn start_async(&mut self, tag: StartTag<usize>, cx: TagContext) -> Result<(), ExtractError> {
         let source = self.source;
-        let Self {
-            stack,
-            components,
-            edits,
-            node,
-            ..
-        } = self;
         let spelled = cx.spelled();
-        let TagContext {
-            name,
-            parent,
-            builtin,
-            lexicals,
-            ..
-        } = cx;
-        let Lexicals { async_locals, .. } = &lexicals;
-        let parent = parent.map(|index| &stack[index]);
-        let awaiting = builtin == Some(BuiltIn::Await);
+        let parent = cx.parent(&self.stack);
+        let awaiting = cx.builtin == Some(BuiltIn::Await);
         if !spelled {
             return Err(error(
                 source,
@@ -689,28 +736,25 @@ impl Parser<'_> {
                 "Async and Await require rendered component HTML",
             )
         })?;
-        if components[owner].render != RenderTarget::Browser {
+        if self.components[owner].render != RenderTarget::Browser {
             return Err(error(
                 source,
                 tag.span.start,
                 "Async and Await require browser templates; use an island for server-rendered async views",
             ));
         }
-        if !awaiting && stack.iter().any(|frame| frame.in_coherent_region()) {
+        if !awaiting && self.stack.iter().any(|frame| frame.in_coherent_region()) {
             return Err(error(
                 source,
                 tag.span.start,
                 "nested Async boundaries are unsupported; Await automatically uses its enclosing boundary",
             ));
         }
-        let input = TagInput::new(source, &tag, builtin.expect("async built-in").spelling());
+        let input = TagInput::new(source, &tag, cx.builtin.expect("async built-in").spelling());
         let (value, kind) = super::async_tags::inputs(&input, awaiting)?;
         if kind.alias().is_some_and(|alias| {
-            async_locals.iter().any(|name| name.same_tokens(alias))
-                || components[owner]
-                    .row_locals
-                    .iter()
-                    .any(|(item, index)| item.same_tokens(alias) || index.same_tokens(alias))
+            cx.lexicals
+                .shadows(alias, &self.components[owner].row_locals)
         }) {
             return Err(error(
                 source,
@@ -718,13 +762,13 @@ impl Parser<'_> {
                 "choose a distinct Await name; it cannot shadow an enclosing Await or ForEach binding",
             ));
         }
-        edits.push(replace_tag(&tag.span, String::new()));
-        stack.push(Frame::owned(
-            name,
+        self.edits.push(replace_tag(&tag.span, String::new()));
+        self.stack.push(Frame::owned(
+            cx.name,
             owner,
-            ElementId::new(*node),
+            ElementId::new(self.node),
             FrameKind::Async(AsyncFrame {
-                start: components[owner].bindings.len(),
+                start: self.components[owner].bindings.len(),
                 value,
                 kind,
                 root: AsyncRoot::Missing,
@@ -813,21 +857,13 @@ impl Parser<'_> {
         Ok(())
     }
 
-    fn start_foreach(&mut self, tag: StartTag<usize>, cx: TagContext) -> Result<(), ExtractError> {
+    fn foreach_parent(
+        &self,
+        tag: &StartTag<usize>,
+        cx: &TagContext,
+    ) -> Result<(usize, ElementId), ExtractError> {
         let source = self.source;
-        let first_component = self.first_component;
-        let Self {
-            stack,
-            components,
-            template_roots,
-            edits,
-            ..
-        } = self;
-        let TagContext {
-            parent, lexicals, ..
-        } = cx;
-        let Lexicals { async_locals, .. } = &lexicals;
-        let parent = parent.map(|index| &stack[index]);
+        let parent = cx.parent(&self.stack);
         let parent = parent.ok_or_else(|| {
             error(
                 source,
@@ -849,9 +885,18 @@ impl Parser<'_> {
                 "put ForEach inside a native HTML container",
             ));
         }
+        Ok((caller, parent.node))
+    }
+
+    fn start_foreach(&mut self, tag: StartTag<usize>, cx: TagContext) -> Result<(), ExtractError> {
+        let source = self.source;
+        let first_component = self.first_component;
+        let (caller, node) = self.foreach_parent(&tag, &cx)?;
         let (items, key, item, index) =
             super::foreach::inputs(&TagInput::new(source, &tag, BuiltIn::ForEach.spelling()))?;
-        if async_locals
+        if cx
+            .lexicals
+            .async_locals
             .iter()
             .any(|alias| alias.same_tokens(&item) || alias.same_tokens(&index))
         {
@@ -862,20 +907,20 @@ impl Parser<'_> {
             ));
         }
 
-        let id = ComponentId::new(first_component + components.len());
-        let body = components.len();
-        let mut row_locals = components[caller].row_locals.clone();
+        let id = ComponentId::new(first_component + self.components.len());
+        let body = self.components.len();
+        let mut row_locals = self.components[caller].row_locals.clone();
         row_locals.push((item, index));
-        let render = components[caller].render;
-        components[caller].bindings.push(Binding::ForEach {
-            node: parent.node,
+        let render = self.components[caller].render;
+        self.components[caller].bindings.push(Binding::ForEach {
+            node,
             items,
             key,
             body,
         });
-        components.push(Component {
+        self.components.push(Component {
             row_locals,
-            ..lexicals.open(Component::new(
+            ..cx.lexicals.open(Component::new(
                 id,
                 Rust::ident(&format!("__FusorForEach{}", id.index()), tag.span.start),
                 ComponentShape::Row,
@@ -883,12 +928,13 @@ impl Parser<'_> {
                 tag.span.start..tag.span.end,
             ))
         });
-        template_roots.insert(body, 0);
-        edits.push(replace_tag(&tag.span, markup::template_open(id)));
-        stack.push(Frame::owned(
+        self.template_roots.insert(body, 0);
+        self.edits
+            .push(replace_tag(&tag.span, markup::template_open(id)));
+        self.stack.push(Frame::owned(
             "foreach".into(),
             body,
-            parent.node,
+            node,
             FrameKind::ForEach,
         ));
         Ok(())
@@ -918,7 +964,9 @@ impl Parser<'_> {
         if projected.is_none()
             && parent.is_some_and(|frame| {
                 matches!(frame.kind, FrameKind::Invocation(_))
-                    && named_content.contains(&frame.owner.unwrap())
+                    && frame
+                        .owner
+                        .is_some_and(|owner| named_content.contains(&owner))
             })
         {
             return Err(error(source, tag.span.start, MIXED_CONTENT));
@@ -963,48 +1011,20 @@ impl Parser<'_> {
     ) -> Result<Frame, ExtractError> {
         let source = self.source;
         let first_component = self.first_component;
-        let Self {
-            stack,
-            components,
-            edits,
-            node,
-            mount,
-            ..
-        } = self;
-        let TagContext {
-            name,
-            parent,
-            lexicals,
-            builtin,
-            ..
-        } = cx;
-        let Lexicals {
-            snapshot_locals,
-            route_locals,
-            async_locals,
-            ..
-        } = &lexicals;
-        let parent = parent.map(|index| &stack[index]);
-        if !branch_allowed(stack, parent) {
+        let parent = cx.parent(&self.stack);
+        if !branch_allowed(&self.stack, parent) {
             return Err(error(
                 source,
                 tag.span.start,
                 "If and Match belong inside an ordinary native HTML container, outside table/select/SVG/MathML parsing contexts",
             ));
         }
-        let input = TagInput::new(source, &tag, builtin.expect("control built-in").spelling());
-        let attribute = if builtin == Some(BuiltIn::If) {
-            "condition"
-        } else {
-            "value"
-        };
-        input.accepts(&[attribute], &format!("only {attribute}"))?;
-        let value = input.expression(attribute)?;
-        let point = MountId::new(*mount);
-        *mount += 1;
-        let binding = components[owner].bindings.len();
-        let snapshots = branch_snapshots(stack, snapshot_locals);
-        components[owner].bindings.push(Binding::Branch {
+        let value = super::control::value(source, &tag, cx.builtin.expect("control built-in"))?;
+        let point = MountId::new(self.mount);
+        self.mount += 1;
+        let binding = self.components[owner].bindings.len();
+        let snapshots = branch_snapshots(&self.stack, &cx.lexicals.snapshot_locals);
+        self.components[owner].bindings.push(Binding::Branch {
             point,
             value,
             cases: Vec::new(),
@@ -1012,14 +1032,20 @@ impl Parser<'_> {
         });
         let branch = BranchRef { owner, binding };
         // If's own content is its first case; Match's cases are its children.
-        let (frame_owner, control) = if builtin == Some(BuiltIn::If) {
+        let (frame_owner, control) = if cx.builtin == Some(BuiltIn::If) {
             let case = NewCase {
                 pattern: Rust::synthetic(quote::quote! { true }, tag.span.start),
                 names: Vec::new(),
-                async_locals: async_locals.clone(),
-                route_locals: route_locals.clone(),
+                async_locals: cx.lexicals.async_locals.clone(),
+                route_locals: cx.lexicals.route_locals.clone(),
             };
-            let body = push_case(components, first_component, branch, tag.span.end, case);
+            let body = push_case(
+                &mut self.components,
+                first_component,
+                branch,
+                tag.span.end,
+                case,
+            );
             let control = ControlFrame::If {
                 branch,
                 phase: IfPhase::Then,
@@ -1028,11 +1054,12 @@ impl Parser<'_> {
         } else {
             (owner, ControlFrame::Match { branch })
         };
-        edits.push(replace_tag(&tag.span, markup::mount_point(point)));
+        self.edits
+            .push(replace_tag(&tag.span, markup::mount_point(point)));
         Ok(Frame::owned(
-            name,
+            cx.name,
             frame_owner,
-            ElementId::new(*node),
+            ElementId::new(self.node),
             FrameKind::Control(control),
         ))
     }
@@ -1041,27 +1068,8 @@ impl Parser<'_> {
     fn open_case(&mut self, tag: StartTag<usize>, cx: TagContext) -> Result<Frame, ExtractError> {
         let source = self.source;
         let first_component = self.first_component;
-        let Self {
-            stack,
-            components,
-            edits,
-            node,
-            ..
-        } = self;
-        let TagContext {
-            name,
-            parent,
-            lexicals,
-            builtin,
-            ..
-        } = cx;
-        let Lexicals {
-            route_locals,
-            async_locals,
-            ..
-        } = &lexicals;
-        let parent = parent.map(|index| &stack[index]);
-        let branch = case_parent(parent, builtin).ok_or_else(|| {
+        let parent = cx.parent(&self.stack);
+        let branch = case_parent(parent, cx.builtin).ok_or_else(|| {
             error(
                 source,
                 tag.span.start,
@@ -1069,61 +1077,46 @@ impl Parser<'_> {
             )
         })?;
         let caller = branch.owner;
-        let input = TagInput::new(source, &tag, builtin.expect("control built-in").spelling());
-        let (pattern, names) = if builtin == Some(BuiltIn::Case) {
-            super::control::pattern(&input)?
-        } else {
-            input.accepts(&[], "no attributes")?;
-            (
-                Rust::synthetic(quote::quote! { false }, tag.span.start),
-                Vec::new(),
-            )
-        };
-        for alias in &names {
-            if async_locals
-                .iter()
-                .chain(
-                    components[caller]
-                        .row_locals
-                        .iter()
-                        .flat_map(|(a, b)| [a, b]),
-                )
-                .any(|other| other.same_tokens(alias))
-            {
-                return Err(error(
-                    source,
-                    alias.offset,
-                    "Case binding cannot shadow an enclosing local",
-                ));
-            }
-        }
-        let case = NewCase {
-            pattern,
-            names: names.clone(),
-            async_locals: async_locals.iter().chain(&names).cloned().collect(),
-            route_locals: route_locals.iter().chain(&names).cloned().collect(),
-        };
-        let frame_owner = push_case(components, first_component, branch, tag.span.end, case);
-        let control = if builtin == Some(BuiltIn::Case) {
+        let case = cx.lexicals.case(
+            source,
+            &tag,
+            cx.builtin.expect("control built-in"),
+            &self.components[caller].row_locals,
+        )?;
+        let names = case.names.clone();
+        let frame_owner = push_case(
+            &mut self.components,
+            first_component,
+            branch,
+            tag.span.end,
+            case,
+        );
+        let control = if cx.builtin == Some(BuiltIn::Case) {
             ControlFrame::Case { aliases: names }
         } else {
             ControlFrame::Else
         };
-        if builtin == Some(BuiltIn::Else) {
-            let parent = stack.last_mut().expect("If frame");
-            components[parent.owner.unwrap()].range.end = tag.span.start;
-            let FrameKind::Control(ControlFrame::If { phase, .. }) = &mut parent.kind else {
-                unreachable!("validated If parent")
-            };
-            *phase = IfPhase::Else;
+        if cx.builtin == Some(BuiltIn::Else) {
+            self.start_else(tag.span.start);
         }
-        edits.push(replace_tag(&tag.span, String::new()));
+        self.edits.push(replace_tag(&tag.span, String::new()));
         Ok(Frame::owned(
-            name,
+            cx.name,
             frame_owner,
-            ElementId::new(*node),
+            ElementId::new(self.node),
             FrameKind::Control(control),
         ))
+    }
+
+    fn start_else(&mut self, offset: usize) {
+        let parent = self.stack.last_mut().expect("If frame");
+        self.components[parent.owner.expect("an If frame owns its then fragment")]
+            .range
+            .end = offset;
+        let FrameKind::Control(ControlFrame::If { phase, .. }) = &mut parent.kind else {
+            unreachable!("validated If parent")
+        };
+        *phase = IfPhase::Else;
     }
 
     fn start_children(&mut self, tag: StartTag<usize>, cx: TagContext) -> Result<(), ExtractError> {
@@ -1276,26 +1269,7 @@ impl Parser<'_> {
     ) -> Result<(), ExtractError> {
         let source = self.source;
         let first_component = self.first_component;
-        let Self {
-            stack,
-            components,
-            edits,
-            node,
-            ..
-        } = self;
-        let TagContext {
-            name,
-            parent,
-            lexicals,
-            ..
-        } = cx;
-        let Lexicals {
-            snapshot_locals,
-            route_locals,
-            async_locals,
-            ..
-        } = &lexicals;
-        let parent = parent.map(|index| &stack[index]);
+        let parent = cx.parent(&self.stack);
         let Some(FrameKind::Router { binding }) = parent.map(|frame| &frame.kind) else {
             return Err(error(
                 source,
@@ -1306,16 +1280,13 @@ impl Parser<'_> {
         let binding = *binding;
         let super::router_tags::Declaration { path, alias, names } =
             super::router_tags::route(&TagInput::new(source, &tag, BuiltIn::Route.spelling()))?;
-        let Binding::Router { routes, .. } = &components[owner].bindings[binding] else {
+        let Binding::Router { routes, .. } = &self.components[owner].bindings[binding] else {
             unreachable!()
         };
         super::router_tags::validate(source, tag.span.start, routes, path.as_deref())?;
         if alias.as_ref().is_some_and(|alias| {
-            async_locals.iter().any(|other| other.same_tokens(alias))
-                || components[owner]
-                    .row_locals
-                    .iter()
-                    .any(|(a, b)| [a, b].iter().any(|other| other.same_tokens(alias)))
+            cx.lexicals
+                .shadows(alias, &self.components[owner].row_locals)
         }) {
             return Err(error(
                 source,
@@ -1323,28 +1294,20 @@ impl Parser<'_> {
                 "Route binding cannot shadow an enclosing local",
             ));
         }
-        let index = components.len();
+        let index = self.components.len();
         let id = ComponentId::new(first_component + index);
-        let mut captured_locals = async_locals.clone();
-        let mut route_bindings = route_locals.clone();
-        if let Some(alias) = &alias {
-            captured_locals.push(alias.clone());
-            route_bindings.push(alias.clone());
-        }
-        components.push(Component {
-            row_locals: components[owner].row_locals.clone(),
-            async_locals: captured_locals,
-            route_locals: route_bindings,
-            snapshot_locals: snapshot_locals.clone(),
-            ..Component::new(
-                id,
-                Rust::ident(&format!("__FusorRoute{}", id.index()), tag.span.start),
-                ComponentShape::Fragment(components[owner].ty.clone()),
-                RenderTarget::Browser,
-                tag.span.end..tag.span.end,
-            )
-        });
-        let Binding::Router { routes, .. } = &mut components[owner].bindings[binding] else {
+        self.components
+            .push(cx.lexicals.with_route(alias.as_ref()).open(Component {
+                row_locals: self.components[owner].row_locals.clone(),
+                ..Component::new(
+                    id,
+                    Rust::ident(&format!("__FusorRoute{}", id.index()), tag.span.start),
+                    ComponentShape::Fragment(self.components[owner].ty.clone()),
+                    RenderTarget::Browser,
+                    tag.span.end..tag.span.end,
+                )
+            }));
+        let Binding::Router { routes, .. } = &mut self.components[owner].bindings[binding] else {
             unreachable!()
         };
         routes.push(RouteBranch {
@@ -1353,11 +1316,11 @@ impl Parser<'_> {
             names,
             body: index,
         });
-        edits.push(replace_tag(&tag.span, String::new()));
-        stack.push(Frame::owned(
-            name,
+        self.edits.push(replace_tag(&tag.span, String::new()));
+        self.stack.push(Frame::owned(
+            cx.name,
             index,
-            ElementId::new(*node),
+            ElementId::new(self.node),
             FrameKind::Route { alias },
         ));
         Ok(())
@@ -1420,30 +1383,13 @@ impl Parser<'_> {
         Ok(())
     }
 
-    fn start_invocation(
+    fn invocation_owner(
         &mut self,
-        tag: StartTag<usize>,
-        cx: TagContext,
-    ) -> Result<(), ExtractError> {
+        tag: &StartTag<usize>,
+        cx: &TagContext,
+    ) -> Result<usize, ExtractError> {
         let source = self.source;
-        let first_component = self.first_component;
-        let Self {
-            stack,
-            components,
-            template_roots,
-            edits,
-            node,
-            mount,
-            ..
-        } = self;
-        let TagContext {
-            name,
-            authored_name,
-            parent,
-            lexicals,
-            ..
-        } = cx;
-        let parent = parent.map(|index| &stack[index]);
+        let parent = cx.parent(&self.stack);
         let owner = parent.and_then(Frame::rendered_owner).ok_or_else(|| {
             error(
                 source,
@@ -1459,7 +1405,7 @@ impl Parser<'_> {
             ));
         }
         if parent.is_some_and(|frame| matches!(frame.kind, FrameKind::ForEach)) {
-            *template_roots.entry(owner).or_insert(0) += 1;
+            *self.template_roots.entry(owner).or_insert(0) += 1;
         }
         if tag.self_closing {
             return Err(error(
@@ -1468,9 +1414,21 @@ impl Parser<'_> {
                 "component tags need an explicit closing tag",
             ));
         }
-        let point = MountId::new(*mount);
-        *mount += 1;
-        let binding = components[owner].bindings.len();
+        Ok(owner)
+    }
+
+    fn start_invocation(
+        &mut self,
+        tag: StartTag<usize>,
+        cx: TagContext,
+    ) -> Result<(), ExtractError> {
+        let source = self.source;
+        let first_component = self.first_component;
+        let owner = self.invocation_owner(&tag, &cx)?;
+        let parent = cx.parent(&self.stack);
+        let point = MountId::new(self.mount);
+        self.mount += 1;
+        let binding = self.components[owner].bindings.len();
         let mut invocation = super::tags::invocation(source, &tag, point, false)?;
         if parent.is_some_and(|frame| matches!(frame.kind, FrameKind::ForEach))
             && matches!(
@@ -1487,14 +1445,14 @@ impl Parser<'_> {
                 "ForEach owns row identity; put conditional or separately keyed components inside a native row element",
             ));
         }
-        let fragment_index = components.len();
+        let fragment_index = self.components.len();
         let id = ComponentId::new(first_component + fragment_index);
-        let capture = components[owner].ty.clone();
-        let render = components[owner].render;
-        let row_locals = components[owner].row_locals.clone();
-        components.push(Component {
+        let capture = self.components[owner].ty.clone();
+        let render = self.components[owner].render;
+        let row_locals = self.components[owner].row_locals.clone();
+        self.components.push(Component {
             row_locals,
-            ..lexicals.open(Component::new(
+            ..cx.lexicals.open(Component::new(
                 id,
                 Rust::ident(&format!("__FusorChildren{}", id.index()), tag.span.start),
                 ComponentShape::Fragment(capture),
@@ -1505,15 +1463,16 @@ impl Parser<'_> {
         if let Binding::Invocation { children, .. } = &mut invocation {
             *children = Some(fragment_index);
         }
-        components[owner].bindings.push(invocation);
-        edits.push(replace_tag(&tag.span, markup::mount_point(point)));
-        stack.push(Frame::owned(
-            name,
+        self.components[owner].bindings.push(invocation);
+        self.edits
+            .push(replace_tag(&tag.span, markup::mount_point(point)));
+        self.stack.push(Frame::owned(
+            cx.name,
             fragment_index,
-            ElementId::new(*node),
+            ElementId::new(self.node),
             FrameKind::Invocation(InvocationFrame {
                 binding,
-                authored: authored_name.to_owned(),
+                authored: cx.authored_name.to_owned(),
                 caller: owner,
             }),
         ));
@@ -1537,7 +1496,15 @@ impl Parser<'_> {
         self.lower_element(&tag, &cx, &owner)?;
         self.mark_async_roots(&tag, &cx.name, element_id)?;
         if !void_element(&cx.name) && !tag.self_closing {
-            self.push_element(&tag, cx, owner, region, element_id);
+            self.push_element(
+                &tag,
+                cx.name,
+                owner,
+                ElementRegion {
+                    id: element_id,
+                    region,
+                },
+            );
         }
         Ok(())
     }
@@ -1549,20 +1516,64 @@ impl Parser<'_> {
         cx: &TagContext,
     ) -> Result<ElementOwner, ExtractError> {
         let source = self.source;
-        let blocks = self.blocks;
-        let Self {
-            stack,
-            components,
-            template_roots,
-            ..
-        } = self;
-        let name = &cx.name;
-        let parent = cx.parent(stack);
-        let projected = tag.attributes.get(b"rust:content".as_slice());
+        let ElementOwner {
+            mut owner,
+            mut inert,
+            mut component_id,
+            rust_script,
+        } = self.inherit_element(tag, cx)?;
+        let parent = cx.parent(&self.stack);
         let caller = parent.and_then(|frame| match &frame.kind {
-            FrameKind::Invocation(invocation) => Some(invocation),
+            FrameKind::Invocation(invocation) => Some((invocation.caller, invocation.binding)),
             _ => None,
         });
+        let projected = tag.attributes.get(b"rust:content".as_slice());
+        let declaration = tag.attributes.get(b"rust:component".as_slice());
+        if let Some(content) = projected {
+            self.check_projected(tag, owner)?;
+            let index = self.open_content(
+                tag,
+                cx,
+                content,
+                ContentOwner {
+                    fragment: owner.expect("fragment owner"),
+                    invocation: caller.expect("validated caller"),
+                },
+            )?;
+            owner = Some(index);
+            component_id = Some(self.components[index].id);
+        } else if let Some(ty) = declaration {
+            if owner.is_some() || inert {
+                return Err(error(
+                    source,
+                    tag.span.start,
+                    "declare components separately; compose them with component tags",
+                ));
+            }
+
+            let index = self.declare_component(tag, cx, ty)?;
+            owner = Some(index);
+            component_id = Some(self.components[index].id);
+        } else if cx.name == "template" {
+            inert = true;
+        }
+        Ok(ElementOwner {
+            owner,
+            inert,
+            component_id,
+            rust_script,
+        })
+    }
+
+    fn inherit_element(
+        &mut self,
+        tag: &StartTag<usize>,
+        cx: &TagContext,
+    ) -> Result<ElementOwner, ExtractError> {
+        let source = self.source;
+        let blocks = self.blocks;
+        let name = &cx.name;
+        let parent = cx.parent(&self.stack);
         if parent.is_some_and(|frame| frame.owns_children()) {
             return Err(error(source, tag.span.start, OWNED_EMPTY));
         }
@@ -1571,14 +1582,14 @@ impl Parser<'_> {
                 .iter()
                 .any(|block| block.element.start == tag.span.start)
             {
-                *template_roots
+                *self
+                    .template_roots
                     .entry(parent.owner.expect("component root"))
                     .or_insert(0) += 1;
             }
         }
-        let mut owner = parent.and_then(|frame| frame.owner);
-        let mut inert = parent.is_some_and(|frame| frame.inert());
-        let declaration = tag.attributes.get(b"rust:component".as_slice());
+        let owner = parent.and_then(|frame| frame.owner);
+        let inert = parent.is_some_and(|frame| frame.inert());
         // Rust script source metadata is consumed by the extractor, not
         // by the component binding language, including scripts in templates.
         let rust_script = blocks
@@ -1586,9 +1597,9 @@ impl Parser<'_> {
             .any(|block| block.element.start == tag.span.start);
         if rust_script
             && owner.is_some_and(|index| {
-                components[index].capture().is_some()
-                    || components[index].inline()
-                    || components[index].app().is_some()
+                self.components[index].capture().is_some()
+                    || self.components[index].inline()
+                    || self.components[index].app().is_some()
             })
         {
             return Err(error(
@@ -1609,20 +1620,7 @@ impl Parser<'_> {
                 "App requires a native rendered HTML root; put Rust scripts outside App",
             ));
         }
-        let mut component_id = app_root.then(|| components[owner.expect("App owner")].id);
-        if let Some(content) = projected {
-            let caller = caller.map(|caller| (caller.caller, caller.binding));
-            self.check_projected(tag, owner)?;
-            let index = self.open_content(tag, cx, content, owner, caller)?;
-            owner = Some(index);
-            component_id = Some(self.components[index].id);
-        } else if let Some(ty) = declaration {
-            let index = self.declare_component(tag, cx, ty, owner, inert)?;
-            owner = Some(index);
-            component_id = Some(self.components[index].id);
-        } else if name == "template" {
-            inert = true;
-        }
+        let component_id = app_root.then(|| self.components[owner.expect("App owner")].id);
         Ok(ElementOwner {
             owner,
             inert,
@@ -1658,31 +1656,19 @@ impl Parser<'_> {
         Ok(())
     }
 
-    /// A `rust:content` template becomes a content component of its invocation.
-    fn open_content(
+    fn check_content_layout(
         &mut self,
         tag: &StartTag<usize>,
-        cx: &TagContext,
-        content: &Spanned<HtmlString, usize>,
-        owner: Option<usize>,
-        caller: Option<(usize, usize)>,
-    ) -> Result<usize, ExtractError> {
+        fragment_index: usize,
+    ) -> Result<(), ExtractError> {
         let source = self.source;
-        let first_component = self.first_component;
-        let Self {
-            components,
-            named_content,
-            template_roots,
-            ..
-        } = self;
-        let TagContext { lexicals, .. } = cx;
-        let fragment = &mut components[owner.expect("fragment owner")];
-        if !named_content.contains(&owner.expect("fragment owner"))
+        let fragment = &mut self.components[fragment_index];
+        if !self.named_content.contains(&fragment_index)
             && !crate::html::is_blank(&source[fragment.range.start..tag.span.start])
         {
             return Err(error(source, tag.span.start, MIXED_CONTENT));
         }
-        named_content.insert(owner.expect("fragment owner"));
+        self.named_content.insert(fragment_index);
         if tag.attributes.len() != 1 {
             return Err(error(
                 source,
@@ -1690,12 +1676,32 @@ impl Parser<'_> {
                 "a projected template only accepts rust:content; put HTML attributes on its root",
             ));
         }
+        Ok(())
+    }
+
+    /// A `rust:content` template becomes a content component of its invocation.
+    fn open_content(
+        &mut self,
+        tag: &StartTag<usize>,
+        cx: &TagContext,
+        content: &Spanned<HtmlString, usize>,
+        owner: ContentOwner,
+    ) -> Result<usize, ExtractError> {
+        self.check_content_layout(tag, owner.fragment)?;
+        let source = self.source;
+        let first_component = self.first_component;
+        let Self {
+            components,
+            template_roots,
+            ..
+        } = self;
+        let TagContext { lexicals, .. } = cx;
         let field = super::tags::field(
             source,
             &String::from_utf8_lossy(content),
             crate::html::value_start(source, content.span.start),
         )?;
-        let (caller_owner, invocation) = caller.expect("validated caller");
+        let (caller_owner, invocation) = owner.invocation;
         let id = ComponentId::new(first_component + components.len());
         let ty = Rust::ident(&format!("__FusorContent{}", id.index()), tag.span.start);
         let capture = components[caller_owner]
@@ -1737,8 +1743,6 @@ impl Parser<'_> {
         tag: &StartTag<usize>,
         cx: &TagContext,
         ty: &Spanned<HtmlString, usize>,
-        owner: Option<usize>,
-        inert: bool,
     ) -> Result<usize, ExtractError> {
         let source = self.source;
         let first_component = self.first_component;
@@ -1749,13 +1753,6 @@ impl Parser<'_> {
             ..
         } = self;
         let TagContext { name, lexicals, .. } = cx;
-        if owner.is_some() || inert {
-            return Err(error(
-                source,
-                tag.span.start,
-                "declare components separately; compose them with component tags",
-            ));
-        }
         let ty = String::from_utf8_lossy(ty).trim().to_owned();
         if ty.is_empty() || !component_types.insert(ty.clone()) {
             return Err(error(
@@ -1945,12 +1942,14 @@ impl Parser<'_> {
                 source,
                 tag,
                 &mut components[index],
-                ElementId::new(*node),
-                component_id,
-                foreach_hosts.contains(&tag.span.start),
-                stack
-                    .last()
-                    .is_some_and(|frame| matches!(frame.kind, FrameKind::Async(_))),
+                native_attributes::ElementContext {
+                    node: ElementId::new(*node),
+                    component_id,
+                    foreach_host: foreach_hosts.contains(&tag.span.start),
+                    async_root: stack
+                        .last()
+                        .is_some_and(|frame| matches!(frame.kind, FrameKind::Async(_))),
+                },
             )? {
                 edits.push(replace_tag(&tag.span, replacement));
                 *node += 1;
@@ -1986,68 +1985,75 @@ impl Parser<'_> {
         Ok(())
     }
 
-    fn push_element(
-        &mut self,
+    fn text_host(
+        &self,
         tag: &StartTag<usize>,
-        cx: TagContext,
+        name: &str,
         element: ElementOwner,
-        region: Option<Region>,
         element_id: ElementId,
-    ) {
-        let Self {
-            stack,
-            components,
-            edits,
-            foreach_hosts,
-            ..
-        } = self;
-        let name = cx.name;
-        let ElementOwner {
-            owner,
-            inert,
-            component_id,
-            rust_script,
-        } = element;
-        let text_host = owner
+    ) -> Option<TextHost> {
+        element
+            .owner
             .filter(|index| {
-                !inert
-                    && !rust_script
+                !element.inert
+                    && !element.rust_script
                     && !name.contains('-')
                     // Leading newlines in pre and listing, and noscript's
                     // scripting-dependent parsing, keep them out of direct text.
-                    && !text_only_element(&name)
-                    && !matches!(name.as_str(), "template" | "pre" | "listing" | "noscript")
-                    && !foreach_hosts.contains(&tag.span.start)
+                    && !text_only_element(name)
+                    && !matches!(name, "template" | "pre" | "listing" | "noscript")
+                    && !self.foreach_hosts.contains(&tag.span.start)
                     && !tag.attributes.contains_key(b"rust:slot".as_slice())
                     && !tag.attributes.contains_key(b"bind".as_slice())
                     && !tag.attributes.contains_key(b"is".as_slice())
-                    && !components[*index].elements.last().is_some_and(|element| {
+                    && !self.components[*index].elements.last().is_some_and(|element| {
                         element.id == element_id && element.children == ChildPolicy::Managed
                     })
             })
             .map(|index| TextHost {
                 opening: tag.span.start..tag.span.end,
-                opening_edit: edits
+                opening_edit: self
+                    .edits
                     .last()
                     .filter(|edit| edit.range == (tag.span.start..tag.span.end))
-                    .map(|_| edits.len() - 1),
+                    .map(|_| self.edits.len() - 1),
                 // An unbound frame's node is only the next available
                 // ID. Record an actual descriptor before its children
                 // can consume that ID.
-                element: components[index]
+                element: self.components[index]
                     .elements
                     .last()
                     .filter(|element| element.id == element_id)
                     .map(|element| element.id),
-            });
+            })
+    }
+
+    fn push_element(
+        &mut self,
+        tag: &StartTag<usize>,
+        name: String,
+        element: ElementOwner,
+        region: ElementRegion,
+    ) {
+        let ElementRegion {
+            id: element_id,
+            region,
+        } = region;
+        let ElementOwner {
+            owner,
+            inert,
+            component_id,
+            rust_script: _,
+        } = element;
+        let text_host = self.text_host(tag, &name, element, element_id);
         let has = |attribute: &[u8]| tag.attributes.contains_key(attribute);
         let bound = match name.as_str() {
             "textarea" if has(b"bind") => Bound::Empty,
             "select" if has(b"bind") => Bound::Options,
-            "option" if in_bound_select(stack) && !has(b"value") => Bound::StaticText,
+            "option" if in_bound_select(&self.stack) && !has(b"value") => Bound::StaticText,
             _ => Bound::Free,
         };
-        stack.push(Frame {
+        self.stack.push(Frame {
             name,
             owner,
             node: element_id,
@@ -2134,7 +2140,9 @@ impl Parser<'_> {
                 branch,
                 phase: IfPhase::Then,
             } => {
-                components[owner.unwrap()].range.end = tag.span.start;
+                components[owner.expect("an If frame owns its then fragment")]
+                    .range
+                    .end = tag.span.start;
                 // An If without Else renders nothing when its condition is false.
                 let case = NewCase {
                     pattern: Rust::synthetic(quote::quote! { false }, tag.span.start),
@@ -2159,7 +2167,9 @@ impl Parser<'_> {
                 }
             }
             ControlFrame::Else | ControlFrame::Case { .. } => {
-                components[owner.unwrap()].range.end = tag.span.start
+                components[owner.expect("Else and Case frames own their body fragments")]
+                    .range
+                    .end = tag.span.start
             }
             ControlFrame::If {
                 phase: IfPhase::Else,
@@ -2196,7 +2206,10 @@ impl Parser<'_> {
                         replacement: source[host.opening.clone()].to_owned(),
                         range: host.opening,
                     });
-                    &mut edits.last_mut().unwrap().replacement
+                    &mut edits
+                        .last_mut()
+                        .expect("the opening tag edit was just appended")
+                        .replacement
                 };
                 opening.insert_str(opening.len() - 1, &marker);
                 edits[text_edit].replacement.clear();

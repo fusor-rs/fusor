@@ -1,5 +1,5 @@
 //! HTML files whose Rust lives in an ordinary module of the application.
-use super::{Result, error::SourceError, includes::BINDINGS_PREFIX};
+use super::{Result, Source, error::SourceError, includes::BINDINGS_PREFIX};
 use crate::{ExternalRust, location};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -47,12 +47,13 @@ impl<'a> Linker<'a> {
     /// contains this HTML file's `fusor::bindings!`.
     pub(super) fn link(
         &mut self,
-        name: &str,
-        html_path: &Path,
+        html: &Source,
         source: &str,
         offset: usize,
         rust: &ExternalRust,
     ) -> Result<LinkedSource> {
+        let html_path = &html.canonical;
+        let name = &html.name;
         let path = html_path.parent().expect("HTML parent").join(&rust.src);
         let canonical = path.canonicalize().map_err(|error| {
             SourceError::at_offset(
@@ -77,7 +78,8 @@ impl<'a> Linker<'a> {
             )
             .into());
         }
-        let module: syn::Path = syn::parse_str(&rust.module)?;
+        let module: syn::Path = syn::parse_str(&rust.module)
+            .map_err(|error| SourceError::at_offset(html_path, source, offset, error))?;
         // `name` is a module identifier: discovered `@` sources never have Rust.
         let marker = format_ident!("__FUSOR_BINDINGS_{}", name.to_uppercase());
         let expected = path.to_str().ok_or("external source path must be UTF-8")?;

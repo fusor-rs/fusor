@@ -26,7 +26,7 @@ pub(crate) struct OwnedFile {
 
 impl OwnedFile {
     pub fn snapshot(path: PathBuf) -> Result<Self> {
-        let before = read(&path)?;
+        let before = read_optional(&path)?;
         Ok(Self {
             path,
             written: before.clone(),
@@ -37,7 +37,7 @@ impl OwnedFile {
     /// Call after each step that may have written, so rollback knows what was
     /// ours.
     pub fn capture(&mut self) -> Result {
-        self.written = read(&self.path)?;
+        self.written = read_optional(&self.path)?;
         Ok(())
     }
 
@@ -45,7 +45,7 @@ impl OwnedFile {
         if self.before == self.written {
             return Ok(());
         }
-        if read(&self.path)? != self.written {
+        if read_optional(&self.path)? != self.written {
             reporter.warn(format!(
                 "preserving concurrent changes to {}",
                 self.path.display()
@@ -61,11 +61,11 @@ impl OwnedFile {
     }
 }
 
-fn read(path: &std::path::Path) -> Result<Option<Vec<u8>>> {
+pub(crate) fn read_optional(path: &std::path::Path) -> Result<Option<Vec<u8>>> {
     match fs::read(path) {
         Ok(bytes) => Ok(Some(bytes)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error.into()),
+        Err(error) => Err(crate::error::Error::from(error).context(path.display())),
     }
 }
 

@@ -1,6 +1,7 @@
 import { readFile, mkdir } from "node:fs/promises";
 import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
+import { observeFetch } from "../../scripts/observe-fetch.mjs";
 
 export async function checkHighlighting(page, origin) {
   await page.goto(origin + "project-structure");
@@ -56,6 +57,8 @@ export async function checkHighlighting(page, origin) {
 }
 
 export async function checkShowcase(page, origin, browserName, demos) {
+  await page.clock.install();
+  const fetches = await observeFetch(page, "/docs/demo-data/");
   await page.addInitScript(() => {
     const start = window.setInterval.bind(window);
     const stop = window.clearInterval.bind(window);
@@ -399,7 +402,7 @@ export async function checkShowcase(page, origin, browserName, demos) {
         await page.evaluate(() => window.demoIntervalsForTest.size),
         0,
       );
-      await page.waitForTimeout(1200);
+      await page.clock.runFor(1200);
       await expect(canvas.locator(".timer-value output")).toHaveText(stopped);
       await canvas
         .getByRole("button", { name: "Mount panel", exact: true })
@@ -432,18 +435,27 @@ export async function checkShowcase(page, origin, browserName, demos) {
         "Complete view published",
       );
       await expect(canvas.locator(".product-card h3")).toHaveText("Notebook");
-      await canvas
-        .getByRole("button", { name: "Sketchbook", exact: true })
-        .click();
-      await expect(canvas.getByRole("status")).toContainText(
-        "Preparing Sketchbook",
-      );
-      await page.waitForTimeout(550);
-      await expect(canvas.locator(".product-card h3")).toHaveText("Notebook");
-      await expect(canvas.locator(".product-value strong")).toHaveText([
-        "$24",
-        "8",
-      ]);
+      await fetches.reset();
+      let releaseStock, continuedStock;
+      const stockHeld = new Promise(resolve => { releaseStock = resolve; });
+      const stockRoute = "**/Sketchbook-stock.txt";
+      await page.route(stockRoute, route => {
+        continuedStock = stockHeld.then(() => route.continue());
+        return continuedStock;
+      });
+      const stockRequested = page.waitForRequest(stockRoute);
+      try {
+        await canvas.getByRole("button", { name: "Sketchbook", exact: true }).click();
+        await expect(canvas.getByRole("status")).toContainText("Preparing Sketchbook");
+        await stockRequested;
+        await fetches.consumed("/docs/demo-data/Sketchbook-price.txt");
+        await expect(canvas.locator(".product-card h3")).toHaveText("Notebook");
+        await expect(canvas.locator(".product-value strong")).toHaveText(["$24", "8"]);
+      } finally {
+        releaseStock();
+        await continuedStock;
+        await page.unroute(stockRoute);
+      }
       await expect(canvas.getByRole("status")).toHaveText(
         "Complete view published",
       );

@@ -71,7 +71,7 @@ fn compile_target(
         Error::project("the application emitted no Fusor artifact")
             .remedy("call fusor_build::compile_app() from the package's build.rs")
     })?;
-    declarations::write(project, &manifest)?;
+    declarations::write(&project.root, &manifest.javascript)?;
     Ok(Compilation {
         manifest,
         wasm: streamed.wasm,

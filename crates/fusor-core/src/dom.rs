@@ -17,6 +17,7 @@ pub use children::Children;
 pub mod delivery;
 mod hydration;
 mod keyed;
+pub use keyed::HydratedKeys;
 mod mount;
 mod property;
 mod range;
@@ -219,6 +220,12 @@ fn remove_tree(root: &Element) {
 
 type Handler = Rc<dyn Fn(Event)>;
 
+#[derive(Clone, Copy)]
+struct HandlerId {
+    slot: u32,
+    generation: u32,
+}
+
 /// Listener handlers, reached from native listeners through one dispatcher.
 /// Releasing a slot advances its generation, so a stale native listener
 /// cannot reach a later handler that reuses the slot.
@@ -229,23 +236,29 @@ struct Handlers {
 }
 
 impl Handlers {
-    fn insert(&mut self, handler: Handler) -> (u32, u32) {
+    fn insert(&mut self, handler: Handler) -> HandlerId {
         if let Some(slot) = self.free.pop() {
             let entry = &mut self.slots[slot as usize];
             entry.1 = Some(handler);
-            return (slot, entry.0);
+            return HandlerId {
+                slot,
+                generation: entry.0,
+            };
         }
         self.slots.push((0, Some(handler)));
-        ((self.slots.len() - 1) as u32, 0)
+        HandlerId {
+            slot: (self.slots.len() - 1) as u32,
+            generation: 0,
+        }
     }
 
-    fn get(&self, slot: u32, generation: u32) -> Option<Handler> {
+    fn get(&self, HandlerId { slot, generation }: HandlerId) -> Option<Handler> {
         let (current, handler) = self.slots.get(slot as usize)?;
         (*current == generation).then(|| handler.clone())?
     }
 
     /// The caller drops the handler after releasing the registry borrow.
-    fn remove(&mut self, slot: u32, generation: u32) -> Option<Handler> {
+    fn remove(&mut self, HandlerId { slot, generation }: HandlerId) -> Option<Handler> {
         let entry = self
             .slots
             .get_mut(slot as usize)
@@ -261,7 +274,7 @@ thread_local! {
     // No registry borrow is held while a handler runs: it may add, remove or
     // dispatch listeners, including its own.
     static DISPATCH: Closure<dyn Fn(u32, u32, Event)> = Closure::new(|slot, generation, event| {
-        let handler = HANDLERS.with_borrow(|handlers| handlers.get(slot, generation));
+        let handler = HANDLERS.with_borrow(|handlers| handlers.get(HandlerId { slot, generation }));
         if let Some(handler) = handler {
             handler(event);
         }
@@ -279,8 +292,7 @@ enum ListenerTarget {
 pub struct Listener {
     target: ListenerTarget,
     event: strings::EventName,
-    slot: u32,
-    generation: u32,
+    registration: HandlerId,
 }
 
 impl Listener {
@@ -301,26 +313,24 @@ impl Listener {
     ) -> Result<Self, JsValue> {
         let handler = RefCell::new(handler);
         let handler: Handler = Rc::new(move |event| (handler.borrow_mut())(event));
-        let (slot, generation) = HANDLERS.with_borrow_mut(|handlers| handlers.insert(handler));
+        let registration = HANDLERS.with_borrow_mut(|handlers| handlers.insert(handler));
         let event = strings::EventName::from(event);
         let listening = DISPATCH.with(|dispatch| match &target {
             ListenerTarget::Node(node) => {
-                strings::listen(node, &event, dispatch.as_ref(), slot, generation)
+                strings::listen(node, &event, dispatch.as_ref(), registration)
             }
             ListenerTarget::Bundle(nodes, index) => {
-                strings::listen_bundle(nodes, *index, &event, dispatch.as_ref(), slot, generation)
+                strings::listen_bundle(nodes, *index, &event, dispatch.as_ref(), registration)
             }
         });
         match listening {
             Ok(()) => Ok(Self {
                 target,
                 event,
-                slot,
-                generation,
+                registration,
             }),
             Err(error) => {
-                let handler =
-                    HANDLERS.with_borrow_mut(|handlers| handlers.remove(slot, generation));
+                let handler = HANDLERS.with_borrow_mut(|handlers| handlers.remove(registration));
                 drop(handler);
                 Err(error)
             }
@@ -345,13 +355,14 @@ impl Listener {
 impl Drop for Listener {
     fn drop(&mut self) {
         let _ = match &self.target {
-            ListenerTarget::Node(node) => strings::remove(node, &self.event, self.slot),
+            ListenerTarget::Node(node) => {
+                strings::remove(node, &self.event, self.registration.slot)
+            }
             ListenerTarget::Bundle(nodes, index) => {
-                strings::unlisten_bundle(nodes, *index, &self.event, self.slot)
+                strings::unlisten_bundle(nodes, *index, &self.event, self.registration.slot)
             }
         };
-        let handler =
-            HANDLERS.with_borrow_mut(|handlers| handlers.remove(self.slot, self.generation));
+        let handler = HANDLERS.with_borrow_mut(|handlers| handlers.remove(self.registration));
         drop(handler);
     }
 }
@@ -619,24 +630,35 @@ mod handler_tests {
     fn released_slots_reject_stale_generations_and_are_reused() {
         let mut handlers = Handlers::default();
         let first = handler();
-        let (slot, generation) = handlers.insert(first.clone());
-        assert!(Rc::ptr_eq(&handlers.get(slot, generation).unwrap(), &first));
-        assert!(handlers.get(slot, generation + 1).is_none());
-        assert!(Rc::ptr_eq(
-            &handlers.remove(slot, generation).unwrap(),
-            &first
-        ));
-        assert!(handlers.get(slot, generation).is_none());
-        assert!(handlers.remove(slot, generation).is_none());
+        let original = handlers.insert(first.clone());
+        assert!(Rc::ptr_eq(&handlers.get(original).unwrap(), &first));
+        assert!(
+            handlers
+                .get(HandlerId {
+                    generation: original.generation + 1,
+                    ..original
+                })
+                .is_none()
+        );
+        assert!(Rc::ptr_eq(&handlers.remove(original).unwrap(), &first));
+        assert!(handlers.get(original).is_none());
+        assert!(handlers.remove(original).is_none());
         let second = handler();
-        let (reused, next) = handlers.insert(second.clone());
-        assert_eq!(reused, slot);
-        assert_ne!(next, generation);
-        assert!(handlers.get(slot, generation).is_none(), "stale listener");
-        assert!(handlers.remove(slot, generation).is_none(), "stale removal");
-        assert!(Rc::ptr_eq(&handlers.get(slot, next).unwrap(), &second));
-        let (other, _) = handlers.insert(handler());
-        assert_ne!(other, slot);
-        assert!(handlers.get(99, 0).is_none());
+        let reused = handlers.insert(second.clone());
+        assert_eq!(reused.slot, original.slot);
+        assert_ne!(reused.generation, original.generation);
+        assert!(handlers.get(original).is_none(), "stale listener");
+        assert!(handlers.remove(original).is_none(), "stale removal");
+        assert!(Rc::ptr_eq(&handlers.get(reused).unwrap(), &second));
+        let other = handlers.insert(handler());
+        assert_ne!(other.slot, original.slot);
+        assert!(
+            handlers
+                .get(HandlerId {
+                    slot: 99,
+                    generation: 0
+                })
+                .is_none()
+        );
     }
 }

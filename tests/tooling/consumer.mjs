@@ -54,6 +54,8 @@ try {
     (_, crate) => JSON.stringify(join(root, "crates", crate))));
   const htmlPath = join(scratch, "web/index.html");
   const good = await readFile(htmlPath, "utf8");
+  const sourcePath = join(scratch, "src/lib.rs");
+  await writeFile(sourcePath, `#![deny(unused_variables)]\n${await readFile(sourcePath, "utf8")}`);
   const valid = await compile();
   assert.equal(valid.success, true, valid.stderr + JSON.stringify(valid.errors));
   const html = await readFile(valid.variables.FUSOR_HTML_OUTPUT, "utf8");
@@ -64,6 +66,7 @@ try {
     ['key="{{ |item| item.id }}"', 'key="{{ |item| item.missing_id }}"', "E0609"],
     ['<Row item="{{ item.clone() }}">', '<Row nonexistent="{{ item.clone() }}">', "E0560"],
     ['{{ selected.get().name }}', '{{ selected.get().missing_name }}', "E0609"],
+    ['{{ selected.get().name }}', '{{ { let unused_binding = 1; selected.get().name } }}', "unused_variables"],
     ['<input bind="state.name">', '<input bind="state.items">', "E0277"],
     ['disabled="{{ state.count.get() == 0 }}"', 'disabled="{{ state.count.get() }}"', "E0308"],
   ]) {

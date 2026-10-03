@@ -107,6 +107,24 @@ pub fn arguments(ty: &Type, name: &str) -> Option<Vec<Type>> {
     }
 }
 
+pub fn take_context(types: &mut Vec<Type>, name: &str) -> syn::Result<Option<Type>> {
+    let Some((span, args)) = types
+        .last()
+        .and_then(|ty| arguments(ty, name).map(|args| (ty.span(), args)))
+    else {
+        return Ok(None);
+    };
+    if args.len() > 1 {
+        return Err(syn::Error::new(span, "context takes one progress type"));
+    }
+    types.pop();
+    Ok(Some(
+        args.into_iter()
+            .next()
+            .unwrap_or_else(|| syn::parse_quote!(())),
+    ))
+}
+
 pub fn owned(ty: &Type) -> syn::Result<()> {
     use syn::visit::Visit;
     #[derive(Default)]
