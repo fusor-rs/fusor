@@ -13,6 +13,15 @@ use syn::parse_quote;
 pub struct Memory;
 
 impl Backend for Memory {
+    fn file(&self) -> TokenStream {
+        quote! {
+            use ::memory_renderer::Component as __MemoryComponent;
+            const _: () = assert!(::memory_renderer::VERSION == 1);
+            const _: () = assert!(::fusor::render::VERSION == 1);
+            const _: () = assert!(::fusor::coherence::VERSION == 2);
+            const _: () = assert!(::fusor_components::BACKEND_VERSION == 1);
+        }
+    }
     fn version(&self) -> u32 {
         2
     }
@@ -211,12 +220,8 @@ impl Backend for Memory {
             "fixture compiles reusable components only"
         );
         quote! {
-            const _: () = assert!(::memory_renderer::VERSION == 1);
-            const _: () = assert!(::fusor::render::VERSION == 1);
-            const _: () = assert!(::fusor::coherence::VERSION == 2);
-            const _: () = assert!(::fusor_components::BACKEND_VERSION == 1);
             #[allow(unused_variables, unused_braces, non_snake_case, clippy::unused_unit, clippy::unit_arg, clippy::clone_on_copy)]
-            impl ::memory_renderer::Component for #ty {
+            impl __MemoryComponent for #ty {
                 fn prepare(
                     parent: ::std::option::Option<&::fusor::OwnerHandle>,
                     make: ::std::boxed::Box<dyn FnOnce(::fusor::OwnerHandle) -> ::std::result::Result<Self, ::memory_renderer::Error> + '_>,
