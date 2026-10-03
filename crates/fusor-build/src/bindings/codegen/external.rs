@@ -339,6 +339,7 @@ pub(crate) fn generate(
         },
         false,
     );
+    rust.push_str(&backend.file().to_string());
     Ok(GeneratedSource {
         rust,
         source_map: crate::SourceMap::new(locations).expect("ordered compiler locations"),

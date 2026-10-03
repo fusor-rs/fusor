@@ -229,6 +229,10 @@ pub struct ComponentCode {
 /// Bounded backend v2. Unsupported hydration/JS/server/opaque-content
 /// operations are rejected by this version even if a backend would accept them.
 pub trait Backend {
+    /// Declarations shared by every component in this generated source file.
+    fn file(&self) -> TokenStream {
+        TokenStream::new()
+    }
     fn version(&self) -> u32;
     fn name(&self) -> &str;
     fn runtime(&self) -> Runtime;
