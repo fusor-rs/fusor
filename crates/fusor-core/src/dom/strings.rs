@@ -1,5 +1,6 @@
 //! Reuse JS string arguments for native DOM calls, without interning dynamic
 //! application values or adding a cache lookup to every Wasm string conversion.
+use super::HandlerId;
 use crate::template::{self, ComponentId};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 use wasm_bindgen::{JsCast, prelude::*};
@@ -88,7 +89,13 @@ extern "C" {
 /// Framework names, in `NAMES` order.
 #[derive(Clone, Copy)]
 pub(super) enum Name {
-    #[cfg_attr(not(feature = "islands"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "islands"),
+        expect(
+            dead_code,
+            reason = "component attributes are read during island hydration"
+        )
+    )]
     Component,
     Version,
     Element,
@@ -165,8 +172,7 @@ pub(super) fn listen(
     target: &EventTarget,
     name: &EventName,
     dispatch: &JsValue,
-    slot: u32,
-    generation: u32,
+    HandlerId { slot, generation }: HandlerId,
 ) -> Result<(), JsValue> {
     name.with(|name| status(listen_ok(target, name, dispatch, slot, generation)))
 }
@@ -177,8 +183,7 @@ pub(super) fn listen_bundle(
     index: u32,
     name: &EventName,
     dispatch: &JsValue,
-    slot: u32,
-    generation: u32,
+    HandlerId { slot, generation }: HandlerId,
 ) -> Result<(), JsValue> {
     name.with(|name| {
         status(listen_bundle_ok(

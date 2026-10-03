@@ -169,6 +169,95 @@ impl<T> InputState<T> {
         self.signal.take();
     }
 }
+
+impl<T: JsInputValue> InputState<T> {
+    fn read(&self) -> Result<JsValue, JsValue> {
+        if self.disposed() {
+            return Err(JsValue::from_str(
+                "fusor: input belongs to a disposed component",
+            ));
+        }
+        let signal = self
+            .signal
+            .borrow()
+            .clone()
+            .ok_or_else(|| JsValue::from_str("fusor: input disposed"))?;
+        Ok(signal.with_untracked(JsInputValue::to_js))
+    }
+
+    fn stop_observing(&self) {
+        self.generation.set(self.generation.get().wrapping_add(1));
+        self.pending.set(false);
+        let observer = self.observer.take();
+        drop(observer);
+    }
+
+    fn observe(self: &Rc<Self>) {
+        if self.disposed() {
+            self.close();
+            return;
+        }
+        if self.observer.borrow().is_some() {
+            return;
+        }
+        let Some(signal) = self.signal.borrow().clone() else {
+            return;
+        };
+        let weak = Rc::downgrade(self);
+        let mut first = true;
+        let observer = effect(move || {
+            // Track only this field; publication runs after ordinary Rust effects.
+            signal.with(|_| ());
+            if first {
+                first = false;
+                return;
+            }
+            if let Some(state) = weak.upgrade() {
+                state.queue_publication();
+            }
+        });
+        *self.observer.borrow_mut() = Some(observer);
+    }
+
+    fn queue_publication(self: &Rc<Self>) {
+        if self.disposed() {
+            self.close();
+            return;
+        }
+        if self.pending.replace(true) {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        let generation = self.generation.get();
+        crate::reactive::after_flush(move || {
+            if let Some(state) = weak.upgrade() {
+                state.publish(generation);
+            }
+        });
+    }
+
+    fn publish(&self, generation: u64) {
+        if self.disposed() {
+            self.close();
+            return;
+        }
+        if generation != self.generation.get() {
+            return;
+        }
+        self.pending.set(false);
+        let signal = self.signal.borrow().clone();
+        let js = self.javascript.borrow().clone();
+        let (Some(signal), Some(js)) = (signal, js) else {
+            return;
+        };
+        if self.observer.borrow().is_none() {
+            return;
+        }
+        let value = signal.with_untracked(JsInputValue::to_js);
+        untrack(|| input_publish(&js, &value));
+    }
+}
+
 struct Input<T> {
     state: Rc<InputState<T>>,
     _read: Closure<dyn Fn() -> Result<JsValue, JsValue>>,
@@ -217,86 +306,18 @@ impl Inputs {
             let state = weak
                 .upgrade()
                 .ok_or_else(|| JsValue::from_str("fusor: input disposed"))?;
-            if state.disposed() {
-                return Err(JsValue::from_str(
-                    "fusor: input belongs to a disposed component",
-                ));
-            }
-            let signal = state
-                .signal
-                .borrow()
-                .clone()
-                .ok_or_else(|| JsValue::from_str("fusor: input disposed"))?;
-            Ok(signal.with_untracked(JsInputValue::to_js))
+            state.read()
         }) as Box<dyn Fn() -> Result<JsValue, JsValue>>);
         let weak = Rc::downgrade(&state);
         let observe = Closure::wrap(Box::new(move |active: bool| {
             let Some(state) = weak.upgrade() else {
                 return;
             };
-            if !active {
-                state.generation.set(state.generation.get().wrapping_add(1));
-                state.pending.set(false);
-                let observer = state.observer.take();
-                drop(observer);
-                return;
+            if active {
+                state.observe();
+            } else {
+                state.stop_observing();
             }
-            if state.disposed() {
-                state.close();
-                return;
-            }
-            if state.observer.borrow().is_some() {
-                return;
-            }
-            let Some(signal) = state.signal.borrow().clone() else {
-                return;
-            };
-            let weak = Rc::downgrade(&state);
-            let mut first = true;
-            let observer = effect(move || {
-                // Track only this field. Conversion and callbacks run after all
-                // ordinary Rust effects, with no RefCell borrow or tracking.
-                signal.with(|_| ());
-                if first {
-                    first = false;
-                    return;
-                }
-                let Some(state) = weak.upgrade() else {
-                    return;
-                };
-                if state.disposed() {
-                    state.close();
-                    return;
-                }
-                if state.pending.replace(true) {
-                    return;
-                }
-                let weak = Rc::downgrade(&state);
-                let generation = state.generation.get();
-                crate::reactive::after_flush(move || {
-                    let Some(state) = weak.upgrade() else {
-                        return;
-                    };
-                    if state.disposed() {
-                        state.close();
-                        return;
-                    }
-                    if generation != state.generation.get() {
-                        return;
-                    }
-                    state.pending.set(false);
-                    let signal = state.signal.borrow().clone();
-                    let js = state.javascript.borrow().clone();
-                    if let (Some(signal), Some(js)) = (signal, js) {
-                        if state.observer.borrow().is_none() {
-                            return;
-                        }
-                        let value = signal.with_untracked(JsInputValue::to_js);
-                        untrack(|| input_publish(&js, &value));
-                    }
-                });
-            });
-            *state.observer.borrow_mut() = Some(observer);
         }) as Box<dyn Fn(bool)>);
         let javascript = input_create(read.as_ref(), observe.as_ref());
         Reflect::set(

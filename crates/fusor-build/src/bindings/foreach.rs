@@ -7,13 +7,6 @@ use std::collections::BTreeSet;
 /// A ForEach owns its native parent's children, without adding a wrapper node.
 /// Validate this before lowering so static siblings cannot silently disappear.
 pub(super) fn hosts(source: &str) -> Result<BTreeSet<usize>, ExtractError> {
-    struct Frame {
-        name: String,
-        start: usize,
-        children: usize,
-        list: bool,
-        text: bool,
-    }
     let mut emitter = DefaultEmitter::<usize>::new_with_span();
     emitter.naively_switch_states(true);
     let mut stack: Vec<Frame> = Vec::new();
@@ -60,20 +53,7 @@ pub(super) fn hosts(source: &str) -> Result<BTreeSet<usize>, ExtractError> {
                 let name = String::from_utf8_lossy(&tag.name);
                 if let Some(index) = stack.iter().rposition(|frame| frame.name == name) {
                     let frame = &stack[index];
-                    if frame.list {
-                        if frame.children != 1
-                            || frame.text
-                            || super::tags::is_component(super::tags::name(source, frame.start))
-                            || frame.name == "template"
-                        {
-                            return Err(error(
-                                source,
-                                frame.start,
-                                "ForEach requires its own native HTML container; put other content outside that container",
-                            ));
-                        }
-                        hosts.insert(frame.start);
-                    }
+                    hosts.extend(frame.list_host(source)?);
                     stack.truncate(index);
                 }
             }
@@ -185,4 +165,32 @@ fn forwards_item_only(component: &Component, components: &[Component]) -> bool {
             .fragments()
             .iter()
             .all(|fragment| independent(fragment.tokens.clone(), index))
+}
+
+struct Frame {
+    name: String,
+    start: usize,
+    children: usize,
+    list: bool,
+    text: bool,
+}
+
+impl Frame {
+    fn list_host(&self, source: &str) -> Result<Option<usize>, ExtractError> {
+        if !self.list {
+            return Ok(None);
+        }
+        if self.children != 1
+            || self.text
+            || super::tags::is_component(super::tags::name(source, self.start))
+            || self.name == "template"
+        {
+            return Err(error(
+                source,
+                self.start,
+                "ForEach requires its own native HTML container; put other content outside that container",
+            ));
+        }
+        Ok(Some(self.start))
+    }
 }

@@ -69,7 +69,7 @@ impl App {
             QueryOptions {
                 freshness: Freshness::For(Duration::from_secs(60)),
                 retention: Duration::from_secs(120),
-                capacity: NonZeroUsize::new(1).unwrap(),
+                capacity: NonZeroUsize::MIN,
             },
             api::load,
         );

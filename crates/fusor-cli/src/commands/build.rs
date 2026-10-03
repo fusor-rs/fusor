@@ -4,9 +4,9 @@ use crate::{
     error::{Error, Result},
     layout,
     pipeline::{
-        self, Publication,
+        self, BuildMode, Publication,
         cargo::{Mode, compile},
-        manifest::{Javascript, OutputManifest},
+        manifest::Javascript,
         wasm,
     },
     toolchain,
@@ -16,13 +16,13 @@ use pipeline::site::{Mount, SiteConfig, shown};
 use std::{fs, time::Instant};
 
 /// `fusor build` for one application.
-pub(crate) fn single(cx: &Context, project: &Project, debug: bool) -> Result {
-    cx.reporter.banner(if debug {
+pub(crate) fn single(cx: &Context, project: &Project, mode: BuildMode) -> Result {
+    cx.reporter.banner(if mode == BuildMode::Debug {
         "debug build"
     } else {
         "production build"
     });
-    run(cx, project, debug, false)?;
+    run(cx, project, mode)?;
     cx.reporter
         .done(format!("Published {}", shown(&project.output(cx))));
     Ok(())
@@ -30,8 +30,8 @@ pub(crate) fn single(cx: &Context, project: &Project, debug: bool) -> Result {
 
 /// Each application builds into `target/fusor/site/<name>` first; only a
 /// complete set is assembled and published.
-pub(crate) fn site(cx: &Context, debug: bool) -> Result {
-    cx.reporter.banner(if debug {
+pub(crate) fn site(cx: &Context, mode: BuildMode) -> Result {
+    cx.reporter.banner(if mode == BuildMode::Debug {
         "debug build"
     } else {
         "production build"
@@ -50,7 +50,7 @@ pub(crate) fn site(cx: &Context, debug: bool) -> Result {
             .join(&project.name);
         let mount = Mount::new(path, &project, built.clone())?;
         app.output = Some(built);
-        run(&app, &project, debug, false).map_err(|error| error.context(&project.name))?;
+        run(&app, &project, mode).map_err(|error| error.context(&project.name))?;
         mounts.push(mount);
     }
     let output = metadata.workspace_root.join(&config.output);
@@ -71,13 +71,13 @@ pub(crate) fn site(cx: &Context, debug: bool) -> Result {
 }
 
 /// Build and publish one application, in development or release mode.
-pub(crate) fn run(cx: &Context, project: &Project, debug: bool, dev: bool) -> Result {
+pub(crate) fn run(cx: &Context, project: &Project, mode: BuildMode) -> Result {
     cx.reporter.step(format!("Compiling {} ...", project.name));
     let started = Instant::now();
     if project.config.delivery.is_some() {
-        pipeline::islands::build(cx, project, debug, dev)?;
+        pipeline::islands::build(cx, project, mode)?;
     } else {
-        application(cx, project, debug, dev)?;
+        application(cx, project, mode)?;
     }
     cx.reporter.done(format!(
         "Compiled {} in {}",
@@ -87,7 +87,8 @@ pub(crate) fn run(cx: &Context, project: &Project, debug: bool, dev: bool) -> Re
     Ok(())
 }
 
-fn application(cx: &Context, project: &Project, debug: bool, dev: bool) -> Result {
+fn application(cx: &Context, project: &Project, mode: BuildMode) -> Result {
+    let dev = mode == BuildMode::Development;
     let bindgen = toolchain::bindgen::resolve()?;
     cx.reporter
         .note(format!("using wasm-bindgen at {}", bindgen.display()));
@@ -97,24 +98,27 @@ fn application(cx: &Context, project: &Project, debug: bool, dev: bool) -> Resul
         publication.retain_previous()?;
     }
 
-    let compilation = compile(cx, project, Mode::Build { release: !debug })?;
+    let compilation = compile(
+        cx,
+        project,
+        Mode::Build {
+            release: mode == BuildMode::Release,
+        },
+    )?;
     let wasm_path = compilation
         .wasm
         .as_ref()
         .ok_or_else(|| Error::project("Cargo emitted no WebAssembly library"))?;
     let generated = publication.generated();
     let package = generated.join(layout::PACKAGE);
-    wasm::bindgen(&bindgen, wasm_path, &package, layout::APP_NAME, debug, dev)?;
-    wasm::optimize(&package.join(layout::APP_WASM), debug, dev)?;
+    wasm::bindgen(&bindgen, wasm_path, &package, layout::APP_NAME, mode)?;
+    wasm::optimize(&package.join(layout::APP_WASM), mode)?;
 
     let workers = pipeline::workers::build(
-        cx,
-        project,
         &publication,
         &bindgen,
         compilation.manifest.managed_entry,
-        debug,
-        dev,
+        mode,
     )?;
     let prefix = publication.url_prefix();
     let bundle: Javascript = serde_json::from_value(fusor_npm::bundle(
@@ -122,20 +126,9 @@ fn application(cx: &Context, project: &Project, debug: bool, dev: bool) -> Resul
         &package.join(layout::APP_MODULE),
         &serde_json::to_value(&compilation.manifest.javascript)?,
         &format!("{prefix}/{}", layout::PACKAGE),
-        !debug,
+        mode == BuildMode::Release,
     )?)?;
-    let mut boot = workers
-        .map(|workers| workers.boot())
-        .transpose()?
-        .unwrap_or_default();
-    boot.push_str(&boot_script(
-        project,
-        &compilation.manifest,
-        &publication.generation,
-        dev,
-        generated,
-    )?);
-    fs::write(generated.join(layout::BOOT_MODULE), boot)?;
+    write_boot(project, &publication, &compilation.manifest, workers, mode)?;
     // Development pages keep the loader's own discovery order.
     let modules = if dev {
         Vec::new()
@@ -153,52 +146,32 @@ fn application(cx: &Context, project: &Project, debug: bool, dev: bool) -> Resul
         )?,
     )?;
 
-    let output = output_manifest(cx, project, &publication, &compilation, bundle, dev)?;
+    let output = publication.output_manifest(&compilation.manifest, bundle, mode)?;
     publication.commit(&output)
-}
-
-fn output_manifest(
-    cx: &Context,
-    project: &Project,
-    publication: &Publication<'_>,
-    compilation: &pipeline::cargo::Compilation,
-    bundle: Javascript,
-    dev: bool,
-) -> Result<OutputManifest> {
-    let mut output = OutputManifest::new(publication.generation.clone(), &project.config);
-    if !compilation.manifest.javascript.is_empty() {
-        output.javascript = Some(bundle);
-    }
-    if !dev {
-        return Ok(output);
-    }
-    output.revision = Some(0);
-    output.reload_after = Some(0);
-    // Recorded only when reuse is possible, so the watcher does not
-    // re-establish eligibility on every edit.
-    if crate::dev::refresh::enabled(cx, project, &compilation.manifest)? {
-        output.rust_signature = Some(crate::dev::refresh::signature(&compilation.manifest)?);
-    }
-    Ok(output)
 }
 
 /// A startup failure is dispatched as `fusor:error` so the page can show its
 /// own error state.
-fn boot_script(
+fn write_boot(
     project: &Project,
+    publication: &Publication<'_>,
     artifact: &fusor_build::app::ArtifactManifest,
-    generation: &str,
-    dev: bool,
-    generated: &std::path::Path,
-) -> Result<String> {
-    let reload = if dev {
+    workers: Option<pipeline::workers::Artifacts>,
+    mode: BuildMode,
+) -> Result {
+    let mut boot = workers
+        .map(|workers| workers.boot())
+        .transpose()?
+        .unwrap_or_default();
+    let reload = if mode == BuildMode::Development {
         fs::write(
-            generated.join(layout::REFRESH_MODULE),
+            publication.generated().join(layout::REFRESH_MODULE),
             crate::dev::refresh::CLIENT,
         )?;
         format!(
-            "import {{ watch }} from './{}';\nwatch({generation:?}, {:?});\n",
+            "import {{ watch }} from './{}';\nwatch({:?}, {:?});\n",
             layout::REFRESH_MODULE,
+            publication.generation,
             project.config.base_path
         )
     } else {
@@ -218,9 +191,11 @@ fn boot_script(
     } else {
         String::new()
     };
-    Ok(format!(
+    boot.push_str(&format!(
         "{reload}\ntry {{\n  const client = await import('./{}/{}');\n{startup_check}  await client.default();\n}} catch (error) {{\n  console.error('fusor failed to initialize:', error);\n  document.dispatchEvent(new CustomEvent('fusor:error', {{ detail: error }}));\n}}\n",
         layout::PACKAGE,
         layout::APP_MODULE
-    ))
+    ));
+    fs::write(publication.generated().join(layout::BOOT_MODULE), boot)?;
+    Ok(())
 }

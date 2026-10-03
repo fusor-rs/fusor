@@ -72,7 +72,10 @@ mod tests {
         assert!(matches!(generic(&42u32), Output::String(s) if s == "42"));
         // Borrowed fields must not move, and ToString-only values need no Display.
         struct Custom(Rc<RefCell<Vec<&'static str>>>);
-        #[allow(clippy::to_string_trait_impl)] // The public fallback accepts ToString without Display.
+        #[expect(
+            clippy::to_string_trait_impl,
+            reason = "the public fallback accepts ToString without Display"
+        )]
         impl ToString for Custom {
             fn to_string(&self) -> String {
                 self.0.borrow_mut().push("format");

@@ -36,24 +36,9 @@ impl BlockingOverlay {
         region: &mut Scope,
         boundary: AsyncBoundary,
     ) -> Result<(), JsValue> {
+        self.capture_focus_intent(region)?;
         let root = &self.root;
         let overlay = &self.state;
-        // Capture focus intent outside the stale region, including a click on
-        // an unfocusable element. Never steal focus after such an interaction.
-        for name in ["focusin", "pointerdown"] {
-            let captured = overlay.clone();
-            let root = root.clone();
-            let listener = Listener::new(document()?.into(), name, move |event: Event| {
-                let outside = event
-                    .target()
-                    .and_then(|target| target.dyn_into::<web_sys::Node>().ok())
-                    .is_some_and(|target| !root.contains(Some(&target)));
-                if outside && captured.borrow().applied {
-                    captured.borrow_mut().user_moved = true;
-                }
-            })?;
-            region.listeners.push(listener);
-        }
         let root = root.clone();
         let captured = overlay.clone();
         let status = effect(move || {
@@ -100,6 +85,25 @@ impl BlockingOverlay {
             }
         });
         region.effects.push(status);
+        Ok(())
+    }
+
+    fn capture_focus_intent(&self, region: &mut Scope) -> Result<(), JsValue> {
+        // An outside click on an unfocusable element also cancels focus restoration.
+        for name in ["focusin", "pointerdown"] {
+            let captured = Rc::clone(&self.state);
+            let root = self.root.clone();
+            let listener = Listener::new(document()?.into(), name, move |event: Event| {
+                let outside = event
+                    .target()
+                    .and_then(|target| target.dyn_into::<web_sys::Node>().ok())
+                    .is_some_and(|target| !root.contains(Some(&target)));
+                if outside && captured.borrow().applied {
+                    captured.borrow_mut().user_moved = true;
+                }
+            })?;
+            region.listeners.push(listener);
+        }
         Ok(())
     }
 

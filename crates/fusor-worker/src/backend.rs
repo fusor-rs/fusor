@@ -196,7 +196,7 @@ async fn invoke(
     OPERATIONS.with(|operations| {
         operations.borrow_mut().remove(&id);
     });
-    let failure = result_control.failure.lock().unwrap().take();
+    let failure = result_control.take_failure();
     if let Some(error) = failure {
         match result {
             Ok(payload) | Err(crate::JobError::Application(payload)) => {
@@ -224,7 +224,7 @@ pub fn __fusor_worker_tick() {
             .borrow()
             .iter()
             .filter_map(|(&id, (control, _))| {
-                let payload = control.progress.lock().unwrap().take()?;
+                let payload = control.progress().take()?;
                 if control.cancelled.load(Ordering::Acquire) {
                     control.codec.discard(payload);
                     None
@@ -242,7 +242,7 @@ pub fn __fusor_worker_tick() {
                 if let crate::job::Event::Progress(payload) = event {
                     control.codec.discard(payload);
                 }
-                *control.failure.lock().unwrap() = Some(error);
+                control.fail(error);
             }
         }
     }
@@ -343,7 +343,9 @@ impl ComputeBudget {
         work: Box<dyn FnOnce() + Send>,
         bounded: bool,
     ) -> Result<(), WorkerError> {
-        let mut queue = self.queue.lock().unwrap();
+        let mut queue = self.queue.lock().map_err(|_| WorkerError::Crashed {
+            message: "compute queue was poisoned".into(),
+        })?;
         if queue.active < self.threads {
             queue.active += 1;
             drop(queue);
@@ -364,7 +366,17 @@ impl ComputeBudget {
         rayon::spawn(move || {
             work();
             let next = {
-                let mut queue = executor.queue.lock().unwrap();
+                let mut queue = match executor.queue.lock() {
+                    Ok(queue) => queue,
+                    Err(error) => {
+                        let mut queue = error.into_inner();
+                        let abandoned = std::mem::take(&mut queue.waiting);
+                        drop(queue);
+                        // Dropping queued senders completes their receivers as Terminated.
+                        drop(abandoned);
+                        return;
+                    }
+                };
                 match queue.waiting.pop_front() {
                     Some((bounded, work)) => {
                         queue.bounded -= usize::from(bounded);

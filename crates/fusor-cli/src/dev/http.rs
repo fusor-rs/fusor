@@ -1,7 +1,7 @@
 //! Request policy with no socket and no lock. Only files inside the published
 //! site are served.
 use crate::{error::Result, layout, pipeline::manifest::OutputManifest};
-use hyper::{Method, Response};
+use hyper::{Method, Response, header::HeaderValue};
 use std::{
     fs,
     path::{Component, Path, PathBuf},
@@ -12,15 +12,30 @@ pub(crate) fn error_response(message: &str) -> Body {
     build_response(500, "text/plain", message.as_bytes().to_vec(), false)
 }
 
+pub(crate) struct Route<'a> {
+    pub directory: &'a Path,
+    pub base: &'a str,
+    pub history_fallback: &'a [String],
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Serving {
+    Development,
+    Preview,
+}
+
 pub(crate) fn respond(
     method: &Method,
     url: &str,
     accept: &str,
-    directory: &Path,
-    base: &str,
-    history_fallback: &[String],
-    watch: bool,
+    route: Route,
+    serving: Serving,
 ) -> Body {
+    let Route {
+        directory,
+        base,
+        history_fallback,
+    } = route;
     let url = url.split('?').next().unwrap_or("");
     if !matches!(method, &Method::GET | &Method::HEAD) {
         return build_response(405, "text/plain", b"Method not allowed".to_vec(), false);
@@ -37,7 +52,7 @@ pub(crate) fn respond(
         }
         return build_response(404, "text/plain", b"Not found".to_vec(), false);
     };
-    if watch {
+    if serving == Serving::Development {
         if let Some(response) = development_endpoint(relative, directory) {
             return response;
         }
@@ -56,12 +71,13 @@ pub(crate) fn respond(
         None => build_response(404, "text/plain", b"Not found".to_vec(), false),
     };
     if directory.join(layout::WORKER_HEADERS).is_file() {
-        response
-            .headers_mut()
-            .insert("Cross-Origin-Opener-Policy", "same-origin".parse().unwrap());
+        response.headers_mut().insert(
+            "Cross-Origin-Opener-Policy",
+            HeaderValue::from_static("same-origin"),
+        );
         response.headers_mut().insert(
             "Cross-Origin-Embedder-Policy",
-            "require-corp".parse().unwrap(),
+            HeaderValue::from_static("require-corp"),
         );
     }
     response

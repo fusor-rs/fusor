@@ -1,4 +1,4 @@
-use super::{Frame, SlotId, Structure, allowed, error, visit};
+use super::{Frame, RenderSlot, SlotId, Structure, allowed, error, visit};
 use crate::dom::{Children, MountPoint, Scope, TemplateComponent};
 use crate::{OwnerHandle, Signal, coherence::Attempt, signal, versions::Versions};
 use std::{
@@ -92,8 +92,10 @@ impl Frame<'_> {
 impl Frame<'_> {
     pub fn component_at<C: TemplateComponent, K: PartialEq + 'static>(
         &mut self,
-        slot: usize,
-        target: &MountPoint,
+        RenderSlot {
+            index: slot,
+            target,
+        }: RenderSlot<'_, MountPoint>,
         key: Option<K>,
         make: impl FnOnce(OwnerHandle) -> Result<C, JsValue>,
         children: Children,
@@ -335,8 +337,10 @@ impl<T: Clone + PartialEq + 'static> Structure for BranchPlan<T> {
 impl Frame<'_> {
     pub fn keyed<T, K>(
         &mut self,
-        slot: usize,
-        container: &Element,
+        RenderSlot {
+            index: slot,
+            target: container,
+        }: RenderSlot<'_, Element>,
         items: impl FnOnce() -> Vec<T>,
         key: impl Fn(&T) -> K,
         render: impl Fn(Signal<T>, &OwnerHandle) -> Result<Scope, JsValue>,

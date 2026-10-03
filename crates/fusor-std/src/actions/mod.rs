@@ -86,6 +86,32 @@ impl<C, T, E> Clone for ActionState<C, T, E> {
     }
 }
 impl<C, T, E> ActionState<C, T, E> {
+    fn completed(submission: Submission<C>, outcome: Outcome<T, E>) -> Self {
+        let mut next = Self {
+            submission: Some(submission),
+            ..Self::empty(Status::Idle)
+        };
+        match outcome {
+            Outcome::Accepted(value) => {
+                next.status = Status::Accepted;
+                next.value = Some(Rc::new(value));
+            }
+            Outcome::Rejected(error) => {
+                next.status = Status::Rejected;
+                next.error = Some(Rc::new(error));
+            }
+            Outcome::Conflict(error) => {
+                next.status = Status::Conflict;
+                next.error = Some(Rc::new(error));
+            }
+            Outcome::Unknown(error) => {
+                next.status = Status::Unknown;
+                next.error = Some(Rc::new(error));
+            }
+        }
+        next
+    }
+
     fn empty(status: Status) -> Self {
         Self {
             status,
@@ -322,66 +348,53 @@ impl<C: 'static, T: 'static, E: 'static> Action<C, T, E> {
             let Some(inner) = weak.upgrade().filter(|inner| current(inner, id)) else {
                 return;
             };
-            let mut next = ActionState {
-                submission: Some(submission),
-                ..ActionState::empty(Status::Idle)
-            };
-            match outcome {
-                Outcome::Accepted(value) => {
-                    next.status = Status::Accepted;
-                    next.value = Some(Rc::new(value));
-                }
-                Outcome::Rejected(error) => {
-                    next.status = Status::Rejected;
-                    next.error = Some(Rc::new(error));
-                }
-                Outcome::Conflict(error) => {
-                    next.status = Status::Conflict;
-                    next.error = Some(Rc::new(error));
-                }
-                Outcome::Unknown(error) => {
-                    next.status = Status::Unknown;
-                    next.error = Some(Rc::new(error));
-                }
-            }
+            let next = ActionState::completed(submission, outcome);
             let publication = untrack(|| publish(&next));
             if !current(&inner, id) {
                 return;
             }
-            let publication = match publication {
-                Ok(publication) => publication,
-                Err(error) => {
-                    next.status = Status::PublicationFailed;
-                    next.publication_error = Some(error);
-                    Publication::default()
-                }
-            };
-            if let Some(error) = &publication.failure {
-                next.status = Status::PublicationFailed;
-                next.publication_error = Some(error.clone());
-            }
-            let request = inner.request.take();
-            let mut retired: Retired = Vec::new();
-            batch(|| {
-                (publication.commit)(&mut retired);
-                retired.push(Box::new(inner.state.replace(next)));
-                inner.busy.set(false);
-            });
-            // Cancellation callbacks and user destructors cannot run amid commits.
-            if let Some(request) = request {
-                request.complete();
-            }
-            drop(retired);
-            for callback in publication.after {
-                if !inner.disposed.get() && inner.owner.is_active() {
-                    untrack(callback);
-                }
-            }
+            commit(&inner, next, publication);
         };
         (self.0.spawn)(Box::pin(async move {
             let _ = Abortable::new(work, registration).await;
         }));
         id
+    }
+}
+
+fn commit<C: 'static, T: 'static, E: 'static>(
+    inner: &Inner<C, T, E>,
+    mut next: ActionState<C, T, E>,
+    publication: Result<Publication, String>,
+) {
+    let publication = match publication {
+        Ok(publication) => publication,
+        Err(error) => {
+            next.status = Status::PublicationFailed;
+            next.publication_error = Some(error);
+            Publication::default()
+        }
+    };
+    if let Some(error) = &publication.failure {
+        next.status = Status::PublicationFailed;
+        next.publication_error = Some(error.clone());
+    }
+    let request = inner.request.take();
+    let mut retired: Retired = Vec::new();
+    batch(|| {
+        (publication.commit)(&mut retired);
+        retired.push(Box::new(inner.state.replace(next)));
+        inner.busy.set(false);
+    });
+    // Cancellation callbacks and user destructors cannot run amid commits.
+    if let Some(request) = request {
+        request.complete();
+    }
+    drop(retired);
+    for callback in publication.after {
+        if !inner.disposed.get() && inner.owner.is_active() {
+            untrack(callback);
+        }
     }
 }
 

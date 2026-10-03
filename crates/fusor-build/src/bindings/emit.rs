@@ -47,19 +47,10 @@ pub(super) fn handle(anchor: Anchor) -> Ident {
 
 /// Give a closure its own copy of each lexical local it reads.
 pub(super) fn clone_locals(locals: &[Rust]) -> TokenStream {
-    quote! { #(let #locals = ::std::clone::Clone::clone(&#locals);)* }
-}
-
-/// Lints that generated code trips by wrapping authored expressions in blocks
-/// and cloning captures it may not use; `extra` lists target-specific ones.
-pub(super) fn allow_generated(span: Span, extra: TokenStream) -> TokenStream {
-    let extra = extra.into_iter().map(|mut token| {
-        token.set_span(span);
-        token
-    });
-    quote_spanned! {span=>
-        #[allow(unused_variables, unused_braces, unused_parens, clippy::let_and_return, clippy::needless_borrows_for_generic_args, clippy::clone_on_copy #(#extra)*)]
-    }
+    quote! { #(
+        #[allow(unused_variables, clippy::clone_on_copy, reason = "lexical captures have inferred types and may be unused in this closure")]
+        let #locals = ::std::clone::Clone::clone(&#locals);
+    )* }
 }
 
 /// Preserve the typed construction contract while letting a renderer convert
@@ -141,6 +132,20 @@ fn format_parts(value: &InterpolatedString) -> (String, Vec<&Rust>) {
 /// An authored optional expression, or the value used when it is absent.
 pub(super) fn or(value: Option<&Rust>, absent: TokenStream) -> TokenStream {
     value.map_or(absent, |value| quote! { #value })
+}
+
+/// A mounted component's optional identity, with unit identity when unkeyed.
+pub(super) fn identity(condition: Option<&Rust>, key: Option<&Rust>) -> TokenStream {
+    let key = key.map_or_else(
+        || quote! { ::std::option::Option::Some(()) },
+        |key| quote_spanned! {key.span()=> ::std::option::Option::Some({ #key }) },
+    );
+    match condition {
+        Some(condition) => quote_spanned! {condition.span()=>
+            if #condition { #key } else { ::std::option::Option::None }
+        },
+        None => key,
+    }
 }
 
 pub(super) fn option(value: Option<TokenStream>) -> TokenStream {

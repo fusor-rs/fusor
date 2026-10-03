@@ -36,10 +36,12 @@ pub(crate) fn run(cx: &Context, directory: Option<&Path>, port: u16, open: bool)
             method,
             url,
             accept,
-            &directory,
-            &output.base_path,
-            &output.history_fallback,
-            false,
+            http::Route {
+                directory: &directory,
+                base: &output.base_path,
+                history_fallback: &output.history_fallback,
+            },
+            http::Serving::Preview,
         )
     })
 }
@@ -78,10 +80,12 @@ fn serve_site(cx: &Context, root: &Path, site: &SiteManifest, port: u16, open: b
                 method,
                 url,
                 accept,
-                directory,
-                &output.base_path,
-                &output.history_fallback,
-                false,
+                http::Route {
+                    directory,
+                    base: &output.base_path,
+                    history_fallback: &output.history_fallback,
+                },
+                http::Serving::Preview,
             ),
             None => http::build_response(404, "text/plain", b"Not found".to_vec(), false),
         }

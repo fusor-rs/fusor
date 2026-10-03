@@ -150,7 +150,7 @@ impl Report {
                     operations: std::array::from_fn(|_| None),
                     present,
                 });
-                rows.last_mut().unwrap()
+                rows.last_mut().expect("the metric row was just appended")
             };
             if result.status == "measured" {
                 if let (Some(median), Some(p95)) = (result.median, result.p95) {

@@ -1,3 +1,4 @@
+use super::BuildMode;
 use crate::{
     error::{Error, Result},
     layout,
@@ -10,8 +11,7 @@ pub(crate) fn bindgen(
     wasm: &Path,
     out_dir: &Path,
     out_name: &str,
-    debug: bool,
-    dev: bool,
+    mode: BuildMode,
 ) -> Result {
     let mut command = Command::new(binary);
     command
@@ -21,7 +21,7 @@ pub(crate) fn bindgen(
     // Names cost transfer size. FUSOR_KEEP_WASM_NAMES keeps them in release,
     // for readable stack traces.
     let keep_names = env::var_os("FUSOR_KEEP_WASM_NAMES").is_some_and(|value| value == "1");
-    if !debug && !dev && !keep_names {
+    if mode == BuildMode::Release && !keep_names {
         command.arg("--remove-name-section");
     }
     checked(&mut command)
@@ -29,8 +29,8 @@ pub(crate) fn bindgen(
 
 /// Opt-in through `FUSOR_WASM_OPT` only: no download, no `PATH` search. A
 /// failure removes partial output and leaves the staged module untouched.
-pub(crate) fn optimize(path: &Path, debug: bool, dev: bool) -> Result {
-    if debug || dev {
+pub(crate) fn optimize(path: &Path, mode: BuildMode) -> Result {
+    if mode != BuildMode::Release {
         return Ok(());
     }
     let Some(binary) = env::var_os("FUSOR_WASM_OPT") else {

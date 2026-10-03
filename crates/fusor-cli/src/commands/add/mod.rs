@@ -87,7 +87,12 @@ pub(crate) fn run(cx: &Context, capability: Capability, dry_run: bool) -> Result
     }
 
     let mut files = owned_files(&project, &workspace_manifest, capability)?;
-    let result = apply(cx, &project, &document, capability, &source, &mut files);
+    let addition = Addition {
+        document: &document,
+        capability,
+        source: &source,
+    };
+    let result = addition.apply(cx, &project, &mut files);
     if let Err(error) = result {
         for file in &files {
             file.rollback(&cx.reporter)?;
@@ -99,56 +104,62 @@ pub(crate) fn run(cx: &Context, capability: Capability, dry_run: bool) -> Result
     Ok(())
 }
 
-fn apply(
-    cx: &Context,
-    project: &Project,
-    document: &DocumentMut,
+struct Addition<'a> {
+    document: &'a DocumentMut,
     capability: Capability,
-    source: &Source,
-    files: &mut [OwnedFile],
-) -> Result {
-    for (name, features) in capability.packages() {
-        let mut command = cargo();
-        let requirement = if !source.is_checkout() && !inherited(document, name) {
-            format!("{name}@={}", env!("CARGO_PKG_VERSION"))
-        } else {
-            name.to_string()
-        };
-        command
-            .arg("add")
-            .arg(requirement)
-            .arg("--manifest-path")
-            .arg(&project.manifest)
-            .arg("--no-optional")
-            .arg("--features")
-            .arg(features.join(","))
-            .current_dir(&project.root);
-        if !inherited(document, name) {
-            if source.is_checkout() {
-                command.arg("--path").arg(source.crate_path(name)?);
-            } else if let Some(registry) = source.registry() {
-                command.arg("--registry").arg(registry);
+    source: &'a Source,
+}
+
+impl Addition<'_> {
+    fn apply(&self, cx: &Context, project: &Project, files: &mut [OwnedFile]) -> Result {
+        let Self {
+            document,
+            capability,
+            source,
+        } = self;
+        for (name, features) in capability.packages() {
+            let mut command = cargo();
+            let requirement = if !source.is_checkout() && !inherited(document, name) {
+                format!("{name}@={}", env!("CARGO_PKG_VERSION"))
+            } else {
+                name.to_string()
+            };
+            command
+                .arg("add")
+                .arg(requirement)
+                .arg("--manifest-path")
+                .arg(&project.manifest)
+                .arg("--no-optional")
+                .arg("--features")
+                .arg(features.join(","))
+                .current_dir(&project.root);
+            if !inherited(document, name) {
+                if source.is_checkout() {
+                    command.arg("--path").arg(source.crate_path(name)?);
+                } else if let Some(registry) = source.registry() {
+                    command.arg("--registry").arg(registry);
+                }
+            }
+            if cx.offline {
+                command.arg("--offline");
+            }
+            if cx.quiet {
+                command.arg("--quiet");
+            }
+            // A failing `cargo add` may still have written.
+            let status = command.status();
+            capture(files)?;
+            if !status?.success() {
+                return Err(Error::project(format!("`cargo add {name}` failed")));
             }
         }
-        if cx.offline {
-            command.arg("--offline");
+        if capability.is_javascript() {
+            add_esbuild(cx, project, files)?;
         }
-        if cx.quiet {
-            command.arg("--quiet");
-        }
-        // A failing `cargo add` may still have written.
-        let status = command.status();
-        capture(files)?;
-        if !status?.success() {
-            return Err(Error::project(format!("`cargo add {name}` failed")));
-        }
+        let mut locked = cx.clone();
+        locked.locked = true;
+        project.rediscover(&locked).map(drop)
     }
-    if capability.is_javascript() {
-        add_esbuild(cx, project, files)?;
-    }
-    let mut locked = cx.clone();
-    locked.locked = true;
-    project.rediscover(&locked).map(drop)
 }
 
 fn add_esbuild(cx: &Context, project: &Project, files: &mut [OwnedFile]) -> Result {

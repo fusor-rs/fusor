@@ -7,14 +7,17 @@ use std::{
     marker::PhantomData,
     rc::Rc,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard, PoisonError,
         atomic::{AtomicBool, Ordering},
     },
 };
 
 #[cfg_attr(
     not(all(target_arch = "wasm32", target_feature = "atomics")),
-    allow(dead_code)
+    expect(
+        dead_code,
+        reason = "compute scheduling runs only in shared-memory Wasm workers"
+    )
 )]
 pub(crate) struct ComputeBudget {
     pub queue: Mutex<ComputeQueue>,
@@ -25,7 +28,10 @@ pub(crate) struct ComputeBudget {
 #[derive(Default)]
 #[cfg_attr(
     not(all(target_arch = "wasm32", target_feature = "atomics")),
-    allow(dead_code)
+    expect(
+        dead_code,
+        reason = "compute scheduling runs only in shared-memory Wasm workers"
+    )
 )]
 pub(crate) struct ComputeQueue {
     pub active: usize,
@@ -40,14 +46,49 @@ pub(crate) struct Control {
     pub failure: Mutex<Option<WorkerError>>,
     #[cfg_attr(
         not(all(target_arch = "wasm32", target_feature = "atomics")),
-        allow(dead_code)
+        expect(
+            dead_code,
+            reason = "compute scheduling runs only in shared-memory Wasm workers"
+        )
     )]
     pub compute: Arc<ComputeBudget>,
 }
 impl Drop for Control {
     fn drop(&mut self) {
-        if let Some(payload) = self.progress.get_mut().unwrap().take() {
+        // A slot always owns a complete payload, including after a poisoned write.
+        if let Some(payload) = self
+            .progress
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+        {
             self.codec.discard(payload);
+        }
+    }
+}
+
+impl Control {
+    pub(crate) fn progress(&self) -> MutexGuard<'_, Option<Payload>> {
+        self.progress.lock().unwrap_or_else(|error| {
+            self.fail(WorkerError::Crashed {
+                message: "progress slot was poisoned".into(),
+            });
+            // Recover ownership so pending transfers can still be discarded.
+            error.into_inner()
+        })
+    }
+
+    pub(crate) fn fail(&self, error: WorkerError) {
+        // Replacing a complete error does not depend on the previous slot contents.
+        *self.failure.lock().unwrap_or_else(PoisonError::into_inner) = Some(error);
+    }
+
+    pub(crate) fn take_failure(&self) -> Option<WorkerError> {
+        match self.failure.lock() {
+            Ok(mut failure) => failure.take(),
+            Err(_) => Some(WorkerError::Crashed {
+                message: "failure slot was poisoned".into(),
+            }),
         }
     }
 }
@@ -78,13 +119,13 @@ impl<P: Message> ComputeContext<P> {
         }
         match update.encode(crate::message::MESSAGE_LIMIT, &self.control.codec) {
             Ok(payload) => {
-                let old = self.control.progress.lock().unwrap().replace(payload);
+                let old = self.control.progress().replace(payload);
                 if let Some(old) = old {
                     self.control.codec.discard(old);
                 }
             }
             Err(error) => {
-                *self.control.failure.lock().unwrap() = Some(error);
+                self.control.fail(error);
             }
         }
     }
@@ -137,5 +178,64 @@ impl<P: Message> TaskContext<P> {
     {
         self.check_cancelled()?;
         crate::backend::compute(self.cpu(), work, true).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::message::private::Sealed;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    #[test]
+    fn poisoned_progress_still_releases_transferred_allocations() {
+        for report in [false, true] {
+            let value = Arc::new(());
+            let codec = Codec::local("pool".into(), "generation".into());
+            let shared = codec.share(Arc::clone(&value)).unwrap();
+            let payload = shared.encode(1024, &codec).unwrap();
+            drop(shared);
+            let control = Arc::new(Control {
+                cancelled: AtomicBool::new(false),
+                progress: Mutex::new(Some(payload)),
+                codec,
+                failure: Mutex::new(None),
+                compute: Arc::new(ComputeBudget {
+                    queue: Mutex::default(),
+                    threads: 1,
+                    capacity: 1,
+                }),
+            });
+            assert!(
+                catch_unwind(AssertUnwindSafe(|| {
+                    let _guard = control.progress.lock().unwrap();
+                    panic!("interrupted progress write");
+                }))
+                .is_err()
+            );
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                if report {
+                    ComputeContext::<u32> {
+                        control: Arc::clone(&control),
+                        marker: PhantomData,
+                    }
+                    .report(7);
+                    assert!(matches!(
+                        control.take_failure(),
+                        Some(WorkerError::Crashed { .. })
+                    ));
+                }
+                drop(control);
+            }));
+            assert!(
+                outcome.is_ok(),
+                "reporting and cleanup must survive a poisoned progress slot"
+            );
+            assert_eq!(
+                Arc::strong_count(&value),
+                1,
+                "the pending transfer was released"
+            );
+        }
     }
 }

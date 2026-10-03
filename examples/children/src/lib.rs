@@ -11,7 +11,9 @@ struct App {
 }
 impl App {
     fn new(owner: OwnerHandle) -> Self {
-        owner.provide::<Location>("caller").unwrap();
+        owner
+            .provide::<Location>("caller")
+            .expect("mount provides a live, unactivated owner");
         Self {
             count: signal(0),
             visible: signal(true),
@@ -32,7 +34,9 @@ impl FromInputs for Panel {
     type Inputs = PanelInputs;
     type Error = fusor::dom::JsValue;
     fn from_inputs(_: PanelInputs, owner: OwnerHandle) -> Result<Self, JsValue> {
-        owner.provide::<Location>("panel").unwrap();
+        owner
+            .provide::<Location>("panel")
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
         Ok(Self)
     }
 }
@@ -59,7 +63,12 @@ impl FromInputs for Tracked {
     type Inputs = TrackedInputs;
     type Error = fusor::dom::JsValue;
     fn from_inputs(inputs: Self::Inputs, owner: OwnerHandle) -> Result<Self, JsValue> {
-        assert_eq!(*owner.context::<Location>().unwrap(), "panel");
+        assert_eq!(
+            *owner
+                .context::<Location>()
+                .expect("Panel provides the projected content context"),
+            "panel"
+        );
         let live = inputs.live.clone();
         Ok(Self {
             clicks: signal(0),

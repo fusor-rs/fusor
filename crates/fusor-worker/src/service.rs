@@ -4,7 +4,11 @@ mod spawn;
 pub use close::Close;
 pub use spawn::{Spawn, spawn};
 
-use crate::{Job, Message, WorkerError, endpoint::Endpoint, job::State};
+use crate::{
+    Job, Message, WorkerError,
+    endpoint::Endpoint,
+    job::{JobKind, Requirement, State, Target},
+};
 use fusor::OwnerHandle;
 use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
@@ -35,12 +39,19 @@ impl Service {
         ) -> Result<Vec<crate::shared::Payload>, WorkerError>
         + 'static,
     ) -> Job<T, E, P> {
-        let state = State::new(&self.owner, entry, false, Box::new(arguments), false);
+        let state = State::new(
+            &self.owner,
+            entry,
+            Requirement::Ordinary,
+            Box::new(arguments),
+            JobKind::Single,
+        );
         {
             let mut state = state.borrow_mut();
-            state.endpoint = Rc::downgrade(&self.endpoint);
-            state.instance = self.instance;
-            state.bound = true;
+            state.target = Target::Bound {
+                endpoint: Rc::downgrade(&self.endpoint),
+                instance: self.instance,
+            };
         }
         Job {
             state,

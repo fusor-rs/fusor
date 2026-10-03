@@ -395,6 +395,15 @@ fn drive(inner: &Rc<Inner>, evaluate: &Evaluate) {
     if !inner.alive.get() {
         return;
     }
+    publish_attempt(inner, &attempt, inputs, result);
+}
+
+fn publish_attempt(
+    inner: &Rc<Inner>,
+    attempt: &Attempt,
+    inputs: Versions,
+    result: Result<Box<dyn Publication>, String>,
+) {
     let result = match inner.violation.take() {
         Some(error) => {
             inner.rejected_retry.set(Some(inner.retry.get()));

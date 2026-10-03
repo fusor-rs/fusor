@@ -16,14 +16,6 @@ pub(in crate::bindings) use component::delivery;
 #[derive(Clone, Copy, Default)]
 pub(super) struct DomBackend;
 
-// Hoist recursive factories once before selecting an ordinary or coherent mode.
-#[derive(Default)]
-struct BrowserBinding {
-    shared: TokenStream,
-    ordinary: TokenStream,
-    coherent: TokenStream,
-}
-
 /// Descriptor ordinals replace typed handles when the server supplies a bundle.
 struct Bundle<'a> {
     elements: &'a BTreeMap<ElementId, u32>,

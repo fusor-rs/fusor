@@ -12,7 +12,7 @@ use proc_macro2::TokenStream;
 use syn::Path;
 
 /// Changes when the backend callback or generated-code contract changes.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 /// An authored location, using a byte offset and one-based line/character column.
 #[derive(Clone, Debug, PartialEq, Eq)]

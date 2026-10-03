@@ -18,6 +18,14 @@ use crate::{
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, quote_spanned};
 
+// Hoist recursive factories once before selecting an ordinary or coherent mode.
+#[derive(Default)]
+struct BindingCode {
+    shared: TokenStream,
+    ordinary: TokenStream,
+    coherent: TokenStream,
+}
+
 /// The private compiler emission contract. Backends own target-specific code;
 /// the public external facade is adapted to this without exposing the private IR.
 trait CompilerBackend {
@@ -56,7 +64,7 @@ impl Ctx<'_> {
     }
     fn clone_ready(self) -> Option<TokenStream> {
         self.ready
-            .then(|| quote! { let ready = ::std::rc::Rc::clone(&ready); })
+            .then(|| quote! { #[allow(unused_variables, reason = "template scope bindings may be unused")] let ready = ::std::rc::Rc::clone(&ready); })
     }
 }
 
@@ -67,7 +75,7 @@ fn captures(span: Span, ctx: Ctx, locals: &[Rust]) -> TokenStream {
     quote_spanned! {span=>
         #locals
         #ready
-        let state = ::std::rc::Rc::clone(&state);
+        #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = ::std::rc::Rc::clone(&state);
         let __fusor_children = __fusor_children.clone();
     }
 }
@@ -82,7 +90,7 @@ fn handoff(span: Span, state: TokenStream) -> TokenStream {
 
 fn restore(span: Span) -> TokenStream {
     quote_spanned! {span=>
-        let state = ::std::rc::Rc::clone(&__fusor_capture);
+        #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = ::std::rc::Rc::clone(&__fusor_capture);
         let __fusor_children = __fusor_forward.clone();
     }
 }
@@ -118,7 +126,7 @@ fn children_factory(index: Option<usize>, ctx: Ctx) -> TokenStream {
         .then(|| quote! { let __fusor_ready = ::std::rc::Rc::clone(&ready); });
     let expose_ready = ctx
         .ready
-        .then(|| quote! { let ready = ::std::rc::Rc::clone(&__fusor_ready); });
+        .then(|| quote! { #[allow(unused_variables, reason = "template scope bindings may be unused")] let ready = ::std::rc::Rc::clone(&__fusor_ready); });
     let handoff = handoff(Span::call_site(), quote! { &state });
     let restore = restore(Span::call_site());
     quote! {{
@@ -166,7 +174,7 @@ fn branch_dispatch(
         quote! { #index => { #projections #body }, }
     });
     quote_spanned! {span=>
-        let state = ::std::rc::Rc::clone(&#state);
+        #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = ::std::rc::Rc::clone(&#state);
         match __fusor_case { #(#factories)* _ => unreachable!("generated branch index") }
     }
 }
@@ -194,7 +202,7 @@ fn foreach_parts(
     let state = Ident::new(state, span);
     let row = ctx.component(body);
     let prepare = quote_spanned! {span=>
-        let state = #constructor(::std::rc::Rc::clone(&#state), entry);
+        #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = #constructor(::std::rc::Rc::clone(&#state), entry);
         #row
     };
     (values, value_key, prepare)
@@ -242,7 +250,9 @@ fn await_binding(
     };
     let bindings = bindings.iter().map(|binding| emit(binding, inner, &nested));
     quote_spanned! {item.span()=>
-        if let ::fusor_async::AsyncRead::Ready(#resolved) = (#value).read(__fusor_attempt)? {
+        if let ::fusor_async::AsyncRead::Ready(__fusor_ready_value) = (#value).read(__fusor_attempt)? {
+            #[allow(unused_variables, reason = "an Await subtree may ignore its resolved value")]
+            let #resolved = __fusor_ready_value;
             #(#bindings)*
         }
     }
@@ -320,7 +330,7 @@ fn branch(item: &Binding, ctx: Ctx, locals: &[Rust]) -> (TokenStream, OperationK
             let __fusor_capture = ::std::rc::Rc::clone(&state);
             let __fusor_children = __fusor_children.clone();
             __fusor_branch_parts(
-                { #clones #capture_ready move || { let state = &__fusor_read_state; #selection } },
+                { #clones #capture_ready move || { #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = &__fusor_read_state; #selection } },
                 { #clones #capture_ready move |__fusor_case, __fusor_data, __fusor_parent| {
                     #dispatch
                 } }
@@ -334,6 +344,29 @@ fn branch(item: &Binding, ctx: Ctx, locals: &[Rust]) -> (TokenStream, OperationK
             prepare: quote! { #prepare },
         },
     )
+}
+
+fn list_ready(ctx: Ctx) -> (TokenStream, [TokenStream; 3]) {
+    let names = [
+        "__fusor_read_ready",
+        "__fusor_key_ready",
+        "__fusor_row_ready",
+    ]
+    .map(|name| Ident::new(name, Span::call_site()));
+    let captures = ctx
+        .ready
+        .then(|| quote! { #(let #names = ::std::rc::Rc::clone(&ready);)* });
+    let aliases = names.map(|name| {
+        if ctx.ready {
+            quote! {
+                #[allow(unused_variables, reason = "template scope bindings may be unused")]
+                let ready = &#name;
+            }
+        } else {
+            TokenStream::new()
+        }
+    });
+    (captures.unwrap_or_default(), aliases)
 }
 
 fn list(item: &Binding, ctx: Ctx, locals: &[Rust]) -> (TokenStream, OperationKind) {
@@ -352,22 +385,7 @@ fn list(item: &Binding, ctx: Ctx, locals: &[Rust]) -> (TokenStream, OperationKin
     let key_fn = indexed("list_key", slot);
     let prepare = indexed("list_prepare", slot);
     let (values, value_key, row) = foreach_parts(span, ctx, *body, "__fusor_row_state");
-    let ready_capture = ctx.ready.then(|| {
-        quote! {
-            let __fusor_read_ready = ::std::rc::Rc::clone(&ready);
-            let __fusor_key_ready = ::std::rc::Rc::clone(&ready);
-            let __fusor_row_ready = ::std::rc::Rc::clone(&ready);
-        }
-    });
-    let read_ready = ctx
-        .ready
-        .then(|| quote! { let ready = &__fusor_read_ready; });
-    let key_ready = ctx
-        .ready
-        .then(|| quote! { let ready = &__fusor_key_ready; });
-    let row_ready = ctx
-        .ready
-        .then(|| quote! { let ready = &__fusor_row_ready; });
+    let (ready_capture, [read_ready, key_ready, row_ready]) = list_ready(ctx);
     let clones = clone_locals(locals);
     let scope = &ctx.runtime.scope;
     let error = &ctx.runtime.error;
@@ -390,8 +408,8 @@ fn list(item: &Binding, ctx: Ctx, locals: &[Rust]) -> (TokenStream, OperationKin
             let __fusor_row_state = ::std::rc::Rc::clone(&state);
             let __fusor_children = __fusor_children.clone();
             __fusor_list_parts(
-                { #clones move || { #read_ready let state = &__fusor_read_state; #values({ #items }) } },
-                { #clones move |entry| { #key_ready let state = &__fusor_key_state; #value_key(entry, #key) } },
+                { #clones move || { #read_ready #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = &__fusor_read_state; #values({ #items }) } },
+                { #clones move |entry| { #key_ready #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = &__fusor_key_state; #value_key(entry, #key) } },
                 { #clones move |entry, __fusor_parent| {
                     #row_ready
                     #row
@@ -421,18 +439,16 @@ fn invocation(binding: &Binding, children: TokenStream, ctx: Ctx, locals: &[Rust
         unreachable!("component invocation")
     };
     let span = binding.span();
-    let condition = emit::or(condition.as_ref(), quote! { true });
-    let key = emit::or(key.as_ref(), quote! { () });
+    let identity = emit::identity(condition.as_ref(), key.as_ref());
     let construct = construct_inputs(span, ty, inputs, ctx);
     let local_clones = clone_locals(locals);
     let ready = ctx.clone_ready();
     let identity = quote_spanned! {span=> { #local_clones #ready move || {
-        let state = &__fusor_identity_state;
-        if #condition { ::std::option::Option::Some({ #key }) }
-        else { ::std::option::Option::None }
+        #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = &__fusor_identity_state;
+        #identity
     }}};
     let make = quote_spanned! {span=> { #local_clones #ready move |owner| {
-        let state = &__fusor_child_state;
+        #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = &__fusor_child_state;
         #construct
     }}};
     let mount = ctx.backend.operation(

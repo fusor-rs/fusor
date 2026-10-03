@@ -211,7 +211,7 @@ fn write_sources(staging: &Path, name: &str, manifest: &str) -> Result {
         ("rust-toolchain.toml", &toolchain),
         (
             "build.rs",
-            "fn main() -> Result<(), Box<dyn std::error::Error>> {\n    fusor_build::compile_app()\n}\n",
+            "fn main() -> Result<(), fusor_build::BuildError> {\n    fusor_build::compile_app()\n}\n",
         ),
         ("src/lib.rs", "mod app;\nmod counter;\n"),
         ("src/app.rs", include_str!("../../template/app.rs")),

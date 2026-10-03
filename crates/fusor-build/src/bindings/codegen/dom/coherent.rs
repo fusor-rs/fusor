@@ -6,13 +6,13 @@ pub(super) fn shared_await(
     node: ElementId,
     ctx: Ctx,
     locals: &[Rust],
-) -> BrowserBinding {
+) -> BindingCode {
     let span = item.span();
     let render = indexed("await_render", node.index());
     let node = element(node);
     let render_body = coherent_renderer(binding(item, ctx, locals), ctx);
     let captures = captures(span, ctx, locals);
-    BrowserBinding {
+    BindingCode {
         shared: quote_spanned! {span=>
             let #render = {
                 #captures
@@ -64,7 +64,7 @@ pub(super) fn binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStre
             let slot = node.index();
             let node = element(*node);
             let (values, value_key, row) = foreach_parts(span, ctx, *body, "state");
-            quote_spanned! {span=> __fusor_frame.keyed(#slot, #node.as_ref(), || #values({ #items }),
+            quote_spanned! {span=> __fusor_frame.keyed(::fusor::dom::coherent::RenderSlot { index: #slot, target: #node.as_ref() }, || #values({ #items }),
             |entry| #value_key(entry, #key), |entry, __fusor_parent| {
                 #row
             })?; }
@@ -77,9 +77,19 @@ pub(super) fn binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStre
             kind: RegionKind::Await { .. },
             ..
         } => await_binding(binding, ctx, locals, self::binding),
+        _ => value_binding(binding, ctx, locals),
+    }
+}
+
+fn value_binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream {
+    let span = binding.span();
+    match binding {
         Binding::Text { slot, value } => {
             let node = text(*slot);
-            quote_spanned! {span=> __fusor_frame.text(&#node, &(#value))?; }
+            quote_spanned! {span=> {
+                let __fusor_value = &(#value);
+                __fusor_frame.text(&#node, __fusor_value)?;
+            } }
         }
         Binding::Attribute { node, name, value } => {
             let node = element(*node);
@@ -104,12 +114,16 @@ pub(super) fn binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStre
             let locals = clone_locals(locals);
             quote_spanned! {span=> {
                 #locals
-                let state = ::std::rc::Rc::clone(&state);
+                #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = ::std::rc::Rc::clone(&state);
                 #ready
-                __fusor_frame.on(#node.as_ref(), #name, move |event| { #handler })?;
+                __fusor_frame.on(#node.as_ref(), #name, move |#[allow(unused_variables, reason = "handlers may ignore the event")] event| { #handler })?;
             }}
         }
-        Binding::Router { .. }
+        Binding::Branch { .. }
+        | Binding::ForEach { .. }
+        | Binding::Invocation { .. }
+        | Binding::Children { .. }
+        | Binding::Router { .. }
         | Binding::Island { .. }
         | Binding::Property { .. }
         | Binding::Value { .. }
@@ -141,10 +155,9 @@ pub(super) fn invocation(binding: &Binding, children: TokenStream, ctx: Ctx) -> 
     }
     let slot = id.index();
     let point = point(*id);
-    let condition = emit::or(condition.as_ref(), quote! { true });
-    let key = emit::or(key.as_ref(), quote! { () });
+    let identity = emit::identity(condition.as_ref(), key.as_ref());
     let construct = construct_inputs(span, ty, inputs, ctx);
-    quote_spanned! {span=> __fusor_frame.component_at(#slot, &#point, if #condition { ::std::option::Option::Some({ #key }) } else { ::std::option::Option::None }, |owner| {
+    quote_spanned! {span=> __fusor_frame.component_at(::fusor::dom::coherent::RenderSlot { index: #slot, target: &#point }, #identity, |owner| {
         #construct
     }, #children)?; }
 }

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, firefox, webkit } from "playwright";
 import assert from "node:assert/strict";
+import { observeFetch } from "../../scripts/observe-fetch.mjs";
 const root = join(process.cwd(), "examples/coherent/dist");
 const requests = [];
 const server = createServer(async (req, res) => {
@@ -53,6 +54,7 @@ try {
         : {},
     );
     const page = await browser.newPage();
+    const fetches = await observeFetch(page, "/api/");
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("console", (m) => {
@@ -70,7 +72,7 @@ try {
       request.res.end(`${kind}-${product}`);
     };
     complete("price", "A");
-    await page.waitForTimeout(30);
+    await fetches.consumed("/api/price/A");
     assert.equal(await page.locator("#selection").textContent(), " · ");
     complete("stock", "A");
     await page.locator("#status").filter({ hasText: "Ready" }).waitFor();
@@ -97,7 +99,7 @@ try {
     await page.click("#c");
     await wait(() => requests.length === 8);
     complete("stock", "C");
-    await page.waitForTimeout(30);
+    await fetches.consumed("/api/stock/C");
     assert.equal(await page.locator("#selection").textContent(), "A · en");
     complete("price", "C");
     await page.locator("#status").filter({ hasText: "Ready" }).waitFor();

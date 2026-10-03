@@ -232,6 +232,19 @@ pub(super) struct Input {
     pub value: InputValue,
 }
 
+impl Input {
+    fn value_fragments(&self) -> impl Iterator<Item = &Rust> {
+        std::iter::once(&self.name).chain(self.value.value())
+    }
+
+    fn fragments(&self) -> [&Rust; 2] {
+        let (InputValue::Expression(value)
+        | InputValue::Literal(value)
+        | InputValue::Content { origin: value, .. }) = &self.value;
+        [&self.name, value]
+    }
+}
+
 pub(super) enum InputValue {
     /// `name="{{ expression }}"`.
     Expression(Rust),
@@ -492,23 +505,14 @@ impl Binding {
                 key,
                 ..
             } => std::iter::once(ty)
-                .chain(inputs.iter().flat_map(|input| {
-                    let (InputValue::Expression(value)
-                    | InputValue::Literal(value)
-                    | InputValue::Content { origin: value, .. }) = &input.value;
-                    [&input.name, value]
-                }))
+                .chain(inputs.iter().flat_map(Input::fragments))
                 .chain(condition)
                 .chain(key)
                 .collect(),
             Self::Island {
                 descriptor, inputs, ..
             } => std::iter::once(descriptor)
-                .chain(
-                    inputs
-                        .iter()
-                        .flat_map(|input| [&input.name].into_iter().chain(input.value.value())),
-                )
+                .chain(inputs.iter().flat_map(Input::value_fragments))
                 .collect(),
             Self::Region {
                 value,
@@ -520,6 +524,7 @@ impl Binding {
                 .chain(bindings.iter().flat_map(Self::fragments))
                 .collect(),
             Self::Text { value, .. }
+            | Self::Property { value, .. }
             | Self::Boolean { value, .. }
             | Self::Checked { value, .. }
             | Self::Class { value, .. } => vec![value],
@@ -541,7 +546,6 @@ impl Binding {
                 .chain(condition)
                 .chain(key)
                 .collect(),
-            Self::Property { value, .. } => vec![value],
             Self::Attribute { value, .. } | Self::Value { value, .. } => {
                 value.expressions().collect()
             }

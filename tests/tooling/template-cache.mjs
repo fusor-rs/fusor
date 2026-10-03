@@ -44,7 +44,7 @@ codegen-units=1
   );
   await writeFile(
     join(scratch, "build.rs"),
-    "fn main()->Result<(),Box<dyn std::error::Error>>{fusor_build::compile_app()}\n",
+    "fn main()->Result<(),fusor_build::BuildError>{fusor_build::compile_app()}\n",
   );
   await writeFile(
     join(scratch, "web/index.html"),

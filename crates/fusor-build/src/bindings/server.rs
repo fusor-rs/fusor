@@ -197,15 +197,7 @@ impl<'a> ServerRender<'a> {
             self.depth += 1;
             return;
         }
-        let id = tag
-            .attributes
-            .get(template::ELEMENT_ATTRIBUTE.as_bytes())
-            .and_then(|id| String::from_utf8_lossy(id).parse::<ElementId>().ok());
-        let bindings: Vec<&'a Binding> = component
-            .bindings
-            .iter()
-            .filter(|binding| id.is_some_and(|id| binding.anchor() == Anchor::Element(id)))
-            .collect();
+        let bindings = self.element_bindings(tag);
         let island = bindings
             .iter()
             .copied()
@@ -213,15 +205,13 @@ impl<'a> ServerRender<'a> {
         if let Some(island) = island {
             self.body.push(island_prelude(tag, &bindings, island));
         }
-        let sensitive = name == "input"
-            && tag.attributes.get(b"type".as_slice()).is_some_and(|value| {
-                matches!(
-                    String::from_utf8_lossy(value).to_ascii_lowercase().as_str(),
-                    "password" | "file"
-                )
-            });
+        let element = ServerElement {
+            name: &name,
+            sensitive: sensitive_input(tag),
+            island: island.is_some(),
+        };
         self.body.open(&name);
-        self.static_attributes(tag, &bindings, island.is_some(), sensitive);
+        self.static_attributes(tag, &bindings, &element);
         let mut content = Vec::new();
         if let Some(slot) = tag
             .attributes
@@ -231,8 +221,7 @@ impl<'a> ServerRender<'a> {
             content.extend(self.text_write(slot));
         }
         for binding in &bindings {
-            let operation =
-                self.operation(binding, &name, sensitive, island.is_some(), &mut content);
+            let operation = self.operation(binding, &element, &mut content);
             self.body.push(operation);
         }
         if bindings
@@ -257,13 +246,24 @@ impl<'a> ServerRender<'a> {
         }
     }
 
+    fn element_bindings(&self, tag: &StartTag<usize>) -> Vec<&'a Binding> {
+        let id = tag
+            .attributes
+            .get(template::ELEMENT_ATTRIBUTE.as_bytes())
+            .and_then(|id| String::from_utf8_lossy(id).parse::<ElementId>().ok());
+        self.component
+            .bindings
+            .iter()
+            .filter(|binding| id.is_some_and(|id| binding.anchor() == Anchor::Element(id)))
+            .collect()
+    }
+
     /// Authored attributes, minus those a binding writes, plus the root's identity.
     fn static_attributes(
         &mut self,
         tag: &StartTag<usize>,
         bindings: &[&Binding],
-        island: bool,
-        sensitive: bool,
+        element: &ServerElement,
     ) {
         let component = self.component;
         let mut static_attributes = String::new();
@@ -271,8 +271,8 @@ impl<'a> ServerRender<'a> {
         for (key, value) in &tag.attributes {
             let key = String::from_utf8_lossy(key).into_owned();
             let value = String::from_utf8_lossy(value).into_owned();
-            if sensitive && key == "value"
-                || island && key == "id"
+            if element.sensitive && key == "value"
+                || element.island && key == "id"
                 || key == "class"
                     && bindings
                         .iter()
@@ -302,15 +302,13 @@ impl<'a> ServerRender<'a> {
     fn operation(
         &self,
         binding: &Binding,
-        element: &str,
-        sensitive: bool,
-        island: bool,
+        element: &ServerElement,
         content: &mut Vec<TokenStream>,
     ) -> TokenStream {
         let components = self.components;
         let span = binding.span();
         match binding {
-            Binding::Attribute { name, value, .. } if !island || name != "id" => {
+            Binding::Attribute { name, value, .. } if !element.island || name != "id" => {
                 let value = super::emit::format_args(value);
                 quote_spanned! {span=> __fusor_writer.attr(#name, #value); }
             }
@@ -320,12 +318,12 @@ impl<'a> ServerRender<'a> {
             Binding::Checked { value, .. } => {
                 quote_spanned! {span=> __fusor_writer.boolean("checked", { #value }); }
             }
-            Binding::Value { value, .. } if !sensitive => {
+            Binding::Value { value, .. } if !element.sensitive => {
                 let value = super::emit::format_args(value);
                 quote_spanned! {span=> __fusor_writer.attr("value", #value); }
             }
             Binding::Bind { control, value, .. } => {
-                super::bind::server(element, sensitive, control, value, content)
+                super::bind::server(element.name, element.sensitive, control, value, content)
             }
             Binding::ForEach {
                 items,
@@ -333,25 +331,7 @@ impl<'a> ServerRender<'a> {
                 body: row,
                 ..
             } => {
-                let row_constructor = if components[*row].item_only_row {
-                    quote! { ::fusor_components::ForEach::server_item_row }
-                } else {
-                    quote! { ::fusor_components::ForEach::server_row }
-                };
-                let row = component_body(&components[*row], components, true);
-                content.push(quote_spanned! {span=> {
-                    let __fusor_items = ::fusor_components::ForEach::entries({ #items });
-                    let mut __fusor_keys = ::std::collections::BTreeSet::new();
-                    for __fusor_entry in __fusor_items {
-                        let __fusor_key = ::fusor_components::ForEach::key(&__fusor_entry, #key);
-                        if !__fusor_keys.insert(__fusor_key.clone()) { return ::std::result::Result::Err("duplicate key in ForEach".into()); }
-                        __fusor_writer.keyed_child(&__fusor_key, |mut __fusor_writer| {
-                            let state = #row_constructor(state, __fusor_entry);
-                            let state = &state;
-                            #row
-                        })?;
-                    }
-                }});
+                content.push(server_list(&components[*row], components, items, key));
                 quote! {}
             }
             Binding::Island { .. } => {
@@ -359,9 +339,9 @@ impl<'a> ServerRender<'a> {
                 // borrowed nested Writers; the latter reborrow is
                 // intentional. Scope the lint to framework calls.
                 content.push(
-                    quote_spanned! {span=> #[allow(clippy::needless_borrow)] __fusor_island.contents(&mut __fusor_writer); },
+                    quote_spanned! {span=> #[allow(clippy::needless_borrow, reason = "nested writers are borrowed while outer writers are owned")] __fusor_island.contents(&mut __fusor_writer); },
                 );
-                quote! { #[allow(clippy::needless_borrow)] __fusor_island.attributes(&mut __fusor_writer); }
+                quote! { #[allow(clippy::needless_borrow, reason = "nested writers are borrowed while outer writers are owned")] __fusor_island.attributes(&mut __fusor_writer); }
             }
             // Guarded values omit sensitive inputs and island-owned IDs.
             Binding::Attribute { .. } | Binding::Value { .. }
@@ -381,7 +361,10 @@ impl<'a> ServerRender<'a> {
             .iter()
             .find_map(|binding| match binding {
                 Binding::Text { slot: text, value } if *text == slot => {
-                    Some(quote_spanned! {value.span()=> __fusor_writer.text(&(#value)); })
+                    Some(quote_spanned! {value.span()=> {
+                        let __fusor_value = &(#value);
+                        __fusor_writer.text(__fusor_value);
+                    } })
                 }
                 _ => None,
             })
@@ -555,25 +538,20 @@ pub(super) fn component(component: &Component, components: &[Component]) -> Toke
     let span = ty.span();
     let hash = hash(component, components);
     let body = component_body(component, components, true);
-    let allow = super::emit::allow_generated(span, quote! {});
-    // `render_into` binds its writer `mut`, which only some bodies need.
-    let allow_mut = super::emit::allow_generated(span, quote! { , unused_mut });
     quote_spanned! {span=>
         #[cfg(not(target_arch = "wasm32"))]
         impl ::fusor_server::Render for #ty {
             const TEMPLATE_HASH: &'static str = #hash;
-            #allow
             fn render(&self, __fusor_context: &mut ::fusor_server::Context<'_>) -> ::fusor_server::Result<::fusor_server::Html> {
                 self.render_with_children(__fusor_context, ::std::option::Option::None)
             }
-            #allow
             fn render_with_children(&self, __fusor_context: &mut ::fusor_server::Context<'_>, __fusor_children: ::std::option::Option<&::fusor_server::Children<'_>>) -> ::fusor_server::Result<::fusor_server::Html> {
                 let mut writer = ::fusor_server::Writer::new();
                 ::fusor_server::Render::render_into(self, __fusor_context, __fusor_children, &mut writer)?;
                 ::std::result::Result::Ok(writer.finish())
             }
-            #allow_mut
-            fn render_into(&self, __fusor_context: &mut ::fusor_server::Context<'_>, __fusor_children: ::std::option::Option<&::fusor_server::Children<'_>>, mut __fusor_writer: &mut ::fusor_server::Writer) -> ::fusor_server::Result<()> {
+            fn render_into(&self, __fusor_context: &mut ::fusor_server::Context<'_>, __fusor_children: ::std::option::Option<&::fusor_server::Children<'_>>, #[allow(unused_mut, reason = "only island rendering reborrows the writer")] mut __fusor_writer: &mut ::fusor_server::Writer) -> ::fusor_server::Result<()> {
+                #[allow(unused_variables, reason = "static templates do not read their state")]
                 let state = self;
                 #body
             }
@@ -588,6 +566,47 @@ fn static_attribute(output: &mut String, name: &str, value: &str) -> bool {
     template::escape_into(output, value, true);
     output.push('"');
     name == "contenteditable" && value != "false"
+}
+
+struct ServerElement<'a> {
+    name: &'a str,
+    sensitive: bool,
+    island: bool,
+}
+
+fn sensitive_input(tag: &StartTag<usize>) -> bool {
+    tag.name.as_ref() == b"input"
+        && tag.attributes.get(b"type".as_slice()).is_some_and(|value| {
+            matches!(
+                String::from_utf8_lossy(value).to_ascii_lowercase().as_str(),
+                "password" | "file"
+            )
+        })
+}
+
+fn server_list(row: &Component, components: &[Component], items: &Rust, key: &Rust) -> TokenStream {
+    let span = items.span();
+    let row_constructor = if row.item_only_row {
+        quote! { ::fusor_components::ForEach::server_item_row }
+    } else {
+        quote! { ::fusor_components::ForEach::server_row }
+    };
+    let row = component_body(row, components, true);
+    quote_spanned! {span=> {
+        let __fusor_items = ::fusor_components::ForEach::entries({ #items });
+        let mut __fusor_keys = ::std::collections::BTreeSet::new();
+        for __fusor_entry in __fusor_items {
+            let __fusor_key = ::fusor_components::ForEach::key(&__fusor_entry, #key);
+            #[allow(clippy::clone_on_copy, reason = "list keys have an inferred type and may not be Copy")]
+            let __fusor_unique = __fusor_keys.insert(__fusor_key.clone());
+            if !__fusor_unique { return ::std::result::Result::Err("duplicate key in ForEach".into()); }
+            __fusor_writer.keyed_child(&__fusor_key, |mut __fusor_writer| {
+                #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = #row_constructor(state, __fusor_entry);
+                #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = &state;
+                #row
+            })?;
+        }
+    }}
 }
 
 #[cfg(test)]

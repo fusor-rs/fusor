@@ -1,7 +1,7 @@
 use super::{Service, Worker};
 use crate::{
     Bound, Job, Message, Pool, TaskResult, Unbound, WorkerError,
-    job::{Arguments, State},
+    job::{Arguments, JobKind, State, Target},
 };
 use fusor::OwnerHandle;
 use fusor_async::CancellationToken;
@@ -15,8 +15,8 @@ use std::{
 
 pub fn spawn<W: Worker>(owner: &OwnerHandle, input: W::Input) -> Spawn<W> {
     let args: Arguments = Box::new(move |codec| Ok(vec![crate::__private::encode(&input, codec)?]));
-    let state = State::new(owner, W::__id(), W::__pool(), args, false);
-    state.borrow_mut().dedicated = true;
+    let state = State::new(owner, W::__id(), W::__pool().into(), args, JobKind::Single);
+    state.borrow_mut().target = Target::Dedicated;
     Spawn {
         job: Job {
             state,
@@ -71,7 +71,7 @@ impl<W: Worker, M> Future for Spawn<W, M> {
             Poll::Pending => return Poll::Pending,
         };
         let state = self.job.state.borrow();
-        let Some(endpoint) = state.endpoint.upgrade() else {
+        let Some(endpoint) = state.endpoint() else {
             return Poll::Ready(Err(WorkerError::Terminated.into()));
         };
         endpoint.own_service(instance, &state.owner);

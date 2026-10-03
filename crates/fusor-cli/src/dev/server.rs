@@ -34,21 +34,7 @@ pub(crate) fn dev(
     open: bool,
     started: Instant,
 ) -> Result {
-    for DevApp { cx, project } in &apps {
-        project.validate_output(cx)?;
-        let output = OutputManifest::read(&project.output(cx))?;
-        // Patching a document whose URLs moved would leave its links broken.
-        if output.base_path != project.config.base_path {
-            return Err(Error::project("base-path changed since the last build")
-                .remedy("run `fusor build`"));
-        }
-        if output.history_fallback != project.config.history_fallback {
-            return Err(
-                Error::project("history-fallback changed since the last build")
-                    .remedy("run `fusor build`"),
-            );
-        }
-    }
+    validate_apps(&apps)?;
 
     let server = bind(port)?;
     let mut routes = Vec::new();
@@ -91,12 +77,33 @@ pub(crate) fn dev(
             method,
             url,
             accept,
-            &project.output(cx),
-            &project.config.base_path,
-            &project.config.history_fallback,
-            true,
+            http::Route {
+                directory: &project.output(cx),
+                base: &project.config.base_path,
+                history_fallback: &project.config.history_fallback,
+            },
+            http::Serving::Development,
         )
     })
+}
+
+fn validate_apps(apps: &[DevApp]) -> Result {
+    for DevApp { cx, project } in apps {
+        project.validate_output(cx)?;
+        let output = OutputManifest::read(&project.output(cx))?;
+        // Patching a document whose URLs moved would leave its links broken.
+        if output.base_path != project.config.base_path {
+            return Err(Error::project("base-path changed since the last build")
+                .remedy("run `fusor build`"));
+        }
+        if output.history_fallback != project.config.history_fallback {
+            return Err(
+                Error::project("history-fallback changed since the last build")
+                    .remedy("run `fusor build`"),
+            );
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn check_port(port: u16) -> Result {

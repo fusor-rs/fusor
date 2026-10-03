@@ -55,7 +55,7 @@ fn forwarding_row(component: &Component, ctx: Ctx) -> Option<TokenStream> {
     let supplied = children_factory(*children, ctx);
     Some(quote! {{
         #local_clones
-        let state = ::std::rc::Rc::new(state);
+        #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = ::std::rc::Rc::new(state);
         let __fusor_supplied = #supplied;
         __fusor_supplied.with(|| <#ty as ::fusor::dom::Component>::prepare(__fusor_parent, move |owner| {
             #construct
@@ -73,7 +73,7 @@ fn prepare(component: &Component, html: &TokenStream, ctx: Ctx) -> TokenStream {
     } = template::lower(component, ctx);
     let expose_capture = component.capture().map(|_| {
         quote! {
-            let state = ::std::rc::Rc::clone(state.as_ref());
+            #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = ::std::rc::Rc::clone(state.as_ref());
         }
     });
     // Declared components publish their HTML as a constant; the others embed it.
@@ -116,7 +116,7 @@ fn prepare(component: &Component, html: &TokenStream, ctx: Ctx) -> TokenStream {
                 let __fusor_nesting = ::fusor::dom::NestingGuard::enter()?;
                 #declarations
                 let (mut __fusor_scope, mut __fusor_nodes) = #mount;
-                let state = ::fusor::render::construct(&mut __fusor_scope, make)?;
+                #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = ::fusor::render::construct(&mut __fusor_scope, make)?;
                 #expose_capture
                 #javascript_inputs
                 #install
@@ -125,23 +125,14 @@ fn prepare(component: &Component, html: &TokenStream, ctx: Ctx) -> TokenStream {
     }
 }
 
-fn allow_generated(span: Span) -> TokenStream {
-    emit::allow_generated(
-        span,
-        quote! { , clippy::unused_unit, clippy::unit_arg, clippy::needless_ifs, clippy::needless_else },
-    )
-}
-
 fn app_entry(expression: &Rust, prepare: &TokenStream) -> TokenStream {
     let span = expression.span();
-    let allow = allow_generated(span);
     quote_spanned! {span=>
-        #allow
         #[cfg(not(fusor_worker))]
         pub(crate) fn __fusor_mount() -> ::std::result::Result<(), ::fusor::dom::JsValue> {
             ::fusor_components::App::mount(|| {
                 let parent = ::std::option::Option::None;
-                let make = |owner: ::fusor::OwnerHandle| ::std::result::Result::<_, ::fusor::dom::JsValue>::Ok({ #expression });
+                let make = |#[allow(unused_variables, reason = "application constructors may ignore the owner")] owner: ::fusor::OwnerHandle| ::std::result::Result::<_, ::fusor::dom::JsValue>::Ok({ #expression });
                 #prepare
             })
         }
@@ -161,7 +152,6 @@ fn component_impl(
 ) -> TokenStream {
     let ty = &component.ty;
     let span = ty.span();
-    let allow = allow_generated(span);
     let target = (component.render == RenderTarget::Shared)
         .then(|| quote! { #[cfg(target_arch = "wasm32")] });
     let template_impl = (component.kind() == RootKind::Template).then(|| {
@@ -178,11 +168,9 @@ fn component_impl(
         impl ::fusor::dom::Component for #ty {
             const TEMPLATE_HASH: &'static str = #hash;
             const TEMPLATE_HTML: &'static str = #html;
-            #allow
             fn mount(self) -> ::std::result::Result<::fusor::dom::Scope, ::fusor::dom::JsValue> {
                 <Self as ::fusor::dom::Component>::try_mount_with(|_| ::std::result::Result::Ok(self))
             }
-            #allow
             fn prepare_component(
                 parent: ::std::option::Option<&::fusor::OwnerHandle>,
                 make: ::fusor::dom::ComponentFactory<'_, Self>,
@@ -205,9 +193,9 @@ pub(in crate::bindings) fn delivery(components: &[Component]) -> TokenStream {
             let hash = matches!(component.shape, ComponentShape::Declared(_)).then(|| {
                 let name = emit::indexed_constant("TEMPLATE_HASH", component.id.index());
                 let hash = crate::bindings::server::hash(component, components);
-                quote! { #[allow(dead_code)] const #name: &str = #hash; }
+                quote! { #[allow(dead_code, reason = "template metadata is used only by matching rendering modes")] const #name: &str = #hash; }
             });
-            quote! { #[allow(dead_code)] const #name: &str = #html; #hash }
+            quote! { #[allow(dead_code, reason = "template metadata is used only by matching rendering modes")] const #name: &str = #html; #hash }
         });
     quote! { #(#constants)* }
 }

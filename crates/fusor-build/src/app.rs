@@ -15,10 +15,10 @@ pub(crate) use artifact::{HTML_FILE, MANIFEST_FILE, MODULE_FILE};
 pub use config::{
     AppConfig, DeliveryConfig, DeliveryMode, DeliveryUnit, Source, SourceKind, valid_module_name,
 };
-pub(crate) use error::SourceError;
+pub use error::SourceError;
 pub use generate::generate;
 pub use includes::includes_foreign_file;
 #[doc(hidden)]
 pub use includes::includes_foreign_file_with;
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+type Result<T> = std::result::Result<T, crate::BuildError>;

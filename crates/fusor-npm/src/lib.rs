@@ -4,9 +4,12 @@
 //! compiler module manifest opts the browser CLI into Node; Rust-only builds and
 //! native Cargo checks never launch it. Dependencies must already be installed.
 use serde_json::{Value, json};
-use std::{env, error::Error, fs, path::Path, process::Command};
+use std::{env, fs, path::Path, process::Command};
 
-type Result<T = ()> = std::result::Result<T, Box<dyn Error>>;
+mod error;
+pub use error::BundleError;
+
+type Result<T = ()> = std::result::Result<T, BundleError>;
 const TOOL: &str = include_str!("tool.mjs");
 
 /// Bundle compiler-discovered JavaScript modules and a wasm-bindgen entry into
@@ -20,13 +23,11 @@ pub fn bundle(
     public_path: &str,
     release: bool,
 ) -> Result<Value> {
-    let modules = modules
-        .as_array()
-        .ok_or("invalid JavaScript module manifest")?;
+    let modules = modules.as_array().ok_or(BundleError::InvalidManifest)?;
     if modules.is_empty() {
         return Ok(json!({ "inputs": [], "styles": [] }));
     }
-    let directory = entry.parent().ok_or("JavaScript entry has no parent")?;
+    let directory = entry.parent().ok_or(BundleError::InvalidEntry)?;
     fs::create_dir_all(directory)?;
     let script = directory.join("fusor-javascript-tool.mjs");
     let manifest = directory.join("fusor-javascript-modules.json");
@@ -43,18 +44,17 @@ pub fn bundle(
     if release {
         command.arg("--release");
     }
-    let execution = command.output();
-    let _ = fs::remove_file(&script);
-    let _ = fs::remove_file(&manifest);
-    let result = execution
-        .map_err(|error| format!("JavaScript modules need Node.js 22 or newer: {error}"))?;
+    let execution = command.output().map_err(BundleError::Node);
+    // Attempt both removals; an execution failure takes precedence over cleanup.
+    let cleanup = fs::remove_file(&script).and(fs::remove_file(&manifest));
+    let result = execution?;
     if !result.status.success() {
-        return Err(format!(
-            "Fusor JavaScript bundling failed:\n{}",
-            String::from_utf8_lossy(&result.stderr)
-        )
-        .into());
+        return Err(BundleError::Failed {
+            status: result.status,
+            message: String::from_utf8_lossy(&result.stderr).into_owned(),
+        });
     }
+    cleanup?;
     if !result.stderr.is_empty() {
         eprintln!("{}", String::from_utf8_lossy(&result.stderr));
     }
@@ -68,7 +68,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rust_only_builds_do_not_need_a_package_directory_or_node() {
+    fn validates_modules_before_accessing_the_package_directory_or_node() {
+        let error = bundle(
+            Path::new("/nonexistent-fusor-application"),
+            Path::new("/nonexistent-fusor-output/app.js"),
+            &json!({}),
+            "/__fusor/unused/pkg",
+            false,
+        )
+        .unwrap_err();
+        assert!(matches!(error, BundleError::InvalidManifest));
         let output = bundle(
             Path::new("/nonexistent-fusor-application"),
             Path::new("/nonexistent-fusor-output/app.js"),

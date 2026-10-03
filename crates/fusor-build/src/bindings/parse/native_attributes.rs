@@ -129,12 +129,19 @@ fn authored_attributes(source: &str, tag: &StartTag<usize>) -> Attributes {
         .collect()
 }
 
+pub(super) struct ElementContext {
+    pub node: ElementId,
+    pub component_id: Option<ComponentId>,
+    pub foreach_host: bool,
+    pub async_root: bool,
+}
+
 /// The element being lowered.
 struct Native<'a> {
     source: &'a str,
     name: &'a str,
     attrs: &'a Attributes,
-    node: ElementId,
+    context: &'a ElementContext,
 }
 
 /// The rewritten opening tag being built.
@@ -152,10 +159,7 @@ pub(super) fn lower(
     source: &str,
     tag: &StartTag<usize>,
     component: &mut Component,
-    node: ElementId,
-    component_id: Option<ComponentId>,
-    foreach_host: bool,
-    async_root: bool,
+    context: ElementContext,
 ) -> Result<Option<String>, ExtractError> {
     let name = String::from_utf8_lossy(&tag.name);
     let attrs = authored_attributes(source, tag);
@@ -163,52 +167,36 @@ pub(super) fn lower(
         source,
         name: &name,
         attrs: &attrs,
-        node,
+        context: &context,
     };
     let mut opening = Opening {
         rendered: String::new(),
-        changed: component_id.is_some() || foreach_host || async_root,
-        bound: foreach_host || async_root,
+        changed: context.component_id.is_some() || context.foreach_host || context.async_root,
+        bound: context.foreach_host || context.async_root,
     };
-    for (attr, (value, offset)) in &attrs {
-        lower_attribute(
-            &native,
-            attr,
-            value,
-            *offset,
-            component,
-            component_id,
-            &mut opening,
-        )?;
+    for (attr, value) in &attrs {
+        lower_attribute(&native, attr, value, component, &mut opening)?;
     }
     lower_slot(&native, tag, component, &mut opening)?;
     if !opening.changed {
         return Ok(None);
     }
-    Ok(Some(render_opening(
-        &native,
-        tag,
-        component,
-        component_id,
-        foreach_host,
-        opening,
-    )))
+    Ok(Some(render_opening(&native, tag, component, opening)))
 }
 
 fn lower_attribute(
     native: &Native,
     attr: &str,
-    value: &str,
-    offset: usize,
+    attribute: &(String, usize),
     component: &mut Component,
-    component_id: Option<ComponentId>,
     opening: &mut Opening,
 ) -> Result<(), ExtractError> {
+    let (value, offset) = (attribute.0.as_str(), attribute.1);
     let source = native.source;
     let binding = match Directive::classify(attr) {
         Directive::Component => return Ok(()),
         Directive::Render => {
-            return render_target(native, value, offset, component, component_id, opening);
+            return render_target(native, value, offset, component, opening);
         }
         Directive::ActivationTarget => return activation_target(native, value, offset, opening),
         Directive::Hydrate => {
@@ -229,16 +217,18 @@ fn lower_attribute(
                 return Err(error(source, offset, "on:event requires a Rust handler"));
             }
             Some(Binding::Event {
-                node: native.node,
+                node: native.context.node,
                 name: event.to_owned(),
                 handler: Rust::parse(source, value, offset)?,
             })
         }
         Directive::Bind => Some(bind::parse(
             source,
-            native.name,
-            native.attrs,
-            native.node,
+            bind::ControlElement {
+                name: native.name,
+                attributes: native.attrs,
+                node: native.context.node,
+            },
             value,
             offset,
         )?),
@@ -265,7 +255,6 @@ fn render_target(
     value: &str,
     offset: usize,
     component: &mut Component,
-    component_id: Option<ComponentId>,
     opening: &mut Opening,
 ) -> Result<(), ExtractError> {
     let source = native.source;
@@ -276,7 +265,7 @@ fn render_target(
             "App is a browser startup boundary; use rust:component templates for native or shared rendering",
         ));
     }
-    if component_id.is_none() {
+    if native.context.component_id.is_none() {
         return Err(error(
             source,
             offset,
@@ -367,7 +356,7 @@ fn property_binding(
         ));
     }
     Ok(Binding::Property {
-        node: native.node,
+        node: native.context.node,
         name: property.to_owned(),
         value: Rust::parse(source, value, offset)?,
     })
@@ -399,7 +388,7 @@ fn class_binding(
         ));
     }
     Ok(Binding::Class {
-        node: native.node,
+        node: native.context.node,
         name: class.to_owned(),
         value: Rust::parse(source, value, offset)?,
     })
@@ -414,7 +403,7 @@ fn plain_attribute(
     rendered: &mut String,
 ) -> Result<Option<Binding>, ExtractError> {
     let source = native.source;
-    let node = native.node;
+    let node = native.context.node;
     let parts = interpolations(source, value, offset, false)?;
     if parts.is_empty() {
         rendered.push_str(&format!(" {attr}=\"{}\"", markup::escape_attribute(value)));
@@ -489,7 +478,7 @@ fn lower_slot(
         let condition = attrs.get("rust:if").map(expression).transpose()?;
         let key = attrs.get("rust:key").map(expression).transpose()?;
         component.bindings.push(Binding::Slot {
-            node: native.node,
+            node: native.context.node,
             content: value,
             condition,
             key,
@@ -518,16 +507,18 @@ fn render_opening(
     native: &Native,
     tag: &StartTag<usize>,
     component: &mut Component,
-    component_id: Option<ComponentId>,
-    foreach_host: bool,
     opening: Opening,
 ) -> String {
     let Native {
-        name, attrs, node, ..
+        name,
+        attrs,
+        context,
+        ..
     } = *native;
+    let node = context.node;
     let mut rendered = opening.rendered;
     if opening.bound {
-        let managed = foreach_host || attrs.contains_key("rust:slot");
+        let managed = context.foreach_host || attrs.contains_key("rust:slot");
         rendered.push_str(&format!(" {}=\"{node}\"", template::ELEMENT_ATTRIBUTE));
         if managed {
             rendered.push_str(&format!(" {}=\"\"", template::MANAGED_ATTRIBUTE));
@@ -542,7 +533,7 @@ fn render_opening(
             },
         });
     }
-    if let Some(id) = component_id {
+    if let Some(id) = context.component_id {
         rendered.push_str(&markup::component_attributes(id));
     }
     format!(

@@ -56,7 +56,8 @@ fn prepare(cx: &Context, project: Project) -> Result<DevApp> {
     toolchain::prepare(cx, &project, false, false)?;
     let mut cx = cx.clone();
     cx.output = Some(project.root.join(layout::DEV_OUTPUT));
-    super::build::run(&cx, &project, true, true).map_err(|error| error.context(&project.name))?;
+    super::build::run(&cx, &project, crate::pipeline::BuildMode::Development)
+        .map_err(|error| error.context(&project.name))?;
     // Said once, here, rather than on every rebuild.
     let output = OutputManifest::read(&project.output(&cx))?;
     if output.rust_signature.is_none() && project.config.delivery.is_none() {

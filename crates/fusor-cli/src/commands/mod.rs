@@ -53,25 +53,19 @@ pub(crate) fn dispatch(cx: &Context, action: Action) -> Result {
         // These name the application in any failure, which matters in a
         // workspace.
         Action::Install => {
-            let project = application(cx, Prepare::Toolchain)?;
-            install::run(cx, &project).map_err(|error| error.context(&project.name))
+            with_application(cx, Prepare::Toolchain, |project| install::run(cx, project))
         }
-        Action::Check => {
-            let project = application(cx, Prepare::None)?;
-            check::run(cx, &project).map_err(|error| error.context(&project.name))
-        }
+        Action::Check => with_application(cx, Prepare::None, |project| check::run(cx, project)),
         Action::Build { debug, site: true } => {
             toolchain::rust::preflight(cx, Path::new("."), false)?;
-            build::site(cx, debug)
+            build::site(cx, debug.into())
         }
-        Action::Build { debug, site: false } => {
-            let project = application(cx, Prepare::None)?;
-            build::single(cx, &project, debug).map_err(|error| error.context(&project.name))
-        }
-        Action::Expand { module } => {
-            let project = application(cx, Prepare::None)?;
-            expand::run(cx, &project, &module).map_err(|error| error.context(&project.name))
-        }
+        Action::Build { debug, site: false } => with_application(cx, Prepare::None, |project| {
+            build::single(cx, project, debug.into())
+        }),
+        Action::Expand { module } => with_application(cx, Prepare::None, |project| {
+            expand::run(cx, project, &module)
+        }),
         Action::Dev {
             port,
             open,
@@ -107,4 +101,13 @@ fn application(cx: &Context, prepare: Prepare) -> Result<Project> {
         .unwrap_or(Path::new("."));
     toolchain::rust::preflight(cx, directory, prepare == Prepare::Toolchain)?;
     Project::discover_at(cx, located.as_deref())
+}
+
+fn with_application(
+    cx: &Context,
+    prepare: Prepare,
+    run: impl FnOnce(&Project) -> Result,
+) -> Result {
+    let project = application(cx, prepare)?;
+    run(&project).map_err(|error| error.context(&project.name))
 }

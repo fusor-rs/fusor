@@ -48,6 +48,52 @@ pub(super) fn emit(binding: &Binding, ctx: Ctx<'_>, locals: &[Rust]) -> TokenStr
         Binding::Text { .. } | Binding::Attribute { .. } | Binding::Event { .. } => {
             scoped(binding, None).expect("scoped binding")
         }
+        Binding::Slot { .. } => slot(binding),
+        _ => value_binding(binding),
+    };
+    let captures = captures(span, ctx, locals);
+    quote_spanned! {span=> {
+        #captures
+        #operation
+    }}
+}
+
+fn slot(binding: &Binding) -> TokenStream {
+    let Binding::Slot {
+        node,
+        content,
+        condition,
+        key,
+    } = binding
+    else {
+        unreachable!("content slot binding")
+    };
+    let span = binding.span();
+    let node = element(*node);
+    let condition = condition.as_ref().map_or(
+        quote! { true },
+        |value| quote_spanned! {value.span()=> #value },
+    );
+    let pair = key.as_ref().map_or(
+        quote! { ((), __fusor_content) },
+        |value| quote_spanned! {value.span()=> ({ #value }, __fusor_content) },
+    );
+    quote_spanned! {span=>
+        __fusor_scope.slot_with(&#node, move || {
+            if #condition {
+                let __fusor_content: ::std::option::Option<::fusor::dom::Content> =
+                    ::std::convert::Into::into({ #content });
+                __fusor_content.map(|__fusor_content| #pair)
+            } else {
+                ::std::option::Option::None
+            }
+        })?;
+    }
+}
+
+fn value_binding(binding: &Binding) -> TokenStream {
+    let span = binding.span();
+    match binding {
         Binding::Property { node, name, value } => {
             let node = element(*node);
             quote_spanned! {span=> __fusor_scope.property(&#node, #name, move || { #value })?; }
@@ -79,39 +125,8 @@ pub(super) fn emit(binding: &Binding, ctx: Ctx<'_>, locals: &[Rust]) -> TokenStr
             control,
             value,
         } => control_binding(*node, control, value, ControlMode::Install),
-        Binding::Slot {
-            node,
-            content,
-            condition,
-            key,
-        } => {
-            let node = element(*node);
-            let condition = condition.as_ref().map_or(
-                quote! { true },
-                |value| quote_spanned! {value.span()=> #value },
-            );
-            let pair = key.as_ref().map_or(
-                quote! { ((), __fusor_content) },
-                |value| quote_spanned! {value.span()=> ({ #value }, __fusor_content) },
-            );
-            quote_spanned! {span=>
-                __fusor_scope.slot_with(&#node, move || {
-                    if #condition {
-                        let __fusor_content: ::std::option::Option<::fusor::dom::Content> =
-                            ::std::convert::Into::into({ #content });
-                        __fusor_content.map(|__fusor_content| #pair)
-                    } else {
-                        ::std::option::Option::None
-                    }
-                })?;
-            }
-        }
-    };
-    let captures = captures(span, ctx, locals);
-    quote_spanned! {span=> {
-        #captures
-        #operation
-    }}
+        _ => unreachable!("ordinary value binding"),
+    }
 }
 
 // The typed path changes the generated closure's result representation. Keep
@@ -129,7 +144,7 @@ fn typed_text_eligible(value: &Rust) -> bool {
     transparent(value.tokens.clone())
 }
 
-fn browser_binding(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> BrowserBinding {
+fn browser_binding(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> BindingCode {
     match item {
         Binding::Branch { .. } | Binding::ForEach { .. } => {
             shared_structure(item, shared, ctx, locals)
@@ -149,7 +164,7 @@ fn browser_binding(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> B
             kind: RegionKind::Await { alias: Some(_) },
             ..
         } => coherent::shared_await(item, *node, ctx, locals),
-        _ => BrowserBinding {
+        _ => BindingCode {
             shared: TokenStream::new(),
             ordinary: codegen::binding(item, ctx, locals),
             coherent: coherent::binding(item, ctx, locals),
@@ -163,9 +178,9 @@ fn shared_children(
     child: usize,
     ctx: Ctx,
     locals: &[Rust],
-) -> BrowserBinding {
+) -> BindingCode {
     let (make, shared) = shared_children_factory(id, child, ctx);
-    BrowserBinding {
+    BindingCode {
         shared,
         ordinary: codegen::invocation(
             item,
@@ -260,7 +275,7 @@ pub(super) fn scoped(binding: &Binding, bundle: Option<&Bundle>) -> Option<Token
         },
         Binding::Event { name, handler, .. } => (
             "on",
-            quote_spanned! {span=> #name, move |event| { #handler } },
+            quote_spanned! {span=> #name, move |#[allow(unused_variables, reason = "handlers may ignore the event")] event| { #handler } },
         ),
         _ => return None,
     };
@@ -283,19 +298,19 @@ pub(super) fn install(
 ) -> TokenStream {
     let shared = component.render == RenderTarget::Shared;
     // A select's value applies after its options' own bindings set their values.
-    let mut code = BrowserBinding::default();
+    let mut code = BindingCode::default();
     for item in order_bindings(&component.bindings) {
         let next = browser_binding(item, shared, ctx, &component.async_locals);
         code.shared.extend(next.shared);
         code.ordinary.extend(next.ordinary);
         code.coherent.extend(next.coherent);
     }
-    let BrowserBinding {
+    let BindingCode {
         shared,
         ordinary,
         coherent,
     } = code;
-    let adoptions = component
+    let adoptions: TokenStream = component
         .bindings
         .iter()
         .filter_map(|binding| match binding {
@@ -305,10 +320,14 @@ pub(super) fn install(
                 value,
             } => Some(control_binding(*node, control, value, ControlMode::Adopt)),
             _ => None,
-        });
+        })
+        .collect();
+    let adoptions =
+        (!adoptions.is_empty()).then(|| quote! { if __fusor_scope.is_hydrating() { #adoptions } });
+    let ordinary = (!ordinary.is_empty()).then(|| quote! { else { #ordinary } });
     let install = quote! {
         #typed_handles
-        if __fusor_scope.is_hydrating() { #(#adoptions)* }
+        #adoptions
         #shared
         if __fusor_scope.is_coherent() {
             __fusor_scope.set_coherent_renderer(move |__fusor_frame| {
@@ -316,9 +335,7 @@ pub(super) fn install(
                 #coherent
                 ::std::result::Result::Ok(())
             });
-        } else {
-            #ordinary
-        }
+        } #ordinary
     };
     if let Some(bindings) = bundle {
         quote! {
@@ -333,7 +350,7 @@ pub(super) fn install(
     }
 }
 
-fn shared_structure(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> BrowserBinding {
+fn shared_structure(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> BindingCode {
     let span = item.span();
     let (setup, operation) = match item {
         Binding::Branch { .. } => codegen::branch(item, ctx, locals),
@@ -359,7 +376,7 @@ fn shared_structure(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> 
             let slot = id.index();
             let row = quote! { move |entry| #prepare(entry, &__fusor_parent) };
             let ordinary = if shared {
-                quote! { __fusor_scope.keyed_hydrated(&#anchor, #read, #key, #row, |key| ::fusor_islands::encode(key).map_err(|error| ::fusor::dom::JsValue::from_str(&error.to_string())))?; }
+                quote! { __fusor_scope.keyed_hydrated(&#anchor, #read, ::fusor::dom::HydratedKeys { key: #key, encode: |key: &_| ::fusor_islands::encode(key).map_err(|error| ::fusor::dom::JsValue::from_str(&error.to_string())) }, #row)?; }
             } else {
                 quote! { __fusor_scope.keyed(&#anchor, #read, #key, #row)?; }
             };
@@ -368,12 +385,12 @@ fn shared_structure(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> 
                     let __fusor_parent = __fusor_scope.owner();
                     #ordinary
                 } },
-                quote_spanned! {span=> __fusor_frame.keyed(#slot, #anchor.as_ref(), &#read, &#key, &#prepare)?; },
+                quote_spanned! {span=> __fusor_frame.keyed(::fusor::dom::coherent::RenderSlot { index: #slot, target: #anchor.as_ref() }, &#read, &#key, &#prepare)?; },
             )
         }
         _ => unreachable!("structural operation"),
     };
-    BrowserBinding {
+    BindingCode {
         shared: setup,
         ordinary,
         coherent,

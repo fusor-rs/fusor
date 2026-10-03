@@ -239,6 +239,21 @@ impl<F: Fields, C: 'static> Form<F, C> {
         }
         .to_owned()
     }
+    fn check_preparation(
+        &self,
+        generation: u64,
+        stamps: &[field::FieldStamp],
+    ) -> Result<(), FormError> {
+        if self.0.owner.is_disposed() {
+            return Err(FormError::Disposed);
+        }
+        if generation != self.0.generation.get() || !stamps.iter().all(|stamp| stamp.current(false))
+        {
+            return Err(FormError::ChangedDuringPreparation);
+        }
+        Ok(())
+    }
+
     pub fn prepare(&self) -> Result<Snapshot<C>, FormError> {
         untrack(|| {
             batch(|| {
@@ -247,29 +262,15 @@ impl<F: Fields, C: 'static> Form<F, C> {
                 }
                 let stamps = self.0.fields.stamps();
                 let generation = self.0.generation.get();
-                let current = || {
-                    generation == self.0.generation.get()
-                        && stamps.iter().all(|stamp| stamp.current(false))
-                };
                 self.0.fields.mark_submitted();
                 self.0.state.update(|state| state.validation = None);
                 let values = self.0.fields.values();
-                if self.0.owner.is_disposed() {
-                    return Err(FormError::Disposed);
-                }
-                if !current() {
-                    return Err(FormError::ChangedDuringPreparation);
-                }
+                self.check_preparation(generation, &stamps)?;
                 let values = values?;
                 let validators = self.0.validators.borrow().clone();
                 for validator in validators {
                     let result = validator(&values);
-                    if self.0.owner.is_disposed() {
-                        return Err(FormError::Disposed);
-                    }
-                    if !current() {
-                        return Err(FormError::ChangedDuringPreparation);
-                    }
+                    self.check_preparation(generation, &stamps)?;
                     if let Err(message) = result {
                         self.0.state.update(|state| {
                             state.validation = Some(Rc::new(field::Issue {
@@ -283,12 +284,7 @@ impl<F: Fields, C: 'static> Form<F, C> {
                     }
                 }
                 let command = (self.0.build)(values);
-                if self.0.owner.is_disposed() {
-                    return Err(FormError::Disposed);
-                }
-                if !current() {
-                    return Err(FormError::ChangedDuringPreparation);
-                }
+                self.check_preparation(generation, &stamps)?;
                 Ok(Snapshot {
                     info: Rc::new(SnapshotInfo {
                         id: crate::identity::next(),

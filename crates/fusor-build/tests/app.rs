@@ -1,3 +1,4 @@
+use fusor_build::BuildError;
 use fusor_build::app::{AppConfig, ArtifactManifest, generate};
 use std::fs;
 
@@ -68,7 +69,13 @@ fn external_registration_tracks_source_and_keeps_native_module_ownership() {
             .contains("pub mod app")
     );
     fs::write(&path, html.replace("../src/app.rs", "../src/missing.rs")).unwrap();
-    let missing = generate_app().unwrap_err().to_string();
+    let error = generate_app().unwrap_err();
+    let BuildError::Source(source_error) = &error else {
+        panic!("{error}")
+    };
+    assert_eq!(source_error.path, path.canonicalize().unwrap());
+    assert_eq!(source_error.location, Some((1, 1)));
+    let missing = error.to_string();
     assert!(
         missing.contains("index.html:1:1: external Rust source "),
         "{missing}"
@@ -166,6 +173,9 @@ fn configuration_rejects_typos_invalid_modules_and_overlapping_output() {
     let dir = setup();
     let path = dir.path().join("Cargo.toml");
     let valid = fs::read_to_string(&path).unwrap();
+    fs::write(&path, "[package").unwrap();
+    let error = AppConfig::load(&path).unwrap_err();
+    assert!(matches!(error, BuildError::Manifest(_)), "{error}");
     for text in [
         valid.replace("base-path", "basepath"),
         valid.replace("counter =", "app ="),

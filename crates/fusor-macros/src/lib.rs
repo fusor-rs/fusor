@@ -21,19 +21,20 @@ pub fn derive_from_inputs(input: TokenStream) -> TokenStream {
 struct ComponentSelf(syn::Ident);
 impl Fold for ComponentSelf {
     fn fold_path(&mut self, mut path: Path) -> Path {
-        if path.leading_colon.is_none()
-            && path
+        if path.leading_colon.is_none() {
+            if let Some(first) = path
                 .segments
-                .first()
-                .is_some_and(|part| part.ident == "Self")
-        {
-            path.segments.first_mut().unwrap().ident = self.0.clone();
+                .first_mut()
+                .filter(|part| part.ident == "Self")
+            {
+                first.ident = self.0.clone();
+            }
         }
         syn::fold::fold_path(self, path)
     }
 }
 
-fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
+fn inputs_runtime(input: &DeriveInput) -> Result<Path> {
     let mut runtime: Path = parse_quote!(::fusor);
     let mut custom_crate = false;
     for attr in &input.attrs {
@@ -69,13 +70,17 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
             }
         }
     }
+    Ok(runtime)
+}
+
+fn input_fields(input: &DeriveInput) -> Result<&Fields> {
     if !input.generics.params.is_empty() || input.generics.where_clause.is_some() {
         return Err(Error::new_spanned(
             &input.generics,
             "FromInputs derive currently supports concrete structs; implement FromInputs manually for generic components",
         ));
     }
-    let Data::Struct(data) = input.data else {
+    let Data::Struct(data) = &input.data else {
         return Err(Error::new_spanned(
             &input.ident,
             "FromInputs can only be derived for a struct",
@@ -83,76 +88,31 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
     };
     if matches!(data.fields, Fields::Unnamed(_)) {
         return Err(Error::new_spanned(
-            data.fields,
+            &data.fields,
             "FromInputs requires named fields or a unit struct",
         ));
     }
-    let name = &input.ident;
-    let visibility = &input.vis;
-    let inputs_name = format_ident!(
-        "{}Inputs",
-        name.to_string().trim_start_matches("r#"),
-        span = name.span()
-    );
-    let inputs_var = syn::Ident::new("__fusor_inputs", Span::mixed_site());
-    let owner_var = syn::Ident::new("__fusor_owner", Span::mixed_site());
+    Ok(&data.fields)
+}
+
+struct InputFields {
+    declarations: Vec<proc_macro2::TokenStream>,
+    initializers: Vec<proc_macro2::TokenStream>,
+}
+
+fn lower_fields(
+    fields: &Fields,
+    name: &syn::Ident,
+    inputs_var: &syn::Ident,
+) -> Result<InputFields> {
     let mut inputs_fields = Vec::new();
     let mut values = Vec::new();
     let mut errors: Option<Error> = None;
-    for field in &data.fields {
-        let field_name = field.ident.as_ref().unwrap();
-        let parsed = (|| {
-            let mut kind: Option<Option<Expr>> = None;
-            for attr in &field.attrs {
-                if attr.path().is_ident("from_inputs") {
-                    return Err(Error::new_spanned(
-                        attr,
-                        "#[from_inputs(crate = path)] belongs on the struct",
-                    ));
-                }
-                if !attr.path().is_ident("input") && !attr.path().is_ident("local") {
-                    continue;
-                }
-                if kind.is_some() {
-                    return Err(Error::new_spanned(
-                        attr,
-                        "choose exactly one #[input] or #[local(init = ...)] per field",
-                    ));
-                }
-                if attr.path().is_ident("input") {
-                    if !matches!(attr.meta, Meta::Path(_)) {
-                        return Err(Error::new_spanned(
-                            attr,
-                            "#[input] takes no arguments; inputs are required and keep their exact Rust type",
-                        ));
-                    }
-                    kind = Some(None);
-                } else {
-                    let mut init = None;
-                    attr.parse_nested_meta(|meta| {
-                        if !meta.path.is_ident("init") {
-                            return Err(meta.error("expected `init = expression`"));
-                        }
-                        if init.is_some() {
-                            return Err(meta.error("duplicate local initializer"));
-                        }
-                        init = Some(meta.value()?.parse::<Expr>()?);
-                        Ok(())
-                    })?;
-                    kind = Some(Some(init.ok_or_else(|| {
-                        Error::new_spanned(attr, "local state requires #[local(init = expression)]")
-                    })?));
-                }
-            }
-            kind.ok_or_else(|| {
-                Error::new_spanned(
-                    field_name,
-                    "field needs #[input] or #[local(init = expression)]; no value is inferred",
-                )
-            })
-        })();
+    for field in fields {
+        let field_name = field.ident.as_ref().expect("unnamed fields were rejected");
+        let parsed = field_kind(field);
         match parsed {
-            Ok(None) => {
+            Ok(InputKind::Input) => {
                 let ty = ComponentSelf(name.clone()).fold_type(field.ty.clone());
                 let docs = field
                     .attrs
@@ -161,7 +121,9 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
                 inputs_fields.push(quote_spanned!(field.span()=> #(#docs)* pub #field_name: #ty));
                 values.push(quote_spanned!(field.span()=> #field_name: #inputs_var.#field_name));
             }
-            Ok(Some(init)) => values.push(quote_spanned!(field.span()=> #field_name: { #init })),
+            Ok(InputKind::Local(init)) => {
+                values.push(quote_spanned!(field.span()=> #field_name: { #init }))
+            }
             Err(error) => match &mut errors {
                 Some(errors) => errors.combine(error),
                 None => errors = Some(error),
@@ -171,13 +133,93 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
     if let Some(errors) = errors {
         return Err(errors);
     }
+    Ok(InputFields {
+        declarations: inputs_fields,
+        initializers: values,
+    })
+}
+
+enum InputKind {
+    Input,
+    Local(Box<Expr>),
+}
+
+fn field_kind(field: &syn::Field) -> Result<InputKind> {
+    let mut kind = None;
+    for attr in &field.attrs {
+        if attr.path().is_ident("from_inputs") {
+            return Err(Error::new_spanned(
+                attr,
+                "#[from_inputs(crate = path)] belongs on the struct",
+            ));
+        }
+        if !attr.path().is_ident("input") && !attr.path().is_ident("local") {
+            continue;
+        }
+        if kind.is_some() {
+            return Err(Error::new_spanned(
+                attr,
+                "choose exactly one #[input] or #[local(init = ...)] per field",
+            ));
+        }
+        kind = Some(if attr.path().is_ident("input") {
+            if !matches!(attr.meta, Meta::Path(_)) {
+                return Err(Error::new_spanned(
+                    attr,
+                    "#[input] takes no arguments; inputs are required and keep their exact Rust type",
+                ));
+            }
+            InputKind::Input
+        } else {
+            InputKind::Local(Box::new(local_initializer(attr)?))
+        });
+    }
+    kind.ok_or_else(|| {
+        Error::new_spanned(
+            &field.ident,
+            "field needs #[input] or #[local(init = expression)]; no value is inferred",
+        )
+    })
+}
+
+fn local_initializer(attr: &syn::Attribute) -> Result<Expr> {
+    let mut init = None;
+    attr.parse_nested_meta(|meta| {
+        if !meta.path.is_ident("init") {
+            return Err(meta.error("expected `init = expression`"));
+        }
+        if init.is_some() {
+            return Err(meta.error("duplicate local initializer"));
+        }
+        init = Some(meta.value()?.parse::<Expr>()?);
+        Ok(())
+    })?;
+    init.ok_or_else(|| Error::new_spanned(attr, "local state requires #[local(init = expression)]"))
+}
+
+fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
+    let runtime = inputs_runtime(&input)?;
+    let fields = input_fields(&input)?;
+    let name = &input.ident;
+    let visibility = &input.vis;
+    let inputs_name = format_ident!(
+        "{}Inputs",
+        name.to_string().trim_start_matches("r#"),
+        span = name.span()
+    );
+    let inputs_var = syn::Ident::new("__fusor_inputs", Span::mixed_site());
+    let owner_var = syn::Ident::new("__fusor_owner", Span::mixed_site());
+    let InputFields {
+        declarations: inputs_fields,
+        initializers: values,
+    } = lower_fields(fields, name, &inputs_var)?;
     let doc = format!("Parent-supplied inputs generated by `FromInputs` for `{name}`.");
     let declaration = if inputs_fields.is_empty() {
         quote!(#[doc = #doc] #visibility struct #inputs_name;)
     } else {
         quote!(#[doc = #doc] #visibility struct #inputs_name { #(#inputs_fields,)* })
     };
-    let construct = if matches!(data.fields, Fields::Unit) {
+    let construct = if matches!(fields, Fields::Unit) {
         quote!(Self)
     } else {
         quote!(Self { #(#values,)* })
@@ -268,42 +310,11 @@ fn expand_js_inputs(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
         ));
     }
     let name = input.ident;
-    let mut fields = Vec::new();
-    for field in &data.fields {
-        let attributes: Vec<_> = field
-            .attrs
-            .iter()
-            .filter(|attr| attr.path().is_ident("js"))
-            .collect();
-        if attributes.is_empty() {
-            continue;
-        }
-        if attributes.len() != 1 || !matches!(attributes[0].meta, Meta::Path(_)) {
-            return Err(Error::new_spanned(
-                attributes[0],
-                "use a single #[js] marker without arguments",
-            ));
-        }
-        let supported = if let syn::Type::Path(path) = &field.ty {
-            path.path.segments.last().is_some_and(|segment| {
-                if segment.ident != "Signal" { return false; }
-                let syn::PathArguments::AngleBracketed(args) = &segment.arguments else { return false; };
-                args.args.len() == 1 && matches!(args.args.first(), Some(syn::GenericArgument::Type(inner)) if supported_js_value(inner))
-            })
-        } else {
-            false
-        };
-        if !supported {
-            return Err(Error::new_spanned(
-                &field.ty,
-                "#[js] requires Signal<T>, where T is bool, String, f64, i32, u32, JsValue, or Option/Vec of these; arbitrary structs and 64-bit integers are unsupported",
-            ));
-        }
-        let field_name = field.ident.as_ref().unwrap();
-        let exposed = field_name.to_string().trim_start_matches("r#").to_owned();
-        fields
-            .push(quote_spanned! {field.span()=> inputs.add(#exposed, self.#field_name.clone()); });
-    }
+    let fields = data
+        .fields
+        .iter()
+        .filter_map(|field| expose_js_field(field).transpose())
+        .collect::<Result<Vec<_>>>()?;
     Ok(quote! {
         impl #runtime::js::JsInputs for #name {
             fn js_inputs(&self) -> #runtime::js::Inputs {
@@ -313,4 +324,41 @@ fn expand_js_inputs(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
             }
         }
     })
+}
+
+fn expose_js_field(field: &syn::Field) -> Result<Option<proc_macro2::TokenStream>> {
+    let attributes: Vec<_> = field
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("js"))
+        .collect();
+    if attributes.is_empty() {
+        return Ok(None);
+    }
+    if attributes.len() != 1 || !matches!(attributes[0].meta, Meta::Path(_)) {
+        return Err(Error::new_spanned(
+            attributes[0],
+            "use a single #[js] marker without arguments",
+        ));
+    }
+    let supported = if let syn::Type::Path(path) = &field.ty {
+        path.path.segments.last().is_some_and(|segment| {
+                if segment.ident != "Signal" { return false; }
+                let syn::PathArguments::AngleBracketed(args) = &segment.arguments else { return false; };
+                args.args.len() == 1 && matches!(args.args.first(), Some(syn::GenericArgument::Type(inner)) if supported_js_value(inner))
+            })
+    } else {
+        false
+    };
+    if !supported {
+        return Err(Error::new_spanned(
+            &field.ty,
+            "#[js] requires Signal<T>, where T is bool, String, f64, i32, u32, JsValue, or Option/Vec of these; arbitrary structs and 64-bit integers are unsupported",
+        ));
+    }
+    let field_name = field.ident.as_ref().expect("unnamed fields were rejected");
+    let exposed = field_name.to_string().trim_start_matches("r#").to_owned();
+    Ok(Some(
+        quote_spanned! {field.span()=> inputs.add(#exposed, self.#field_name.clone()); },
+    ))
 }

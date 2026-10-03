@@ -1,5 +1,7 @@
 mod state;
-pub(crate) use state::{Arguments, Event, State};
+pub(crate) use state::{
+    Admission, Arguments, Completion, Event, JobKind, Requirement, State, Target,
+};
 
 use crate::{
     JobError, Message, NoError, Pool, TaskResult, WorkerError,
@@ -78,18 +80,16 @@ impl<T: Message, E: Message, P: Message, M> Future for Job<T, E, P, M> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         State::start(&self.state);
         let mut state = self.state.borrow_mut();
-        if let Some(error) = state.abort.take() {
-            state.committed = true;
+        if let Some(error) = state.completion.take_error() {
             return Poll::Ready(Err(error.into()));
         }
-        if state.committed {
+        if matches!(state.completion, Completion::Consumed) {
             panic!("Job polled after completion");
         }
         if let Some(Event::Result(result)) = state.events.pop_front() {
-            state.committed = true;
+            state.completion = Completion::Consumed;
             let codec = state
-                .endpoint
-                .upgrade()
+                .endpoint()
                 .map(|e| e.codec.clone())
                 .unwrap_or_default();
             drop(state);

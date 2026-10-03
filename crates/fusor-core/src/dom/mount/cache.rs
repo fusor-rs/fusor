@@ -142,10 +142,9 @@ pub(super) fn remember(
     descriptor: &TemplateDescriptor,
     mounts: &'static [MountId],
     root: &Element,
-    handles: &Handles,
-    slots: &[Slot],
-    points: &Mounts,
+    resolution: &Resolution,
 ) -> Result<(), JsValue> {
+    let (handles, slots, points) = resolution;
     let document = root
         .owner_document()
         .ok_or_else(|| invalid("template has no document"))?;

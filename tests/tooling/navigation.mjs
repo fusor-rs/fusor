@@ -6,6 +6,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { chromium, firefox, webkit, expect } from "@playwright/test";
+import { observeFetch } from "../../scripts/observe-fetch.mjs";
 
 const executable = join(root, "target/debug", `fusor${process.platform === "win32" ? ".exe" : ""}`);
 const env = buildEnv;
@@ -132,6 +133,7 @@ try {
       page.on("pageerror", error => errors.push(String(error)));
       const consoleErrors = [];
       page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
+      const fetches = await observeFetch(page, "/reader/data/");
       await page.goto(`${origin}/reader/articles/1?revision=initial`); await connect(page, mode);
       await page.evaluate(() => window.client.probe_commit_queue());
       await expect(page.locator("#status")).toHaveText("Ready article 1 (initial)");
@@ -190,7 +192,7 @@ try {
       // No fetch may start, and neither the old page nor history may change.
       await page.locator("#home-link").click();
       for (const method of ["pushState", "replaceState"]) {
-        const beforeWrite = requests.length;
+        const beforeWrite = await fetches.started();
         const rollback = await page.evaluate(method => {
           const original = history[method], before = location.href, state = JSON.stringify(history.state);
           const view = document.querySelector("#outlet h1");
@@ -204,19 +206,17 @@ try {
         }, method);
         assert.match(rollback.message, /expected history write failure/);
         assert.deepEqual([rollback.sameUrl, rollback.sameState, rollback.sameView, rollback.pages], [true, true, true, 1]);
-        await page.waitForTimeout(80);
-        assert.equal(requests.length, beforeWrite, "abandoned prepared navigation starts no Fetch");
+        assert.equal(await fetches.started(), beforeWrite, "abandoned prepared navigation starts no Fetch");
       }
       await page.evaluate(() => {
         window.metadataTemplate = [...document.querySelectorAll("template")].find(t => t.content.querySelector("small"));
         window.metadataTemplate.remove();
       });
-      const beforeFailure = requests.length;
+      const beforeFailure = await fetches.started();
       await page.locator("#one-link").click();
       await expect(page.locator("h1")).toHaveText("A small library");
       await expect(page).toHaveURL(`${origin}/reader/`);
-      await page.waitForTimeout(80);
-      assert.equal(requests.length, beforeFailure);
+      assert.equal(await fetches.started(), beforeFailure);
       await page.evaluate(() => document.body.append(window.metadataTemplate));
       await page.locator("#one-link").click(); await expect(page.locator("#status")).toHaveText("Ready article 1 ()");
       await page.locator("#two-link").click(); await expect(page.locator("#status")).toHaveText("Ready article 2 ()");
@@ -279,6 +279,7 @@ try {
         document.querySelector("#two-link").click(); return intercepted;
       }), false);
       const beforeRemount = requests.length;
+      const beforeRemountFetches = await fetches.started();
       const failedStart = await page.evaluate(() => {
         const template = [...document.querySelectorAll("template")].find(t => t.content.querySelector(".article"));
         const before = JSON.stringify(history.state);
@@ -289,8 +290,7 @@ try {
         return { failed, unchanged: JSON.stringify(history.state) === before, empty: !document.querySelector("#outlet").children.length };
       });
       assert.deepEqual(failedStart, { failed: true, unchanged: true, empty: true });
-      await page.waitForTimeout(80);
-      assert.equal(requests.length, beforeRemount, "failed initial driver construction starts no Fetch");
+      assert.equal(await fetches.started(), beforeRemountFetches, "failed initial driver construction starts no Fetch");
       // Preparation and later commit failures must release the router lease,
       // remove listeners, restore history metadata, and start no owned reads.
       for (const mode of [0, 1]) {
@@ -304,8 +304,7 @@ try {
         assert.match(failure.message, /expected (preparation|commit) failure/);
         assert.equal(failure.after, failure.before);
         assert.equal(failure.empty, true);
-        await page.waitForTimeout(80);
-        assert.equal(requests.length, beforeRemount);
+        assert.equal(await fetches.started(), beforeRemountFetches);
       }
       await page.evaluate(() => window.client.start());
       await waitFor(() => requests.length === beforeRemount + 2, "remounted owned reads started");

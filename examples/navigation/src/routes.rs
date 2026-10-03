@@ -21,5 +21,8 @@ impl Route for Page {
     }
 }
 pub fn href(page: Page) -> String {
-    BasePath::new(BASE).unwrap().href(&page).unwrap()
+    BasePath::new(BASE)
+        .expect("the build validates FUSOR_BASE_PATH")
+        .href(&page)
+        .expect("Page paths contain only static segments and numeric identifiers")
 }

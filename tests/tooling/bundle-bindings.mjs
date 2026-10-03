@@ -39,7 +39,7 @@ opt-level="s"
 lto=true
 codegen-units=1
 `);
-  await writeFile(join(scratch, 'build.rs'), 'fn main()->Result<(),Box<dyn std::error::Error>>{fusor_build::compile_app()}\n');
+  await writeFile(join(scratch, 'build.rs'), 'fn main()->Result<(),fusor_build::BuildError>{fusor_build::compile_app()}\n');
   await writeFile(join(scratch, 'src/bin/render.rs'), 'fn main(){print!("{}",bundle_binding_consumer::render().unwrap());}\n');
   await writeFile(join(scratch, 'src/lib.rs'), String.raw`
 use fusor::{Signal, signal};

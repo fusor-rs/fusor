@@ -76,17 +76,16 @@ struct Entry {
 }
 
 impl Generator<'_> {
-    fn compile(&mut self, source: Source) -> Result<CompiledSource> {
+    fn extract(&mut self, source: &Source, text: &str) -> Result<Page> {
         let html_path = &source.canonical;
-        let text = fs::read_to_string(html_path)?;
         if source.kind == SourceKind::Entry {
-            self.embedded_templates = validate::component_file(&text).is_ok();
+            self.embedded_templates = validate::component_file(text).is_ok();
         }
         if source.kind != SourceKind::Entry {
-            validate::component_file(&text)
+            validate::component_file(text)
                 .map_err(|error| SourceError::extracted(html_path, error))?;
         }
-        let mut page = extract_from(&text, self.next_component, self.embedded_templates)
+        let page = extract_from(text, self.next_component, self.embedded_templates)
             .map_err(|error| SourceError::extracted(html_path, error))?;
         let native = page.blocks.is_empty();
         if native && page.component_count == 0 {
@@ -103,7 +102,7 @@ impl Generator<'_> {
             if let Some(offset) = page.app_offset {
                 return Err(SourceError::at_offset(
                     html_path,
-                    &text,
+                    text,
                     offset,
                     "App is only allowed in the entry document",
                 )
@@ -111,6 +110,14 @@ impl Generator<'_> {
             }
         }
         self.next_component += page.component_count;
+        Ok(page)
+    }
+
+    fn compile(&mut self, source: Source) -> Result<CompiledSource> {
+        let html_path = &source.canonical;
+        let text = fs::read_to_string(html_path)?;
+        let mut page = self.extract(&source, &text)?;
+        let native = page.blocks.is_empty();
         let rust_path = if native {
             let path = source.path.to_str().ok_or("template path must be UTF-8")?;
             self.out.join(TEMPLATE_DIRECTORY).join(format!("{path}.rs"))
@@ -127,9 +134,7 @@ impl Generator<'_> {
             ..
         }) = page.blocks.first()
         {
-            let linked = self
-                .linker
-                .link(&source.name, html_path, &text, element.start, rust)?;
+            let linked = self.linker.link(&source, &text, element.start, rust)?;
             page.rust.push('\n');
             page.rust.push_str(&linked.marker_code);
             external = Some(linked);
@@ -155,9 +160,8 @@ impl Generator<'_> {
             self.package_root,
             self.out,
             html_path,
-            &page.rust,
+            &page,
             external.as_ref().map(|linked| linked.path.as_path()),
-            &page.javascript,
         )?;
         let map = SourceMap::new(page.locations.clone())?.to_string();
         Ok(CompiledSource {
