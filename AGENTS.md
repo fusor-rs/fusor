@@ -40,8 +40,8 @@ taken), so code says `use fusor::prelude::*`.
 Template syntax at a glance: `{{ expr }}`, `on:event`, `class:name`, `bind`,
 `prop:name`, `rust:if`, `rust:key`, `rust:render`, `hydrate*`, plus the built-in
 tags `App`, `If`/`Else`, `Match`/`Case`, `ForEach`, `Children`, `Async`, `Await`,
-`Router`/`Route`. The full reference is `apps/docs/content/pages.json` (slugs
-`html-and-rust/attributes` and `html-and-rust/built-in-components`).
+`Router`/`Route`. The full reference is in `apps/docs/public/content/html-and-rust/attributes.md`
+and `apps/docs/public/content/html-and-rust/built-in-components.md`.
 
 ## Repository map
 
@@ -320,8 +320,8 @@ exit code on the CLI docs page.
 ### Docs and benchmarks
 
 - User-visible changes update the matching page in
-  `apps/docs/content/pages.json`. Its prose format is deliberately small; see
-  `apps/docs/README.md` before editing.
+  `apps/docs/public/content/`. See `apps/docs/README.md` for Markdown authoring,
+  navigation and source-file inclusion.
 - Follow `benchmarks/README.md` and `benchmarks/METHODOLOGY.md`. Never change a
   workload to help one framework's numbers. To run or publish benchmarks, use
   the `benchmarks` skill in `.claude/skills/benchmarks/`.

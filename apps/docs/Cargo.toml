@@ -23,9 +23,15 @@ wasm-bindgen-futures.workspace = true
 web-sys = { workspace = true, features = ["KeyboardEvent", "Storage", "Navigator", "Clipboard", "Element", "MouseEvent"] }
 [build-dependencies]
 fusor-build.workspace = true
+pulldown-cmark.workspace = true
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-syntect = { version = "=5.3.0", default-features = false, features = ["default-themes", "regex-fancy"] }
-two-face = { version = "=0.5.2", default-features = false, features = ["syntect-fancy"] }
+syntect.workspace = true
+two-face.workspace = true
+[dev-dependencies]
+pulldown-cmark.workspace = true
+syntect.workspace = true
+two-face.workspace = true
 [package.metadata.fusor]
 entry = "web/index.html"
 templates = ["web/components", "web/demos"]

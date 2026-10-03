@@ -21,13 +21,6 @@ impl CodeBlock {
     }
 }
 
-/// A declaration without the code block's label bar, for reference entries.
-#[derive(fusor::FromInputs)]
-pub struct Signature {
-    #[input]
-    tokens: &'static [CodeToken],
-}
-
 struct Token {
     item: fusor::Memo<CodeToken>,
 }

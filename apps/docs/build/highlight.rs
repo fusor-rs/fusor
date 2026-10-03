@@ -1,4 +1,4 @@
-//! Highlight at build time. The browser receives escaped text tokens, never HTML.
+//! Highlight code at build time for guides and live-example source viewers.
 use std::fmt::Write;
 use syntect::{
     easy::HighlightLines,
@@ -13,14 +13,14 @@ pub struct Highlighter {
 }
 
 impl Highlighter {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             syntaxes: two_face::syntax::extra_newlines(),
             themes: ThemeSet::load_defaults(),
         }
     }
 
-    pub fn tokens(&self, code: &str, label: &str) -> Result<String, Box<dyn std::error::Error>> {
+    fn syntax(&self, label: &str) -> &syntect::parsing::SyntaxReference {
         let label = label.to_lowercase();
         let extension = if label.contains(".html") || label.contains("html") {
             "html"
@@ -37,12 +37,19 @@ impl Highlighter {
         } else if label.starts_with("terminal") {
             "sh"
         } else {
-            "txt"
+            &label
         };
-        let syntax = self
-            .syntaxes
+        self.syntaxes
             .find_syntax_by_extension(extension)
-            .unwrap_or_else(|| self.syntaxes.find_syntax_plain_text());
+            .unwrap_or_else(|| self.syntaxes.find_syntax_plain_text())
+    }
+
+    fn highlight(
+        &self,
+        code: &str,
+        label: &str,
+    ) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+        let syntax = self.syntax(label);
         let mut light = HighlightLines::new(syntax, &self.themes.themes["InspiredGitHub"]);
         let mut dark = HighlightLines::new(syntax, &self.themes.themes["base16-ocean.dark"]);
         let mut tokens: Vec<(String, String)> = Vec::new();
@@ -83,6 +90,11 @@ impl Highlighter {
                 .collect::<String>(),
             code
         );
+        Ok(tokens)
+    }
+
+    pub fn tokens(&self, code: &str, label: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let tokens = self.highlight(code, label)?;
         let mut source = String::from("&[");
         for (id, (text, style)) in tokens.iter().enumerate() {
             write!(
@@ -92,6 +104,22 @@ impl Highlighter {
         }
         source.push(']');
         Ok(source)
+    }
+
+    pub(crate) fn html(
+        &self,
+        code: &str,
+        language: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let mut html = String::new();
+        for (text, style) in self.highlight(code, language)? {
+            write!(
+                html,
+                "<span class=\"syntax-token\" style=\"{style}\">{}</span>",
+                super::html::escape(&text)
+            )?;
+        }
+        Ok(html)
     }
 }
 

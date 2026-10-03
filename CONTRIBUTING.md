@@ -186,7 +186,7 @@ Before you push:
 1. `just check` passes.
 2. The browser suites for the area you changed pass.
 3. If the change is visible to application developers, the matching page in
-   `apps/docs/content/pages.json` is updated.
+   `apps/docs/public/content/` is updated.
 
 ## Releasing
 

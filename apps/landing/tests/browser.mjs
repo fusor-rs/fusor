@@ -438,7 +438,7 @@ try {
   }
   const docs = JSON.parse(
     await readFile(
-      new URL("../../docs/content/pages.json", import.meta.url),
+      new URL("../../docs/content/navigation.json", import.meta.url),
       "utf8",
     ),
   );

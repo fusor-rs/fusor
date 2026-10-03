@@ -5,10 +5,9 @@ import { resolve, extname, sep } from "node:path";
 import { chromium, firefox, webkit, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 import { checkShowcase, checkHighlighting } from "./docs-showcase.mjs";
+import { readGuides } from "../../scripts/docs-content.mjs";
 const root = resolve("dist/docs");
-const guides = JSON.parse(
-  await readFile("apps/docs/content/pages.json", "utf8"),
-);
+const guides = await readGuides();
 // Public syntax must remain discoverable when the compiler adds a directive.
 const referenceIndex = JSON.parse(await readFile("apps/docs/content/references.json", "utf8"));
 const compilerSyntax = (await Promise.all([
@@ -262,53 +261,27 @@ try {
         const [slug, id] = reference.slice("/docs/".length).split("#");
         assert(guides.find(guide => guide.slug === slug)?.sections.some(section => section.id === id), `broken contextual reference ${reference}`);
       }
-      async function checkProse(locator, source = "") {
-        const blocks = source.split("\n\n").map(text => text.trim()).filter(Boolean);
-        const list = block => block.split("\n").every(line => line.trim().startsWith("- "));
-        assert.deepEqual(await locator.locator(".prose > .prose-block > p").allTextContents(),
-          blocks.filter(block => !list(block)).map(text => text.replaceAll("`", "")),
-          "prose text and paragraph boundaries");
-        assert.deepEqual(await locator.locator(".prose > .prose-block > ul > li").allTextContents(),
-          blocks.filter(list).flatMap(block => block.split("\n").map(line => line.trim().slice(2).replaceAll("`", ""))),
-          "prose list items");
-        assert.deepEqual(await locator.locator("code.inline-code").allTextContents(),
-          [...source.matchAll(/`([^`]+)`/g)].map(match => match[1]), "inline code is literal text");
-        assert.equal(await locator.locator("script").count(), 0);
-      }
-      await checkProse(page.locator(".article > .lead"), guide.lead);
+      const download = await page.request.get(origin + guide.source);
+      assert.equal(download.status(), 200, guide.source);
+      assert.equal(await download.text(), guide.markdown, "published Markdown matches its source");
+      await expect(page.getByRole("link", { name: "View Markdown source" }))
+        .toHaveAttribute("href", `/docs/${guide.source}`);
+      assert.deepEqual(await page.locator(".doc-section h2 > a").evaluateAll(
+        links => links.map(link => link.getAttribute("href"))),
+        guide.sections.map(section => `#${section.id}`));
       for (const section of guide.sections) {
-        await expect(page.locator(`#${section.id}`)).toHaveCount(1);
-        await checkProse(page.locator(`#${section.id} > .body-copy`), section.body);
-        await checkProse(page.locator(`#${section.id} > .note`), section.note);
-        if (section.source || section.code) {
-          const authored = section.source
-            ? await readFile(resolve("apps/docs", section.source), "utf8")
-            : section.code;
-          assert.equal(
-            await page.locator(`#${section.id} > .section-code pre code`).textContent(),
-            authored,
-          );
-        }
         const section$ = page.locator(`#${section.id}`);
-        await expect(section$.locator(".callout")).toHaveCount(section.callouts?.length ?? 0);
-        await expect(section$.locator(":scope > .terms .term")).toHaveCount(section.terms?.length ?? 0);
-        await expect(section$.locator(".map-card")).toHaveCount(
-          (section.map || []).reduce((count, group) => count + group.cards.length, 0));
-        for (const card of (section.map || []).flatMap(group => group.cards)) {
-          await expect(section$.locator(`.map-card[href="${card.href}"]`)).toContainText(card.name);
-        }
-        if (section.api) {
-          await expect(section$.locator(".api-kind")).toHaveText(section.api.kind);
-          const members = (section.api.groups || []).flatMap(group => group.members);
-          assert.deepEqual(await section$.locator(".member-name code").allTextContents(),
-            members.map(member => member.name), `members of ${section.id}`);
-          for (const member of members.filter(member => member.signature)) {
-            assert((await section$.locator(".member .signature").allTextContents()).includes(member.signature),
-              `signature text for ${section.id} ${member.name}`);
-          }
-        }
+        await expect(section$).toHaveCount(1);
+        assert.deepEqual(await section$.locator(".markdown pre code").allTextContents(),
+          section.codes.map(block => block.code), `authored code in ${guide.slug}#${section.id}`);
+        assert.deepEqual(await section$.locator(".markdown .code-label > span:first-child").allTextContents(),
+          section.codes.map(block => block.language));
+        assert.equal(await section$.locator(".markdown script").count(), 0);
+        assert.deepEqual(await section$.locator(".markdown a:not(h2 > a)").evaluateAll(
+          links => links.map(link => link.getAttribute("href"))),
+          section.links.map(link => link.href));
         for (const link of section.links || []) {
-          const url = new URL(link.href, origin);
+          const url = new URL(link.href, origin + guide.slug);
           if (url.origin !== new URL(origin).origin) {
             assert.equal(url.protocol, "https:", `external guide link must use HTTPS: ${link.href}`);
             continue;
@@ -331,13 +304,22 @@ try {
             assert(target, `unknown linked guide ${link.href}`);
             if (url.hash)
               assert(
-                target.sections.some((item) => "#" + item.id === url.hash),
+                target.anchors.includes(url.hash.slice(1)),
                 `unknown linked section ${link.href}`,
               );
           }
         }
       }
     }
+    await page.goto(origin + "tooling#documentation");
+    await expect(page.locator("#documentation table th")).toHaveText(["File", "Purpose"]);
+    await expect(page.locator("#documentation strong").first()).toHaveText("Markdown file");
+    await page.goto(origin + "workers/api#job-on-progress");
+    await expect(page.locator("#job-on-progress")).toHaveText(".on_progress(callback)");
+    const signature = page.locator("#job-on-progress ~ details").first();
+    await expect(signature.locator("pre")).not.toBeVisible();
+    await signature.locator("summary").click();
+    await expect(signature.locator("pre")).toContainText("pub fn on_progress(self,");
     await page.goto(origin);
     await expect(page.locator("h1")).toHaveText(
       "Build for the web. Write Rust.",
@@ -459,7 +441,7 @@ try {
     await checkShowcase(page, origin, name, demos);
     assert.deepEqual(errors, []);
     console.log(
-      `PASS ${name}: ${guides.length} guides, exact prose/code and mobile layout on every page, highlighted source in both themes, ${demos.length} live showcases, related links, search, history, async states, keyed identity, timer cleanup, responsive navigation and missing routes`,
+      `PASS ${name}: ${guides.length} guides, published Markdown, exact code and mobile layout on every page, highlighted source in both themes, ${demos.length} live showcases, related links, search, history, async states, keyed identity, timer cleanup, responsive navigation and missing routes`,
     );
     await context.close();
     await browser.close();
