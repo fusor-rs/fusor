@@ -33,8 +33,8 @@ that consumer avoids making the tutorial app require a threaded build.
 
 The Reusable HTML lesson uses the generated counter files directly. Nested content
 adds the files under `lessons/content` to that app. The test copies the published
-blocks from `content/pages.json`, including inline module declarations, and checks
-both shared updates and independent local state. These lessons use `template!`
+blocks from the Markdown guides in `../public/content/`, including inline module
+declarations, and checks both shared updates and independent local state. These lessons use `template!`
 and typed component tags. The companion also uses explicit mounts for ownership,
 resource, and coherent-view examples. Its list uses `<ForEach>` with a reusable
 `Row` component whose item input is `Memo<Item>`. The `lessons/foreach` guide

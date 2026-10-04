@@ -9,23 +9,21 @@ import { resolve, join, extname, sep } from "node:path";
 import { chromium, firefox, webkit, expect } from "@playwright/test";
 import { env as buildEnv, root } from "../../scripts/build.mjs";
 
+import { readGuides } from "../../scripts/docs-content.mjs";
+
 const exec = promisify(execFile);
 const env = {
   ...buildEnv, RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN || "stable",
   CARGO_TARGET_DIR: resolve(root, "target/docs-examples"),
 };
 const tutorial = resolve(root, "apps/docs/tutorial");
-const guides = JSON.parse(
-  await readFile(resolve(root, "apps/docs/content/pages.json"), "utf8"),
-);
+const guides = await readGuides();
 // Copy the actual published blocks, including inline module declarations.
 async function copyGuideFiles(slug, app, files) {
   const guide = guides.find((page) => page.slug === slug);
   for (const [id, file] of Object.entries(files)) {
     const section = guide.sections.find((section) => section.id === id);
-    const code = section.source
-      ? await readFile(resolve(root, "apps/docs", section.source), "utf8")
-      : section.code;
+    const code = section.code;
     await mkdir(resolve(app, file, ".."), { recursive: true });
     await writeFile(resolve(app, file), code);
   }

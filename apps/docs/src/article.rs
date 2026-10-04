@@ -1,9 +1,6 @@
 use crate::{
-    code::{CodeBlock, CodeData, Signature},
-    content::{
-        ApiData, CalloutData, InlineData, LinkData, MapGroupData, MemberData, PAGES, PageData,
-        ParagraphData, SectionData, TermData, ancestors,
-    },
+    content::{LinkData, PAGES, PageData, SectionData, ancestors},
+    markdown::markdown,
     routes::href,
 };
 use fusor::prelude::*;
@@ -13,16 +10,10 @@ static MISSING: PageData = PageData {
     slug: "missing",
     title: "Page not found",
     group: "Documentation",
-    lead: "That page is not in this edition of the docs. Choose a topic in the sidebar or return to the introduction.",
-    lead_prose: &[ParagraphData {
-        id: 0,
-        spans: &[InlineData {
-            id: 0,
-            code: false,
-            text: "That page is not in this edition of the docs. Choose a topic in the sidebar or return to the introduction.",
-        }],
-        items: &[],
-    }],
+    lead: "<p>That page is not in this edition of the docs. \
+        Choose a topic in the sidebar or return to the introduction.</p>",
+    search: "",
+    source: "",
     sections: &[],
 };
 pub struct Article {
@@ -61,22 +52,6 @@ impl Article {
         self.index.saturating_add(1).min(PAGES.len() - 1)
     }
 }
-#[derive(FromInputs)]
-struct Prose {
-    #[input]
-    paragraphs: &'static [ParagraphData],
-}
-#[derive(FromInputs)]
-struct Spans {
-    #[input]
-    spans: &'static [InlineData],
-}
-#[derive(FromInputs)]
-struct Terms {
-    #[input]
-    items: &'static [TermData],
-}
-
 struct Breadcrumb {
     item: fusor::Memo<LinkData>,
 }
@@ -89,33 +64,7 @@ struct Toc {
 struct RelatedLink {
     item: fusor::Memo<LinkData>,
 }
-struct Callout {
-    item: fusor::Memo<CalloutData>,
-}
-struct MapGroup {
-    item: fusor::Memo<MapGroupData>,
-}
-struct ApiBody {
-    item: fusor::Memo<ApiData>,
-}
-struct Member {
-    item: fusor::Memo<MemberData>,
-}
 fusor::bindings!(article);
-
-// Keyed rows receive their item as the whole input.
-macro_rules! row_inputs {
-    ($($row:ty),*) => {$(
-        impl fusor::dom::FromInputs for $row {
-            type Error = fusor::dom::JsValue;
-            type Inputs = Self;
-            fn from_inputs(inputs: Self, _owner: fusor::OwnerHandle) -> Result<Self, fusor::dom::JsValue> {
-                Ok(inputs)
-            }
-        }
-    )*};
-}
-row_inputs!(Callout, MapGroup, ApiBody, Member);
 
 impl fusor::dom::FromInputs for Breadcrumb {
     type Inputs = Self;

@@ -2,82 +2,93 @@
 
 This is a complete fusor application. HTML templates own layout; external
 Rust files own application state, search, theme, and typed routes. The managed
-`App` handles startup and cleanup. There is no React/Markdown framework runtime.
+`App` handles startup and cleanup.
 
-`content/pages.json` holds curated prose, related links, and code examples. A
-section's `source` loads an actual file into its code block at build time. The
-scaffold walkthrough uses the CLI's own templates; the component, ownership,
-async, and coherent-view guides use the compiling `tutorial/` app. The bindings
-and routing lessons, plus optional typed context, in `tutorial/lessons/` are
-applied to generated apps in tests.
-`build.rs` converts the content to typed static Rust records, then invokes the
-standard fusor HTML compiler. `content/resources.json` lists read-only source
-references copied into the ignored `public/source/` asset directory, only when
-their contents change. Do not hand-edit generated source copies.
-Prose fields (`lead`, `body`, `note`, and the prose inside the structured fields
-below) support inline code in single backticks and separate paragraphs with a
-blank line (`\n\n` in JSON). A paragraph whose every line starts with `- ` is a
-bullet list. Use code formatting for
-identifiers, types, paths, attributes, and expressions; explain one idea per
-paragraph. Format a whole expression together, and keep ordinary words such as
-“state” or “event” in prose unless they name a variable. Write built-in HTML tags
-as `<App>` and Rust types as `App`. Put required setup and instructions in the
-body; reserve notes for optional context or caveats.
+## Writing a guide
 
-This is a deliberately small format, not a general Markdown parser:
-use section `links` for links and `code`/`source` for full code examples.
-`build/prose.rs` validates delimiters and emits typed paragraph/span data;
-`web/article.html` renders escaped text inside real `<p>`, `<li>` and `<code>`
-elements.
+Write page bodies in `public/content/<slug>.md`; the introduction is
+`public/content/index.md`. Nested slugs use directories, for example
+`public/content/workers/tasks.md`. Start with one `# Page title`, followed by
+introductory prose and `## Section headings {#stable-id}`. Keep existing IDs
+when renaming headings so published links continue to work. Subheadings may
+have explicit IDs too; otherwise the renderer generates unique IDs from their
+text. The page title, table of contents and search text come from the Markdown.
 
-Sections can also carry structured fields, which `build/reference.rs` validates
-and emits as typed records:
+Use ordinary Markdown for paragraphs, emphasis, links, images, lists, quotes,
+fenced code, tables, strikethrough and task lists. Use inline code for types,
+paths, attributes and expressions. A code fence's first word is its language;
+an optional `title=` at the end supplies the visible caption:
 
-- `callouts`: `[{ "kind": "tip" | "warning" | "note", "body": prose }]`, rendered
-  as “Good to know”, “Watch out” and “Note”. Use them for the one or two things
-  a reader must not miss; ordinary caveats stay in the body.
-- `terms`: `[{ "term": inline prose, "text": prose }]`, a definition list for
-  glossaries and small comparisons.
-- `map`: `[{ "title", "side", "cards": [{ "href", "name", "kind", "text" }] }]`,
-  a grid of cards linking to sections on the same page (`#id`) or to `/docs/`.
-- `api`: one entry on a reference page. `kind` is `struct`, `enum`, `function`,
-  `trait`, `type alias` or `generated type`; `side` is `page`, `worker` or `both`
-  and says whose code uses it. `from` (prose) says where a value comes from,
-  `params` lists type parameters as `terms`, and `groups` holds
-  `[{ "title", "members": [{ "name", "returns", "text", "signature", "details" }] }]`.
-  `declaration` is the full Rust declaration, collapsed by default. Each member
-  gets the anchor `{section id}-{method name}`, such as `job-on-progress`.
+````markdown
+## Read a signal {#read}
 
-An `api` section reads top to bottom as: what it is (`body`), where you get one,
-a short example (`code`), callouts, type parameters, members, then the full
-declaration. Lead with the example and plain words; put exact signatures and
-rare edge cases in a member's `signature` and `details`, which start collapsed.
-HTML-looking examples remain literal text. No raw HTML injection is used.
-Keep attributes in the **Template attribute reference** and compiler-provided tags
-in **Built-in components**; link their entries to the relevant task-oriented guide.
+Call `count.get()` to read the current value.
 
-`web/article.html` renders reusable sections and a table of contents. The
-introduction includes a real signal-driven Rust counter.
+```rust title=src/app.rs
+let count = signal(0);
+```
+
+Read the [ownership guide](/docs/ownership) for cleanup.
+````
+
+An empty fence can include a real source file, relative to `apps/docs/`:
+
+````markdown
+```rust source=tutorial/src/watch.rs title=src/watch.rs
+```
+````
+
+The build tracks included files and fails if they are missing or the fence also
+contains code. The scaffold walkthrough uses the CLI templates; the other
+complete examples come from the compiling `tutorial/` application and lessons.
+The executable browser suites copy these same authored code blocks into apps.
+
+Use blockquotes for notes and ordinary headings and lists for API entries.
+For collapsible signatures, use `<details>` and `<summary>Signature</summary>`
+on their own lines, a blank line before Markdown content, and `</details>`
+after another blank line. Other raw HTML is displayed as text. Link and image
+URLs accept relative paths, fragments, HTTP(S), and mailto links.
+
+`content/navigation.json` contains only slugs, groups, parent relationships,
+reference-page flags and reading order. Add a record there when adding a guide.
+Set `parent` to another page's slug in the same group, and `reference: true` for
+detailed lookup pages. The first record is the introduction with an empty slug.
+Keep children immediately after their parent; order also controls previous/next
+links. The build rejects invalid or
+duplicate slugs, missing parents, cycles, mismatched groups and duplicate IDs.
+`content/references.json` maps code tokens to documentation anchors: guide code
+blocks get an “In this example” disclosure with the matching references.
+Reference pages omit these automatic links. Targets are checked during build.
+Tokens ending in `:` match directive families; other tokens use identifier
+boundaries. Add a reference entry when documenting a public directive or API.
+
+## Building and checking
+
+`build.rs` parses Markdown with pinned `pulldown-cmark` and highlights code
+with Syntect and `two-face`. The private Markdown component mounts the generated
+HTML through the existing DOM component API. No Markdown parser or highlighter
+ships to the browser, and native Cargo checks need no Node. Light and dark code
+colors meet 4.5:1 contrast against the docs code backgrounds; keep those
+background values in sync when changing the theme.
+
+The ordinary asset pipeline also copies the authored `.md` files into
+`dist/docs/content/`. Every guide has a “View Markdown source” link. Source-file
+inclusion is resolved for the rendered page; the downloadable Markdown retains
+its include directives. `content/resources.json` lists plain-text source copies
+written to the ignored `public/source/` directory. Do not edit those generated
+copies.
 
 From the repository root, run `npm ci --prefix apps/docs --ignore-scripts`,
-`just site`, then `just preview`. The docs are served beside the landing page
-and benchmarks, as they are when deployed.
-Open `http://127.0.0.1:8080/docs/`. For development, the normal CLI supports
-`fusor dev -p fusor-docs`; the app's base path is `/docs/`.
+`just site`, then `just preview`. Open http://127.0.0.1:8080/docs/.
+For development use `just dev-app fusor-docs`; the base path is `/docs/`.
+Run `just check`, `just test docs` and `just test docs-examples` after changes.
+The browser suites serve the assembled site, so run `just site` first.
 
-The information architecture, restrained typography, persistent navigation and
-code-first presentation take inspiration from [Deno's documentation](https://docs.deno.com/runtime/).
-The design and content are authored for fusor. No remote fonts or UI services
-are required. Browser tests cover routing/history, search, theme persistence,
-mobile navigation, missing routes and the live example in all three engines.
-Search includes section prose and code. Mobile pages expose a native disclosure
-with section links. Related source links open plain text in a new tab.
-
-Code is highlighted at build time by Syntect with the additional grammars from
-`two-face` (including TOML). `build/highlight.rs` produces typed text tokens for
-`web/code.html`; no source is injected as HTML and no highlighter ships in the
-browser bundle. Light and dark token colors meet 4.5:1 contrast against the docs
-code backgrounds. Keep those background values in sync when changing the theme.
+The information architecture and typography take inspiration from
+[Deno's documentation](https://docs.deno.com/runtime/). The design and content
+are authored for fusor. No remote fonts or UI services are required.
+Navigation, search, breadcrumbs, theme persistence, mobile navigation and the
+introduction's signal-driven counter remain part of the Rust application.
 
 The [showcase](http://127.0.0.1:8080/docs/showcase) has twelve interactive examples,
 each with a deep link, reset control, guide link, and source viewer. Gallery
@@ -125,49 +136,13 @@ real Wasm threads. Pool examples are feature-gated in that consumer so ordinary
 examples retain their ordinary build. These files are not compiled by
 `docs-examples` or included in the tutorial app's startup.
 
-The `workers/api` reference has one `api` entry per public type or function,
-with a type map and glossary first. Its examples are short excerpts based on the
+The `workers/api` reference has one Markdown section per public type or function,
+with a linked type index and glossary first. Its examples are short excerpts based on the
 compiled lessons in `tutorial/lessons/workers/`, but they are not compiled
 themselves; its declarations omit bodies and private fields. Both are lookup
 material, not runnable files. Keep them aligned
 with `fusor-worker` and the generated service clients, and link example tokens
 to their type sections in `content/references.json`.
-
-## Guide trees and contextual references
-
-Pages keep their existing URLs. A page may set `parent` to another page's `slug`
-to appear as its child; nested slugs such as `async-data/resource` also work on
-fresh page loads. Parent and child must have the same `group`. Page order controls
-sibling order and previous/next navigation, so put children immediately after
-their parent. The build rejects missing parents, cycles, duplicate slugs and
-section IDs. Navigation and breadcrumbs are generated from this data, not numeric
-page indices. Search reveals matching children and their ancestors; opening a
-child directly expands its ancestors. Disclosure buttons work by keyboard.
-
-Use `reference: true` for detailed lookup pages. Keep short explanations in the
-guides and use section `links` for a recommended next step. `content/references.json`
-is a curated token-to-section index: examples using those tokens automatically
-get an “In this example” disclosure, rendered using the existing related-link
-component. It scans authored code (including `source` files) at build time, not
-application expressions at runtime. Tokens ending in `:` match directive families;
-other tokens use identifier boundaries. Targets are validated during the build.
-Reference pages omit these automatic links to avoid self-referential clutter.
-When introducing a public directive/API, add its explanation and token here.
-
-`just test docs` checks nested deep links, keyboard disclosure, search,
-breadcrumbs, mobile navigation and the rendered reference links alongside the
-existing guide/showcase checks. `just test docs-examples` additionally builds
-and runs the optional `lessons/mounting` example, including removing its retained
-scope. With an installed Chrome, set `PLAYWRIGHT_CHANNEL=chrome`.
-
-To rebuild only this app without building benchmarks:
-
-```sh
-node --input-type=module -e 'import { buildPackage } from "./scripts/build.mjs"; await buildPackage("fusor-docs");'
-```
-
-That writes `apps/docs/dist/`. The docs browser suite serves the assembled site
-at `dist/docs/`; run `just site` before `just test docs` to refresh that output.
 
 ## Native library showcases
 

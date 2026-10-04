@@ -1,0 +1,168 @@
+[
+  {
+    "slug": "",
+    "group": "Get started"
+  },
+  {
+    "slug": "installation",
+    "group": "Get started"
+  },
+  {
+    "slug": "project-structure",
+    "group": "Get started"
+  },
+  {
+    "slug": "html-and-rust",
+    "group": "Core concepts"
+  },
+  {
+    "slug": "html-and-rust/app",
+    "group": "Core concepts",
+    "parent": "html-and-rust"
+  },
+  {
+    "slug": "html-and-rust/attributes",
+    "group": "Core concepts",
+    "parent": "html-and-rust",
+    "reference": true
+  },
+  {
+    "slug": "html-and-rust/built-in-components",
+    "group": "Core concepts",
+    "parent": "html-and-rust",
+    "reference": true
+  },
+  {
+    "slug": "events",
+    "group": "Core concepts"
+  },
+  {
+    "slug": "reactivity",
+    "group": "Core concepts"
+  },
+  {
+    "slug": "components",
+    "group": "Core concepts"
+  },
+  {
+    "slug": "components/for-each",
+    "group": "Core concepts",
+    "parent": "components"
+  },
+  {
+    "slug": "control-flow",
+    "group": "Core concepts"
+  },
+  {
+    "slug": "nested-content",
+    "group": "Core concepts"
+  },
+  {
+    "slug": "explicit-composition",
+    "group": "Core concepts"
+  },
+  {
+    "slug": "ownership",
+    "group": "Core concepts"
+  },
+  {
+    "slug": "ownership/mounting",
+    "group": "Core concepts",
+    "parent": "ownership",
+    "reference": true
+  },
+  {
+    "slug": "async-data",
+    "group": "Application guides"
+  },
+  {
+    "slug": "async-data/resource",
+    "group": "Application guides",
+    "parent": "async-data",
+    "reference": true
+  },
+  {
+    "slug": "workers",
+    "group": "Application guides"
+  },
+  {
+    "slug": "workers/tasks",
+    "group": "Application guides",
+    "parent": "workers"
+  },
+  {
+    "slug": "workers/services",
+    "group": "Application guides",
+    "parent": "workers"
+  },
+  {
+    "slug": "workers/pools",
+    "group": "Application guides",
+    "parent": "workers"
+  },
+  {
+    "slug": "workers/shared",
+    "group": "Application guides",
+    "parent": "workers"
+  },
+  {
+    "slug": "workers/streams",
+    "group": "Application guides",
+    "parent": "workers"
+  },
+  {
+    "slug": "workers/lifecycle",
+    "group": "Application guides",
+    "parent": "workers"
+  },
+  {
+    "slug": "workers/deployment",
+    "group": "Application guides",
+    "parent": "workers"
+  },
+  {
+    "slug": "workers/api",
+    "group": "Application guides",
+    "parent": "workers",
+    "reference": true
+  },
+  {
+    "slug": "coherent-async",
+    "group": "Application guides"
+  },
+  {
+    "slug": "coherent-async/semantics",
+    "group": "Application guides",
+    "parent": "coherent-async",
+    "reference": true
+  },
+  {
+    "slug": "routing",
+    "group": "Application guides"
+  },
+  {
+    "slug": "islands",
+    "group": "Application guides"
+  },
+  {
+    "slug": "islands/setup",
+    "group": "Application guides",
+    "parent": "islands"
+  },
+  {
+    "slug": "npm",
+    "group": "Application guides"
+  },
+  {
+    "slug": "tooling",
+    "group": "Reference"
+  },
+  {
+    "slug": "cli",
+    "group": "Reference"
+  },
+  {
+    "slug": "sites",
+    "group": "Reference"
+  }
+]

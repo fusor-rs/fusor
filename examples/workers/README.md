@@ -9,7 +9,7 @@ registration. Changing the input suppresses stale results; the UI counter stays
 independent of the CPU loop. Ordinary cancellation is cooperative: a busy worker
 processes cancellation messages when it yields, and never rolls back mutations.
 
-See the [worker guide](../../apps/docs/content/pages.json) for services, streams,
+See the [worker guide](../../apps/docs/public/content/workers.md) for services, streams,
 pools, shared leases and hosting requirements. The independent
 [browser consumer](../../tests/fixtures/worker/src/lib.rs) exercises those APIs;
 `just test worker` and `just test worker-pool` verify it in real browsers.

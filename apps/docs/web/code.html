@@ -21,8 +21,3 @@
     >{{ state.item.get().text }}</span
   ></template
 >
-<template rust:component="Signature"
-  ><pre class="signature" tabindex="0"><code><ForEach items="{{ state.tokens.to_vec() }}" key="{{ |item| item.id }}">
-<Token item="{{ item.clone() }}"></Token>
-</ForEach></code></pre></template
->
