@@ -1,8 +1,10 @@
 # fusor documentation
 
-This is a complete fusor application. HTML templates own layout; external
-Rust files own application state, search, theme, and typed routes. The managed
-`App` handles startup and cleanup.
+This is a fusor application using the shared
+[`docs-base`](https://github.com/fusor-rs/docs-base) shell, navigation, search,
+theme controls and article components. Product content, routes, welcome content,
+interactive demos and their styles remain here. The managed `App` handles
+startup and cleanup.
 
 ## Writing a guide
 
@@ -64,10 +66,10 @@ boundaries. Add a reference entry when documenting a public directive or API.
 
 ## Building and checking
 
-`build.rs` parses Markdown with pinned `pulldown-cmark` and highlights code
-with Syntect and `two-face`. The private Markdown component mounts the generated
-HTML through the existing DOM component API. No Markdown parser or highlighter
-ships to the browser, and native Cargo checks need no Node. Light and dark code
+`build.rs` calls `docs-base-build` to parse Markdown and highlight code at build
+time. `docs-base` mounts its generated page records through the DOM component
+API. Neither the Markdown parser nor the highlighter ships to the browser, and
+native Cargo checks need no Node. Light and dark code
 colors meet 4.5:1 contrast against the docs code backgrounds; keep those
 background values in sync when changing the theme.
 

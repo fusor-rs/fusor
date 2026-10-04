@@ -9,6 +9,7 @@
     />
     <title>fusor documentation</title>
     <link rel="icon" href="/docs/favicon.svg" />
+    <link rel="stylesheet" href="/docs/docs-base.css" />
     <link rel="stylesheet" href="/docs/docs.css" />
     <link rel="stylesheet" href="/docs/showcase.css" />
   </head>
@@ -19,133 +20,65 @@
       rust:module="crate::app"
     ></script>
     <App state="{{ App::new() }}">
-      <div
-        class="site"
-        class:dark="state.dark.get()"
-        class:menu-open="state.menu.get()"
-        on:keydown="state.keyboard(event)"
-      >
-        <a class="skip" href="#main-content">Skip to content</a>
-        <header class="topbar">
-          <a class="brand" data-fusor-link href="/docs/"
-            ><img class="brand-mark" src="/docs/favicon.svg" width="33" height="33" alt="" /><strong
-              >fusor<span class="brand-slash">/</span
-              ><span class="brand-docs">docs</span></strong
-            ></a
-          ><span class="version">v0.1 <span>dev</span></span>
-          <nav aria-label="Top navigation">
-            <a
-              class:selected="state.active.get() &lt; PAGES.len() &amp;&amp; !state.is_reference()"
-              data-fusor-link
-              href="/docs/"
-              on:click="state.open()"
-              >Learn</a
-            ><a
-              class:selected="state.active.get() == PAGES.len()"
-              data-fusor-link
-              href="/docs/showcase"
-              on:click="state.open()"
-              >Showcase</a
-            ><a
-              class:selected="state.is_reference()"
-              data-fusor-link
-              href="/docs/html-and-rust/attributes"
-              on:click="state.open()"
-              >Reference</a
-            ><a href="/benchmarks/">Benchmarks <span>↗</span></a>
-          </nav>
-          <div class="header-actions">
-            <button
-              class="theme-toggle"
-              aria-label="Toggle color theme"
-              on:click="state.theme()"
-            >
-              {{ if state.dark.get() { "☀" } else { "◐" } }}</button
-            ><button
-              class="menu-toggle"
-              aria-label="Toggle navigation"
-              aria-expanded="{{ state.menu.get() }}"
-              on:click="state.menu.update(|open| *open = !*open)"
-            >
-              ☰
-            </button>
-          </div>
-        </header>
-        <div class="docs-layout">
-          <aside class="sidebar" aria-label="Documentation navigation">
-            <label class="search-box"
-              ><span aria-hidden="true">⌕</span
-              ><input
-                id="search"
-                type="search"
-                placeholder="Search docs…"
-                aria-label="Search documentation"
-                bind="state.query"
-              /><kbd>⌘ K</kbd></label
-            >
-            <p
-              class="search-empty"
-              hidden="{{ state.matches_showcase() || PAGES.iter().enumerate().any(|(i,_)| state.matches(i)) }}"
-            >
-              No matching topics. Try “async” or “HTML”.
-            </p>
-            <nav>
-              <div><ForEach items="{{ state.groups() }}" key="{{ |item| *item }}">
-  <NavGroup item="{{ item.clone() }}" query="{{ state.query.clone() }}" menu="{{ state.menu.clone() }}" active="{{ state.active.clone() }}"></NavGroup>
-  </ForEach></div>
-              <div class="nav-group" hidden="{{ !state.matches_showcase() }}">
-                <h2>Explore</h2>
-                <a data-fusor-link href="/docs/showcase" on:click="state.open()"
-                   class:active="state.active.get() == PAGES.len()">Showcase <span class="nav-new">{{ DEMOS.len() }} demos</span></a>
-              </div>
-            </nav>
-            <div class="sidebar-bottom">
-              <span class="status-dot"></span> Open source. Built in Rust.<small
-                >Early access documentation</small
-              >
-            </div>
-          </aside>
-          <main class="outlet"><Router><Route fallback>
-            <DocRoute active="{{ state.active.clone() }}"></DocRoute>
-          </Route></Router></main>
-        </div>
+      <div class="docs-app">
+        <Shell
+          navigation="{{ state.navigation.clone() }}"
+          header="{{ Some(state.header.clone()) }}"
+          sidebar="{{ Some(state.sidebar.clone()) }}"
+        >
+          <Router>
+            <Route fallback>
+              <DocRoute navigation="{{ state.navigation.clone() }}"></DocRoute>
+            </Route>
+          </Router>
+        </Shell>
       </div>
     </App>
-<template rust:component="NavGroup">
-  <div class="nav-group" hidden="{{ !state.visible() }}">
-    <h2>{{ state.item.get() }}</h2>
-    <ul><ForEach items="{{ state.entries() }}" key="{{ |item| *item }}">
-<NavEntry item="{{ item.clone() }}" query="{{ state.query.clone() }}" menu="{{ state.menu.clone() }}" active="{{ state.active.clone() }}"></NavEntry>
-</ForEach></ul>
-  </div>
-</template>
-<template rust:component="NavEntry">
-  <li hidden="{{ !state.visible() }}">
-    <div class="nav-entry">
-      <a data-fusor-link href="{{ href(state.item.get()) }}"
-         class:active="state.active.get() == state.item.get()"
-         aria-current='{{ if state.active.get() == state.item.get() { "page" } else { "false" } }}'
-         on:click="state.open()">{{ state.title() }}</a>
-      <button class="nav-toggle" hidden="{{ state.children().is_empty() }}"
-              aria-label='{{ format!("Toggle {} subpages", state.title()) }}'
-              aria-controls='{{ format!("nav-children-{}", state.item.get()) }}'
-              aria-expanded="{{ state.is_open() }}" on:click="state.toggle()">
-        <span aria-hidden="true">{{ if state.is_open() { "⌄" } else { "›" } }}</span>
-      </button>
-    </div>
-    <ul class="nav-children" id='{{ format!("nav-children-{}", state.item.get()) }}'
-        hidden="{{ !state.is_open() }}"><ForEach items="{{ state.children() }}" key="{{ |item| *item }}">
-<NavEntry item="{{ item.clone() }}" query="{{ state.query.clone() }}" menu="{{ state.menu.clone() }}" active="{{ state.active.clone() }}"></NavEntry>
-</ForEach></ul>
-  </li>
-</template>
-
   </body>
 </html>
 
-
-<template rust:component="DocRoute"><div class="doc-route">
-<Article rust:if="matches!(state.page, Some(Page::Guide(_)) | None)" index="{{ state.guide() }}"></Article>
-<Gallery rust:if="matches!(state.page, Some(Page::Showcase))"></Gallery>
-<DemoPage rust:if="matches!(state.page, Some(Page::Demo(_)))" index="{{ state.demo() }}"></DemoPage>
-</div></template>
+<template rust:component="TopLinks">
+  <div class="top-links">
+    <a
+      class:selected="matches!(state.navigation.active.get(), Location::Guide(_)) &amp;&amp; !state.navigation.is_reference()"
+      data-fusor-link
+      href="/docs/"
+      on:click="state.navigation.open()"
+      >Learn</a
+    ><a
+      class:selected="state.navigation.active.get() == Location::Custom"
+      data-fusor-link
+      href="/docs/showcase"
+      on:click="state.navigation.open()"
+      >Showcase</a
+    ><a
+      class:selected="state.navigation.is_reference()"
+      data-fusor-link
+      href="/docs/html-and-rust/attributes"
+      on:click="state.navigation.open()"
+      >Reference</a
+    ><a href="/benchmarks/">Benchmarks <span>↗</span></a>
+  </div>
+</template>
+<template rust:component="Explore">
+  <div class="nav-group" hidden="{{ !state.matches() }}">
+    <h2>Explore</h2>
+    <a data-fusor-link href="/docs/showcase" on:click="state.navigation.open()"
+       class:active="state.navigation.active.get() == Location::Custom">Showcase <span class="nav-new">{{ DEMOS.len() }} demos</span></a>
+  </div>
+</template>
+<template rust:component="DocRoute">
+  <div class="doc-route">
+    <Article
+      site="{{ &SITE }}"
+      extras="{{ state.extras.clone() }}"
+      rust:if="matches!(state.page, Some(Page::Guide(_)) | None)"
+      index="{{ state.guide() }}"
+    ></Article>
+    <Gallery rust:if="matches!(state.page, Some(Page::Showcase))"></Gallery>
+    <DemoPage
+      rust:if="matches!(state.page, Some(Page::Demo(_)))"
+      index="{{ state.demo() }}"
+    ></DemoPage>
+  </div>
+</template>

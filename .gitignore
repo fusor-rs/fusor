@@ -37,3 +37,5 @@
 /apps/benchmarks/public/report.html
 .vercel
 .env*
+
+/apps/docs/public/docs-base.css
