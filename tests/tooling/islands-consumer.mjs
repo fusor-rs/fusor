@@ -27,20 +27,20 @@ try {
       !["dist", "target", "node_modules"].includes(basename(path)),
   });
   const manifest = await readFile("Cargo.toml", "utf8");
-  const shared = manifest
-    .slice(
-      manifest.indexOf("[workspace.package]"),
-      manifest.indexOf("[workspace.lints.rust]"),
-    )
-    .replaceAll(
-      'path = "crates/',
-      `path = "${root.replaceAll("\\", "/")}/crates/`,
-    );
+  const shared = manifest.slice(
+    manifest.indexOf("[workspace.package]"),
+    manifest.indexOf("[workspace.lints.rust]"),
+  );
+  const independent =
+    '[workspace]\nmembers = ["*"]\nresolver = "2"\n' +
+    shared +
+    manifest.slice(manifest.indexOf("[profile.release]"));
   await writeFile(
     join(scratch, "Cargo.toml"),
-    '[workspace]\nmembers = ["*"]\nresolver = "2"\n' +
-      shared +
-      manifest.slice(manifest.indexOf("[profile.release]")),
+    independent.replaceAll(
+      'path = "crates/',
+      `path = "${root.replaceAll("\\", "/")}/crates/`,
+    ),
   );
   await run("cargo", ["generate-lockfile", "--offline"]);
   const cli = resolve(
