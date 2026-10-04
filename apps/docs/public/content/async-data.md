@@ -36,7 +36,7 @@ the `my-app` from Installation. It is only the dependency step: use the complete
 checklist at the end of this page before copying the companion’s files.
 
 ```toml title=Cargo.toml · add under [dependencies]
-fusor-async = { version = "=0.1.4", features = ["browser"] }
+fusor-async = { version = "=0.1.5", features = ["browser"] }
 ```
 
 ## First, read the three arguments {#resource-call}
