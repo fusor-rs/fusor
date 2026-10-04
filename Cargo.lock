@@ -132,86 +132,86 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "catalog-cart-web"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "catalog-types",
  "catalog-views",
- "fusor-build",
- "fusor-core",
- "fusor-islands",
+ "fusor-build 0.1.5",
+ "fusor-core 0.1.5",
+ "fusor-islands 0.1.5",
  "wasm-bindgen",
  "wasm-bindgen-futures",
 ]
 
 [[package]]
 name = "catalog-designer-views"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "catalog-types",
  "fusor-async",
- "fusor-build",
- "fusor-core",
- "fusor-islands",
+ "fusor-build 0.1.5",
+ "fusor-core 0.1.5",
+ "fusor-islands 0.1.5",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "catalog-designer-web"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "catalog-designer-views",
  "catalog-types",
  "fusor-async",
- "fusor-build",
- "fusor-core",
- "fusor-islands",
+ "fusor-build 0.1.5",
+ "fusor-core 0.1.5",
+ "fusor-islands 0.1.5",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "catalog-grouped-web"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "catalog-designer-views",
  "catalog-types",
  "catalog-views",
- "fusor-build",
- "fusor-core",
- "fusor-islands",
+ "fusor-build 0.1.5",
+ "fusor-core 0.1.5",
+ "fusor-islands 0.1.5",
  "wasm-bindgen",
  "wasm-bindgen-futures",
 ]
 
 [[package]]
 name = "catalog-site"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "catalog-types",
  "catalog-views",
- "fusor-build",
- "fusor-core",
- "fusor-islands",
+ "fusor-build 0.1.5",
+ "fusor-core 0.1.5",
+ "fusor-islands 0.1.5",
  "fusor-server",
  "serde_json",
 ]
 
 [[package]]
 name = "catalog-types"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
- "fusor-islands",
+ "fusor-islands 0.1.5",
  "serde",
 ]
 
 [[package]]
 name = "catalog-views"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "catalog-types",
- "fusor-build",
- "fusor-components",
- "fusor-core",
- "fusor-islands",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
+ "fusor-islands 0.1.5",
  "fusor-server",
  "fusor-std",
 ]
@@ -377,9 +377,9 @@ name = "docs-base"
 version = "0.1.0"
 source = "git+https://github.com/fusor-rs/docs-base?rev=e2c7b3939721002ea2aa7556d8e4409aa131472b#e2c7b3939721002ea2aa7556d8e4409aa131472b"
 dependencies = [
- "fusor-build",
- "fusor-components",
- "fusor-core",
+ "fusor-build 0.1.4",
+ "fusor-components 0.1.4",
+ "fusor-core 0.1.4",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -417,7 +417,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -481,10 +481,10 @@ dependencies = [
 
 [[package]]
 name = "fusor-async"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "derive-where",
- "fusor-core",
+ "fusor-core 0.1.5",
  "futures-channel",
  "futures-executor",
  "futures-util",
@@ -496,44 +496,44 @@ dependencies = [
 
 [[package]]
 name = "fusor-async-components"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "fusor-async",
- "fusor-build",
- "fusor-components",
- "fusor-core",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
  "wasm-bindgen",
  "wasm-bindgen-futures",
 ]
 
 [[package]]
 name = "fusor-bench-hello"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
- "fusor-build",
- "fusor-components",
- "fusor-core",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "fusor-bench-todo"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
- "fusor-build",
- "fusor-components",
- "fusor-core",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "fusor-bench-workload"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
- "fusor-build",
- "fusor-components",
- "fusor-core",
- "fusor-islands",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
+ "fusor-islands 0.1.5",
  "fusor-server",
  "wasm-bindgen",
  "web-sys",
@@ -541,12 +541,12 @@ dependencies = [
 
 [[package]]
 name = "fusor-benchmarks"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "fusor-async",
- "fusor-build",
- "fusor-components",
- "fusor-core",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
  "serde",
  "serde_json",
  "wasm-bindgen",
@@ -555,10 +555,29 @@ dependencies = [
 [[package]]
 name = "fusor-build"
 version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61e853f1efe0a7a43a69c1b0ba429a65e3fb2b059a9839522bea725452a325d5"
 dependencies = [
- "fusor-core",
- "fusor-islands",
- "fusor-router",
+ "fusor-core 0.1.4",
+ "fusor-islands 0.1.4",
+ "fusor-router 0.1.4",
+ "html5gum",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "sha2",
+ "syn 2.0.119",
+ "toml",
+]
+
+[[package]]
+name = "fusor-build"
+version = "0.1.5"
+dependencies = [
+ "fusor-core 0.1.5",
+ "fusor-islands 0.1.5",
+ "fusor-router 0.1.5",
  "html5gum",
  "proc-macro2",
  "quote",
@@ -572,22 +591,22 @@ dependencies = [
 
 [[package]]
 name = "fusor-children"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
- "fusor-build",
- "fusor-components",
- "fusor-core",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "fusor-cli"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "clap",
  "flate2",
- "fusor-build",
- "fusor-islands",
+ "fusor-build 0.1.5",
+ "fusor-islands 0.1.5",
  "fusor-npm",
  "glob",
  "html5gum",
@@ -608,41 +627,50 @@ dependencies = [
 
 [[package]]
 name = "fusor-coherent"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "fusor-async",
- "fusor-build",
- "fusor-components",
- "fusor-core",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "fusor-components"
 version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ff376904a2eadb6a540744719429734482d2e736a0773377d9853fe170613f5"
 dependencies = [
- "fusor-core",
+ "fusor-core 0.1.4",
+]
+
+[[package]]
+name = "fusor-components"
+version = "0.1.5"
+dependencies = [
+ "fusor-core 0.1.5",
 ]
 
 [[package]]
 name = "fusor-composition"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "fusor-async",
- "fusor-build",
- "fusor-core",
+ "fusor-build 0.1.5",
+ "fusor-core 0.1.5",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "fusor-control-flow"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "fusor-async",
- "fusor-build",
- "fusor-components",
- "fusor-core",
- "fusor-islands",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
+ "fusor-islands 0.1.5",
  "fusor-server",
  "wasm-bindgen",
 ]
@@ -650,8 +678,20 @@ dependencies = [
 [[package]]
 name = "fusor-core"
 version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36cc8392e17b5eea5f45606a51bb8736042bd19175f20fb63ee82fc1787561eb"
 dependencies = [
- "fusor-macros",
+ "fusor-macros 0.1.4",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "fusor-core"
+version = "0.1.5"
+dependencies = [
+ "fusor-macros 0.1.5",
  "js-sys",
  "wasm-bindgen",
  "web-sys",
@@ -659,15 +699,15 @@ dependencies = [
 
 [[package]]
 name = "fusor-docs"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "docs-base",
  "docs-base-build",
  "fusor-async",
- "fusor-build",
- "fusor-components",
- "fusor-core",
- "fusor-router",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
+ "fusor-router 0.1.5",
  "fusor-worker",
  "futures-util",
  "gloo-timers",
@@ -681,12 +721,12 @@ dependencies = [
 
 [[package]]
 name = "fusor-editor"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
- "fusor-build",
- "fusor-components",
- "fusor-core",
- "fusor-router",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
+ "fusor-router 0.1.5",
  "fusor-std",
  "js-sys",
  "serde",
@@ -698,21 +738,21 @@ dependencies = [
 
 [[package]]
 name = "fusor-foreach"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
- "fusor-build",
- "fusor-components",
- "fusor-core",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "fusor-integrations"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "fusor-async",
- "fusor-build",
- "fusor-core",
+ "fusor-build 0.1.5",
+ "fusor-core 0.1.5",
  "fusor-query",
  "wasm-bindgen",
  "web-sys",
@@ -721,8 +761,19 @@ dependencies = [
 [[package]]
 name = "fusor-islands"
 version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09040f3dfaa95e41e54a4ba1005a88e017910b0eceee4e700c5f04be3c47ce22"
 dependencies = [
- "fusor-core",
+ "fusor-core 0.1.4",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "fusor-islands"
+version = "0.1.5"
+dependencies = [
+ "fusor-core 0.1.5",
  "js-sys",
  "serde",
  "serde_json",
@@ -733,12 +784,12 @@ dependencies = [
 
 [[package]]
 name = "fusor-landing"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "fusor-async",
- "fusor-build",
- "fusor-components",
- "fusor-core",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
  "gloo-timers",
  "syntect",
  "two-face",
@@ -750,6 +801,17 @@ dependencies = [
 [[package]]
 name = "fusor-macros"
 version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebdbd0919aeab94a1589b0952a9711e7d46aab3123a0c2c02ba3b0683d814490"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "fusor-macros"
+version = "0.1.5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -758,41 +820,41 @@ dependencies = [
 
 [[package]]
 name = "fusor-navigation"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "fusor-async",
- "fusor-build",
- "fusor-components",
- "fusor-core",
- "fusor-router",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
+ "fusor-router 0.1.5",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "fusor-npm"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "fusor-playground"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
- "fusor-build",
- "fusor-components",
- "fusor-core",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
  "wasm-bindgen",
  "web-sys",
 ]
 
 [[package]]
 name = "fusor-query"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "derive-where",
  "fusor-async",
- "fusor-core",
+ "fusor-core 0.1.5",
  "fusor-test",
  "futures-util",
  "wasm-bindgen",
@@ -801,7 +863,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-release"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "clap",
  "crc32fast",
@@ -816,9 +878,20 @@ dependencies = [
 [[package]]
 name = "fusor-router"
 version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1cbb73da8ceba9583442a661d65d9d1256ee2863a55ee1ec95f8e5d4b4507070"
 dependencies = [
  "form_urlencoded",
- "fusor-core",
+ "fusor-core 0.1.4",
+ "percent-encoding",
+]
+
+[[package]]
+name = "fusor-router"
+version = "0.1.5"
+dependencies = [
+ "form_urlencoded",
+ "fusor-core 0.1.5",
  "js-sys",
  "percent-encoding",
  "wasm-bindgen",
@@ -827,33 +900,33 @@ dependencies = [
 
 [[package]]
 name = "fusor-router-example"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
- "fusor-build",
- "fusor-components",
- "fusor-core",
- "fusor-router",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
+ "fusor-router 0.1.5",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "fusor-server"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
- "fusor-core",
- "fusor-islands",
+ "fusor-core 0.1.5",
+ "fusor-islands 0.1.5",
  "serde",
  "serde_json",
 ]
 
 [[package]]
 name = "fusor-std"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "fusor-async",
- "fusor-core",
+ "fusor-core 0.1.5",
  "fusor-query",
- "fusor-router",
+ "fusor-router 0.1.5",
  "fusor-test",
  "futures-util",
  "wasm-bindgen",
@@ -862,10 +935,10 @@ dependencies = [
 
 [[package]]
 name = "fusor-test"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "fusor-async",
- "fusor-core",
+ "fusor-core 0.1.5",
  "futures-channel",
  "futures-executor",
  "futures-util",
@@ -873,10 +946,10 @@ dependencies = [
 
 [[package]]
 name = "fusor-worker"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "fusor-async",
- "fusor-core",
+ "fusor-core 0.1.5",
  "fusor-worker-macros",
  "futures-channel",
  "futures-core",
@@ -894,7 +967,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-worker-macros"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -903,12 +976,12 @@ dependencies = [
 
 [[package]]
 name = "fusor-workers"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "fusor-async",
- "fusor-build",
- "fusor-components",
- "fusor-core",
+ "fusor-build 0.1.5",
+ "fusor-components 0.1.5",
+ "fusor-core 0.1.5",
  "fusor-worker",
  "wasm-bindgen",
 ]
@@ -1439,7 +1512,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1685,7 +1758,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1989,7 +2062,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
