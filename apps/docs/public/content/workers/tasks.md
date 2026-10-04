@@ -18,7 +18,7 @@ app’s core and CLI.
 
 ```toml title=TOML · additions to Cargo.toml
 [dependencies]
-fusor-worker = "=0.1.4"
+fusor-worker = "=0.1.5"
 ```
 
 - [Create an application first](/docs/installation)
@@ -121,7 +121,7 @@ example uses the `fusor_async::fetch::get_text` helper and converts its failure 
 serializable application error. Relative URLs given to this helper resolve against the app’s
 base URL, including when the app is deployed under a subpath.
 
-The helper requires `fusor-async = { version = "=0.1.4", features = ["browser"] }` in your
+The helper requires `fusor-async = { version = "=0.1.5", features = ["browser"] }` in your
 dependencies. Being async doesn’t move synchronous code off the worker’s event loop: code
 between awaits still runs there. In a task placed on a pool, hand substantial CPU work to
 `ctx.compute`.
