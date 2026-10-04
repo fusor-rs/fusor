@@ -1,28 +1,6 @@
-<script
-  type="text/rust"
-  src="../src/article.rs"
-  rust:module="crate::article"
-></script>
-<template rust:component="Article">
-  <div class="article-layout">
-    <article class="article" id="main-content" tabindex="-1">
-      <nav class="breadcrumb" aria-label="Breadcrumb">
-        <a data-fusor-link href="/docs/">Docs</a><span>/</span>
-        <span>{{ state.page.group }}</span>
-        <span><ForEach items="{{ state.breadcrumbs() }}" key="{{ |item| item.href }}">
-<Breadcrumb item="{{ item.clone() }}"></Breadcrumb>
-</ForEach></span>
-      </nav>
-      <h1>{{ state.page.title }}</h1>
-      <div class="lead" rust:slot="markdown(state.page.lead)"></div>
-      <details class="mobile-toc">
-        <summary>On this page</summary>
-        <ul
-        ><ForEach items="{{ state.sections() }}" key="{{ |item| item.id }}">
-<Toc item="{{ item.clone() }}"></Toc>
-</ForEach></ul>
-      </details>
-      <div class="welcome-grid" hidden="{{ state.index != 0 }}">
+<script type="text/rust" src="../src/article.rs" rust:module="crate::article"></script>
+<template rust:component="Welcome"><div>
+      <div class="welcome-grid">
         <a data-fusor-link href="/docs/installation"
           ><span class="card-icon">↗</span><strong>Build your first app</strong
           ><span>From a Cargo package to a reactive page.</span></a
@@ -33,12 +11,12 @@
           ><span>Familiar HTML. Ordinary, checked Rust.</span></a
         >
       </div>
-      <p class="welcome-showcase" hidden="{{ state.index != 0 }}">
+      <p class="welcome-showcase">
         <a class="text-link" data-fusor-link href="/docs/showcase"
           >Explore live examples in the showcase →</a
         >
       </p>
-      <div class="release-note" hidden="{{ state.index != 0 }}">
+      <div class="release-note">
         <span class="note-icon">i</span>
         <div>
           <strong>An early, working foundation.</strong> fusor is
@@ -46,14 +24,10 @@
           this checkout.
         </div>
       </div>
-      <div
-        class="sections"
-      ><ForEach items="{{ state.sections() }}" key="{{ |item| item.id }}">
-<Section item="{{ item.clone() }}"></Section>
-</ForEach></div>
+</div></template>
+<template rust:component="Counter">
       <section
         class="live-demo"
-        hidden='{{ state.index != 0 &amp;&amp; state.page.slug != "reactivity" }}'
       >
         <div>
           <span class="eyebrow">RUNNING IN RUST</span>
@@ -75,70 +49,6 @@
           </button>
         </div>
       </section>
-      <div class="article-footer">
-        <a
-          href="{{ state.page.source }}"
-          hidden="{{ state.page.source.is_empty() }}"
-          target="_blank"
-          rel="noopener"
-          >View Markdown source</a
-        ><a data-fusor-link href="/docs/tooling">Contributor workflow →</a>
-      </div>
-      <nav class="pagination" aria-label="Adjacent pages">
-        <a
-          data-fusor-link
-          hidden="{{ state.index == 0 }}"
-          href="{{ href(state.previous()) }}"
-          ><small>← Previous</small
-          ><strong>{{ PAGES[state.previous()].title }}</strong></a
-        >
-        <a
-          data-fusor-link
-          hidden="{{ state.index.saturating_add(1) >= PAGES.len() }}"
-          href="{{ href(state.next()) }}"
-          ><small>Next →</small
-          ><strong>{{ PAGES[state.next()].title }}</strong></a
-        >
-      </nav>
-    </article>
-    <aside class="toc" aria-label="On this page">
-      <h2>On this page</h2>
-      <ul
-      ><ForEach items="{{ state.sections() }}" key="{{ |item| item.id }}">
-<Toc item="{{ item.clone() }}"></Toc>
-</ForEach></ul>
-      <div class="toc-note">HTML you can read.<br />Rust you can trust.</div>
-    </aside>
-  </div>
 </template>
-<template rust:component="Section">
-  <section class="doc-section" id="{{ state.item.get().id }}">
-    <div rust:slot="markdown(state.item.get().html)"></div>
-    <details class="api-references" hidden="{{ state.item.get().references.is_empty() }}">
-      <summary>In this example ({{ state.item.get().references.len() }})</summary>
-      <ul class="related-links" aria-label="API and syntax references"><ForEach items="{{ state.item.get().references.to_vec() }}" key="{{ |item| item.href }}">
-<RelatedLink item="{{ item.clone() }}"></RelatedLink>
-</ForEach></ul>
-    </details>
-  </section>
-</template>
-<template rust:component="Toc"
-  ><li>
-    <a href="#{{ state.item.get().id }}">{{ state.item.get().title }}</a>
-  </li></template
->
-<template rust:component="RelatedLink"
-  ><li>
-    <a
-      data-fusor-link
-      href="{{ state.item.get().href }}"
-      target='{{ if state.item.get().href.starts_with("/docs/source/") { "_blank" } else { "_self" } }}'
-      rel="noopener"
-      >{{ state.item.get().label }} →</a
-    >
-  </li></template
->
-
-<template rust:component="Breadcrumb"><span><span>/</span>
-  <a data-fusor-link href="/docs/{{ state.item.get().href }}">{{ state.item.get().label }}</a>
-</span></template>
+<template rust:component="ContributorLink"><a data-fusor-link href="/docs/tooling">Contributor workflow →</a></template>
+<template rust:component="Motto"><p>HTML you can read.<br />Rust you can trust.</p></template>

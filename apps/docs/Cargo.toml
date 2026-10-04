@@ -8,6 +8,7 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib"]
 [dependencies]
+docs-base = { git = "https://github.com/fusor-rs/docs-base", rev = "e2c7b3939721002ea2aa7556d8e4409aa131472b" }
 fusor-components = { workspace = true, features = ["browser"] }
 fusor-core = { workspace = true, features = ["dom", "javascript"] }
 fusor-router = { workspace = true, features = ["browser"] }
@@ -20,18 +21,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
-web-sys = { workspace = true, features = ["KeyboardEvent", "Storage", "Navigator", "Clipboard", "Element", "MouseEvent"] }
+web-sys = { workspace = true, features = ["Navigator", "Clipboard", "Element", "MouseEvent"] }
 [build-dependencies]
+docs-base-build = { git = "https://github.com/fusor-rs/docs-base", rev = "e2c7b3939721002ea2aa7556d8e4409aa131472b" }
 fusor-build.workspace = true
-pulldown-cmark.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-syntect.workspace = true
-two-face.workspace = true
-[dev-dependencies]
-pulldown-cmark.workspace = true
-syntect.workspace = true
-two-face.workspace = true
 [package.metadata.fusor]
 entry = "web/index.html"
 templates = ["web/components", "web/demos"]

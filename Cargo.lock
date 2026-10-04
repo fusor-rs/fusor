@@ -373,6 +373,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "docs-base"
+version = "0.1.0"
+source = "git+https://github.com/fusor-rs/docs-base?rev=e2c7b3939721002ea2aa7556d8e4409aa131472b#e2c7b3939721002ea2aa7556d8e4409aa131472b"
+dependencies = [
+ "fusor-build",
+ "fusor-components",
+ "fusor-core",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "docs-base-build"
+version = "0.1.0"
+source = "git+https://github.com/fusor-rs/docs-base?rev=e2c7b3939721002ea2aa7556d8e4409aa131472b#e2c7b3939721002ea2aa7556d8e4409aa131472b"
+dependencies = [
+ "proc-macro2",
+ "pulldown-cmark",
+ "quote",
+ "serde",
+ "serde_json",
+ "syntect",
+ "two-face",
+]
+
+[[package]]
 name = "either"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -635,6 +661,8 @@ dependencies = [
 name = "fusor-docs"
 version = "0.1.4"
 dependencies = [
+ "docs-base",
+ "docs-base-build",
  "fusor-async",
  "fusor-build",
  "fusor-components",
@@ -644,11 +672,8 @@ dependencies = [
  "futures-util",
  "gloo-timers",
  "js-sys",
- "pulldown-cmark",
  "serde",
  "serde_json",
- "syntect",
- "two-face",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

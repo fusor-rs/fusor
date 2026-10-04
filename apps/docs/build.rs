@@ -1,18 +1,25 @@
-use std::{env, fs, path::PathBuf};
-#[path = "build/guides.rs"]
-mod guides;
-#[path = "build/highlight.rs"]
-mod highlight;
-#[path = "build/html.rs"]
-mod html;
-#[path = "build/markdown.rs"]
-mod markdown;
+use docs_base_build::{Config, Highlighter};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("cargo:rerun-if-changed=build");
-    let highlighter = highlight::Highlighter::new();
+    let highlighter = Highlighter::default();
     copy_resources()?;
-    let mut source = guides::compile(&highlighter)?;
+    let guides = docs_base_build::compile(
+        &Config {
+            root: Path::new("."),
+            content: Path::new("public/content"),
+            navigation: Path::new("content/navigation.json"),
+            references: Some(Path::new("content/references.json")),
+            base_path: "/docs/",
+            repository: None,
+        },
+        &highlighter,
+    )?;
+    guides.write_assets(Path::new("public"))?;
+    let mut source = guides.source.to_string();
     compile_showcase(&mut source, &highlighter)?;
     fs::write(
         PathBuf::from(env::var("OUT_DIR")?).join("content.rs"),
@@ -40,7 +47,7 @@ fn copy_resources() -> Result<(), Box<dyn std::error::Error>> {
 
 fn compile_showcase(
     source: &mut String,
-    highlighter: &highlight::Highlighter,
+    highlighter: &Highlighter,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let text = |v: &serde_json::Value, key: &str| format!("{:?}", v[key].as_str().unwrap_or(""));
     println!("cargo:rerun-if-changed=content/showcase.json");
@@ -89,7 +96,7 @@ fn compile_showcase(
 
 fn compile_demo_source(
     source: &mut String,
-    highlighter: &highlight::Highlighter,
+    highlighter: &Highlighter,
     slug: &str,
     language: &str,
     path: &str,

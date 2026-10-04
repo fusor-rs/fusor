@@ -134,6 +134,9 @@ long signatures. See `apps/docs/README.md` for the complete authoring convention
 
 `just site` renders the guides and publishes their Markdown files as static
 assets. The **View Markdown source** link on each page opens its authored file.
+The shared [docs-base](https://github.com/fusor-rs/docs-base) packages own the
+Markdown compiler, article layout, navigation, search and theme controls.
+Fusor keeps its guides, branding and interactive examples in this application.
 Run `just test docs` and `just test docs-examples` to check the rendered guides
 and execute their application examples.
 

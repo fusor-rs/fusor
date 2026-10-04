@@ -29,6 +29,3 @@ impl Route for Page {
         }
     }
 }
-pub fn href(index: usize) -> String {
-    format!("/docs/{}", PAGES[index].slug)
-}
