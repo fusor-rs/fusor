@@ -94,6 +94,11 @@ retry controls using an optional explicit handle are covered in the linked guide
 The design uses system fonts, the selected fusor F emblem, an oxide accent, and a
 compact source-and-result view. Header navigation and the logo stay visible at
 phone widths. [Branding](BRANDING.md) records the selected artwork and palette.
+The hero pairs the introduction with platform-specific installation and a copy
+button. A closing call to action shows the commands to create and run an app.
+The “More from Fusor” section links to HyperCMD and SQL Bomb, explaining
+how they use fusor. Their horizontal logos in `public/brand/` come from each
+project’s `assets/brand/` directory.
 
 ## Verification
 

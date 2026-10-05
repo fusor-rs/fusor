@@ -29,6 +29,7 @@
           <nav aria-label="Main navigation">
             <a href="/docs/">Docs</a>
             <a href="/docs/showcase">Examples</a>
+            <a href="#by-fusor">By Fusor</a>
             <a href="https://github.com/fusor-rs/fusor"
               >GitHub <span aria-hidden="true">↗</span></a
             >
@@ -36,18 +37,51 @@
         </header>
         <main id="main" class="page-width">
           <section class="intro" aria-labelledby="intro-title">
-            <h1 id="intro-title">Build reactive web apps<br />with <span>Rust.</span></h1>
-            <p class="intro-description">
-              Write your UI in HTML files. Keep state and frontend logic in Rust. No markup inside
-              Rust macros.
-            </p>
-            <div class="intro-links">
-              <a class="primary-link" href="/docs/installation"
-                >Get started <span aria-hidden="true">→</span></a
-              >
-              <a href="/docs/html-and-rust"
-                >Read the introduction <span aria-hidden="true">↗</span></a
-              >
+            <div class="intro-copy">
+              <h1 id="intro-title">Build reactive web apps with <span>Rust.</span></h1>
+              <p class="intro-description">
+                Write your UI in HTML files. Keep state and frontend logic in Rust. No markup inside
+                Rust macros.
+              </p>
+              <div class="action-links">
+                <a href="#example-title">See it in action <span aria-hidden="true">↓</span></a>
+                <a href="/docs/html-and-rust"
+                  >Read the introduction <span aria-hidden="true">↗</span></a
+                >
+              </div>
+            </div>
+            <div id="install" class="hero-install" role="region" aria-labelledby="install-title">
+              <h2 id="install-title">Install fusor</h2>
+              <div class="install-panel">
+                <div class="install-toolbar">
+                  <div class="install-platforms" role="group" aria-label="Installation platform">
+                    <button
+                      type="button"
+                      aria-pressed="{{ !state.install_windows.get() }}"
+                      on:click="state.select_install(false)"
+                    >macOS / Linux</button>
+                    <button
+                      type="button"
+                      aria-pressed="{{ state.install_windows.get() }}"
+                      on:click="state.select_install(true)"
+                    >Windows</button>
+                  </div>
+                  <button
+                    class="copy-install"
+                    type="button"
+                    on:click="state.copy_install()"
+                    aria-live="polite"
+                  >{{ state.copy_label.get() }}</button>
+                </div>
+                <div class="install-command"><code>{{ state.install_command() }}</code></div>
+              </div>
+              <p class="setup-note">{{ state.install_note() }}</p>
+              <div class="setup-footer">
+                <p>Requires <a href="https://rustup.rs/">Rust 1.85 or newer</a>.</p>
+                <a class="setup-guide" href="/docs/installation"
+                  >Installation guide <span aria-hidden="true">→</span></a
+                >
+              </div>
             </div>
           </section>
           <section class="example" aria-labelledby="example-title">
@@ -246,64 +280,62 @@
               </article>
             </div>
           </section>
-          <section class="getting-started" aria-labelledby="start-title">
-            <div class="getting-started-heading">
-              <h2 id="start-title">Try fusor</h2>
-              <p>Install the CLI and create an app. The starter includes a component to edit in HTML and Rust.</p>
+          <section id="by-fusor" class="ecosystem" aria-labelledby="ecosystem-title">
+            <h2 id="ecosystem-title">More from Fusor</h2>
+            <p class="ecosystem-description">Tools and projects built by Fusor.</p>
+            <div class="project-grid">
+              <a class="project-card" href="https://cmd.fusor.build/">
+                <p class="project-kind">Terminal framework</p>
+                <h3>
+                  <img src="./brand/hypercmd-horizontal.svg" width="187" height="36" alt="HyperCMD" />
+                </h3>
+                <p class="project-description">
+                  Build terminal interfaces with HTML and Rust. HyperCMD brings fusor’s templates
+                  and reactive state to the command line.
+                </p>
+                <span class="project-link">Explore HyperCMD <span aria-hidden="true">↗</span></span>
+              </a>
+              <a class="project-card" href="https://boom.fusor.build/">
+                <p class="project-kind">SQL client</p>
+                <h3>
+                  <img src="./brand/sql-bomb-horizontal.svg" width="174" height="36" alt="SQL Bomb" />
+                </h3>
+                <p class="project-description">
+                  Run SQL and explore streaming results in your terminal. SQL Bomb puts HyperCMD
+                  and fusor to work in a database client.
+                </p>
+                <span class="project-link">Explore SQL Bomb <span aria-hidden="true">↗</span></span>
+              </a>
             </div>
-            <ol class="setup-steps" role="list">
-              <li class="setup-step">
-                <h3><span class="step-number" aria-hidden="true">01</span>Install the CLI</h3>
-                <div class="install-panel">
-                  <div class="install-toolbar">
-                    <div class="install-platforms" role="group" aria-label="Installation platform">
-                      <button
-                        type="button"
-                        aria-pressed="{{ !state.install_windows.get() }}"
-                        on:click="state.select_install(false)"
-                      >macOS / Linux</button>
-                      <button
-                        type="button"
-                        aria-pressed="{{ state.install_windows.get() }}"
-                        on:click="state.select_install(true)"
-                      >Windows</button>
-                    </div>
-                    <button
-                      class="copy-install"
-                      type="button"
-                      on:click="state.copy_install()"
-                      aria-live="polite"
-                    >{{ state.copy_label.get() }}</button>
-                  </div>
-                  <div class="install-command"><code>{{ state.install_command() }}</code></div>
-                </div>
-                <p class="setup-note">{{ state.install_note() }}</p>
-              </li>
-              <li class="setup-step">
-                <h3><span class="step-number" aria-hidden="true">02</span>Create your app</h3>
-                <pre class="create-command" tabindex="0" aria-label="Create and run an application"><code>fusor new my-app
-cd my-app
-fusor dev</code></pre>
-                <p class="setup-note">Open the local URL printed in your terminal.</p>
-              </li>
-            </ol>
-            <div class="setup-footer">
-              <p>Building apps requires <a href="https://rustup.rs/">Rust 1.85 or newer</a>.</p>
-              <a class="setup-guide" href="/docs/installation"
-                >Read the installation guide <span aria-hidden="true">→</span></a
+          </section>
+          <aside class="further-reading" aria-label="Further reading">
+            <h3>Keep exploring</h3>
+            <div class="further-reading-links">
+              <a href="/docs/showcase">Working examples <span aria-hidden="true">↗</span></a>
+              <a href="/docs/tooling">CLI &amp; editor tooling <span aria-hidden="true">↗</span></a>
+              <a href="/benchmarks/">Benchmarks <span aria-hidden="true">↗</span></a>
+              <a href="https://github.com/fusor-rs/fusor"
+                >Source &amp; contributions <span aria-hidden="true">↗</span></a
               >
             </div>
-            <aside class="further-reading" aria-label="Further reading">
-              <h3>Keep exploring</h3>
-              <div class="further-reading-links">
-                <a href="/docs/showcase">Working examples <span aria-hidden="true">↗</span></a>
-                <a href="/docs/tooling">CLI &amp; editor tooling <span aria-hidden="true">↗</span></a>
-                <a href="/benchmarks/">Benchmarks <span aria-hidden="true">↗</span></a>
-                <a href="https://github.com/fusor-rs/fusor"
-                  >Source &amp; contributions <span aria-hidden="true">↗</span></a
+          </aside>
+          <section class="getting-started" aria-labelledby="start-title">
+            <div class="getting-started-heading">
+              <h2 id="start-title">Build your first app.</h2>
+              <p>Create a project, edit the starter, and see your changes in the browser.</p>
+              <div class="action-links">
+                <a class="primary-link" href="/docs/installation"
+                  >Get started <span aria-hidden="true">→</span></a
                 >
+                <a href="#install">Back to installation <span aria-hidden="true">↑</span></a>
               </div>
-            </aside>
+            </div>
+            <div>
+              <pre class="create-command" tabindex="0" aria-label="Create and run an application"><code>fusor new my-app
+cd my-app
+fusor dev</code></pre>
+              <p class="setup-note">Open the local URL printed in your terminal.</p>
+            </div>
           </section>
         </main>
         <footer class="site-footer page-width">
