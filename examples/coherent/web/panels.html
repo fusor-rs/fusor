@@ -1,6 +1,6 @@
 <script type="text/rust" src="../src/panels.rs" rust:module="crate::panels"></script>
 <template rust:component="Price"><Await value="{{ state.quote }}" let="result"><div><p class="price">{{ result.as_str() }}</p><CoherentPanel rust:key="result.as_str().to_owned()"><span class="price-child" title="{{ result.as_str() }}">{{ result.as_str() }}</span></CoherentPanel></div></Await></template>
 <template rust:component="Stock"><Await value="{{ state.stock }}" let="result"><p class="stock">{{ result.as_str() }}</p></Await></template>
-<template rust:component="Row"><li data-id="{{ state.item.with(|row| row.id) }}">{{ state.item.with(|row| row.label.clone()) }}</li></template>
+<template rust:component="Row"><li data-id="{{ state.item.with(|row| row.id) }}">{{ state.item.with(|row| row.label.clone()) }}</li><li class="row-tail" data-row="{{ state.item.with(|row| row.id) }}"></li></template>
 
-<template rust:component="CoherentPanel"><div class="coherent-panel"><Children></Children></div></template>
+<template rust:component="CoherentPanel"><div class="coherent-panel"><Children></Children></div><hr class="panel-tail"></template>

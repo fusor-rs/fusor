@@ -5,7 +5,14 @@
 
 use std::{fmt, str::FromStr};
 
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
+pub const FRAGMENT_START: &str = "fusor:fragment";
+pub const FRAGMENT_END: &str = "/fusor:fragment";
+
+/// Identity carried by a declared component's opening and closing range anchors.
+pub fn fragment_marker(component: ComponentId, version: u32) -> String {
+    format!("{FRAGMENT_START}:{version}:{component}")
+}
 pub const VERSION_ATTRIBUTE: &str = "data-fusor-version";
 pub const COMPONENT_ATTRIBUTE: &str = "data-fusor-component";
 pub const ELEMENT_ATTRIBUTE: &str = "data-fusor-node";
@@ -71,7 +78,7 @@ identifier!(ElementId);
 identifier!(TextId);
 identifier!(MountId);
 
-/// A managed sibling region. Its native component root is inserted between
+/// A managed sibling region. Its component's nodes are inserted between
 /// these comments, without introducing an HTML host element.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MountMarker {
@@ -144,6 +151,8 @@ pub fn reserved_comment(value: &str) -> bool {
 pub enum RootKind {
     Existing,
     Template,
+    /// A declared template whose native roots share an owned sibling range.
+    Fragment,
 }
 
 /// How `bind` treats an `<input>` by its `type`. The compiler rejects the

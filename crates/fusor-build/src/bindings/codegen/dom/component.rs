@@ -11,7 +11,7 @@ pub(super) fn emit(component: &Component, ctx: Ctx<'_>) -> TokenStream {
         return forward;
     }
     // Fragments and independently compiled libraries mount from their own HTML.
-    let html = if component.fragment() {
+    let html = if matches!(component.shape, ComponentShape::Fragment(_)) {
         let html = &component.html;
         quote! { #html }
     } else {
@@ -154,7 +154,8 @@ fn component_impl(
     let span = ty.span();
     let target = (component.render == RenderTarget::Shared)
         .then(|| quote! { #[cfg(target_arch = "wasm32")] });
-    let template_impl = (component.kind() == RootKind::Template).then(|| {
+    let fragment = component.kind() == RootKind::Fragment;
+    let template_impl = (component.kind() != RootKind::Existing).then(|| {
         quote_spanned! {span=>
             #target
             impl ::fusor::dom::TemplateComponent for #ty {}
@@ -166,6 +167,7 @@ fn component_impl(
         #server
         #target
         impl ::fusor::dom::Component for #ty {
+            const FRAGMENT: bool = #fragment;
             const TEMPLATE_HASH: &'static str = #hash;
             const TEMPLATE_HTML: &'static str = #html;
             fn mount(self) -> ::std::result::Result<::fusor::dom::Scope, ::fusor::dom::JsValue> {
@@ -186,7 +188,7 @@ fn component_impl(
 pub(in crate::bindings) fn delivery(components: &[Component]) -> TokenStream {
     let constants = components
         .iter()
-        .filter(|component| !component.fragment())
+        .filter(|component| !matches!(component.shape, ComponentShape::Fragment(_)))
         .map(|component| {
             let name = emit::indexed_constant("TEMPLATE_HTML", component.id.index());
             let html = &component.html;

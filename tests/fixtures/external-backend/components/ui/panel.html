@@ -58,6 +58,7 @@
     <button on:click="state.clicks.update(|clicks| *clicks += 1)">{{ state.label }} clicks {{ state.clicks.get() }}</button>
     <button class="remove" on:click="state.visible.set(false)">Remove</button>
   </div>
+  <p class="child-tail">{{ state.label }} tail</p>
 </template>
 <template rust:component="Routing">
   <div id="routing"><Router>

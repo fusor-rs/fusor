@@ -1,13 +1,41 @@
-use crate::bindings::ir::{Binding, Component, RenderTarget};
+use crate::bindings::ir::{Binding, Component, ComponentShape, RenderTarget};
 use crate::{ExtractError, error};
+use fusor::template::RootKind;
 use std::collections::BTreeMap;
 
-// Validation consumes authored bindings and root counts; it does not rewrite IR.
-pub(super) fn components(
+pub(super) fn roots(
     source: &str,
-    components: &[Component],
+    components: &mut [Component],
     template_roots: &BTreeMap<usize, usize>,
 ) -> Result<(), ExtractError> {
+    for (&index, &roots) in template_roots {
+        let component = &mut components[index];
+        if matches!(
+            component.shape,
+            ComponentShape::Declared(RootKind::Template)
+        ) {
+            if roots == 0 {
+                return Err(error(
+                    source,
+                    component.ty.offset,
+                    "a component template requires at least one native root element (Rust script blocks do not count)",
+                ));
+            }
+            if roots > 1 {
+                component.shape = ComponentShape::Declared(RootKind::Fragment);
+            }
+        } else if roots != 1 {
+            return Err(error(
+                source,
+                component.ty.offset,
+                "a component template requires exactly one root element (Rust script blocks do not count)",
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn components(source: &str, components: &[Component]) -> Result<(), ExtractError> {
     if let Some(app) = components
         .iter()
         .filter_map(|component| component.app())
@@ -19,19 +47,13 @@ pub(super) fn components(
             "declare exactly one App boundary per application",
         ));
     }
-    for (&index, &roots) in template_roots {
-        if roots != 1 {
-            return Err(error(
-                source,
-                components[index].ty.offset,
-                "a component template requires exactly one root element (Rust script blocks do not count)",
-            ));
-        }
-    }
     for component in components {
         render_bindings(source, component)?;
     }
-    for component in components.iter().filter(|component| !component.fragment()) {
+    for component in components
+        .iter()
+        .filter(|component| !matches!(component.shape, ComponentShape::Fragment(_)))
+    {
         let placements = count_children(&component.bindings, components);
         if component.app().is_some() && placements > 0 {
             return Err(error(
@@ -52,6 +74,13 @@ pub(super) fn components(
 }
 
 fn render_bindings(source: &str, component: &Component) -> Result<(), ExtractError> {
+    if component.fragment() && component.javascript.is_some() {
+        return Err(error(
+            source,
+            component.ty.offset,
+            "JavaScript component modules require one native root element; wrap this component's roots",
+        ));
+    }
     for binding in &component.bindings {
         if component.render == RenderTarget::Shared
             && matches!(binding, Binding::Value { .. } | Binding::Checked { .. })

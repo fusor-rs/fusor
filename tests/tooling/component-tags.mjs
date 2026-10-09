@@ -76,12 +76,15 @@ try {
     page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
     await page.goto(`http://127.0.0.1:${port}/`);
     await expect(page.locator("main > .counter")).toHaveCount(2);
+    await expect(page.locator("main > .counter-tail")).toHaveText(["0", "0"]);
+    await expect(page.locator("tbody > tr > td.stock")).toHaveText("In stock");
     await page.evaluate(async () => {
       const boot = document.querySelector('script[type="module"]').src;
       window.client = await import(new URL("./pkg/app.js", boot).href);
       window.first = document.querySelector('.counter[data-label="first"]');
     });
     const metrics = () => page.evaluate(() => Array.from(window.client.metrics()));
+    assert.deepEqual(await page.evaluate(() => Array.from(window.client.fragment_contracts())), [1, 1, 1, 0, 2, 1, 0]);
     assert.deepEqual(await metrics(), [2, 0, 2]);
     // One native event has separate reactive batches for each registered
     // listener. Text bind installs first; select bind installs after its options
@@ -104,7 +107,7 @@ try {
     });
     console.log(`PASS (${name}): text/select bind-handler ordering and separate listener batches, with one effect flush for repeated handler writes`);
     await expect(page.locator(".rust-button")).toHaveText("Rust component");
-    await expect(page.locator("tbody > tr > td")).toHaveText("0");
+    await expect(page.locator("tbody > tr > td:not(.stock)")).toHaveText("0");
     assert.deepEqual(await page.locator("tbody").evaluate(node => [...node.children].map(child => child.localName)), ["tr"]);
     assert.equal(await page.locator("counteralias, panel, row").count(), 0);
     await expect(page.locator(".caller-title")).toHaveText(["caller title", "caller title"]);
@@ -113,6 +116,7 @@ try {
     await page.locator('.counter[data-label="first"] button').click();
     await page.evaluate(() => window.client.set_count(7));
     await expect(page.locator(".counter .count")).toHaveText(["7", "7"]);
+    await expect(page.locator("main > .counter-tail")).toHaveText(["7", "7"]);
     await expect(page.locator(".counter .initial")).toHaveText(["0", "0"]);
     await expect(page.locator(".counter .clicks")).toHaveText(["1", "0"]);
     assert.equal(await page.evaluate(() => window.first === document.querySelector('.counter[data-label="first"]')), true);
@@ -120,7 +124,7 @@ try {
     await page.evaluate(() => { window.detached = document.querySelector('.projected-button'); window.client.show(false); });
     await expect(page.locator(".projected")).toHaveCount(0);
     await page.evaluate(() => window.detached.click());
-    await expect(page.locator("tbody > tr > td")).toHaveText("7");
+    await expect(page.locator("tbody > tr > td:not(.stock)")).toHaveText("7");
     await page.evaluate(() => { window.client.set_count(9); window.client.show(true); });
     await expect(page.locator(".projected-count")).toHaveText(["9", "9"]);
     await expect(page.locator('.counter[data-label="first"] .initial')).toHaveText("9");
@@ -165,8 +169,14 @@ try {
     await expect(page.locator("h1")).toHaveText("Edited components");
     await expect(page.locator(".projected.updated")).toHaveCount(2);
     assert.equal(await page.evaluate(() => window.first === document.querySelector('.counter[data-label="first"]')), true);
+    await expect(page.locator('#fragment-slot > .fragment-count')).toHaveText('9');
+    const removedButton = await page.locator('.fragment-remove').elementHandle();
+    await removedButton.click();
+    await expect(page.locator('#fragment-slot > *')).toHaveCount(0);
+    await removedButton.evaluate(node => node.click());
+    await expect(page.locator('#fragment-slot > *')).toHaveCount(0);
     await page.evaluate(() => window.client.unmount());
-    await expect(page.locator(".counter, .projected, .badge, tbody > tr")).toHaveCount(0);
+    await expect(page.locator(".counter, .counter-tail, .projected, .badge, tbody > tr")).toHaveCount(0);
     assert.deepEqual(await metrics(), [5, 5, 4]);
     assert.deepEqual(errors, []);
     assert.equal(consoleErrors.length, 2, consoleErrors.join("\n"));

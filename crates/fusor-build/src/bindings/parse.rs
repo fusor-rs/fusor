@@ -2290,7 +2290,7 @@ impl Parser<'_> {
             return Err(error(
                 source,
                 offset,
-                "a component template must put its text inside its single root element",
+                "a component template must put its text inside a native root element",
             ));
         }
         if !raw.contains("{{") {
@@ -2366,7 +2366,8 @@ impl Parser<'_> {
                 "component HTML is missing a closing tag",
             ));
         }
-        validate::components(source, &components, &template_roots)?;
+        validate::roots(source, &mut components, &template_roots)?;
+        validate::components(source, &components)?;
         let content_ranges: Vec<_> = components
             .iter()
             .filter(|component| component.capture().is_some() || component.inline())

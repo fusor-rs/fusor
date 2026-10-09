@@ -89,13 +89,6 @@ extern "C" {
 /// Framework names, in `NAMES` order.
 #[derive(Clone, Copy)]
 pub(super) enum Name {
-    #[cfg_attr(
-        not(feature = "islands"),
-        expect(
-            dead_code,
-            reason = "component attributes are read during island hydration"
-        )
-    )]
     Component,
     Version,
     Element,
@@ -274,7 +267,6 @@ impl DescriptorStrings {
         })
     }
 
-    #[cfg(feature = "islands")]
     pub(super) fn component_matches(&self, element: &Element) -> bool {
         with_name(Name::Component, |name| {
             string_element(element).attribute_value(name) == self.identity

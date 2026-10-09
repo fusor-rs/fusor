@@ -4,6 +4,7 @@
     <output class="count">{{ state.count.get() }}</output>
     <output class="initial">{{ state.initial }}</output>
   </section>
+  <output class="counter-tail">{{ state.count.get() }}</output>
 </template>
 <template rust:component="Panel">
   <article class="panel">
@@ -13,6 +14,11 @@
   </article>
 </template>
 <template rust:component="Badge"><small class="badge">{{ state.theme }}</small></template>
-<template rust:component="Row"><tr><td>{{ state.count.get() }}</td></tr></template>
+<template rust:component="Row"><tr><Cells count="{{ state.count.clone() }}"></Cells></tr></template>
+<template rust:component="Cells"><td>{{ state.count.get() }}</td><td class="stock">In stock</td></template>
+<template rust:component="FragmentControls">
+  <button class="fragment-remove" on:click="state.visible.set(false)">Remove fragment</button>
+  <output class="fragment-count">{{ state.count.get() }}</output>
+</template>
 <template rust:component="Empty"><hr></template>
 <template rust:component="Button"><button class="rust-button">Rust component</button></template>

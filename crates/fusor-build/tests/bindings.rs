@@ -392,7 +392,7 @@ fn server_direct_text_uses_escaped_writer_content_and_preserves_anchored_sibling
         .unwrap();
         let rust = tokens(&page.rust);
         let direct = tokens(
-            r#"__fusor_writer.static_markup("<main data-fusor-component=\"0\" data-fusor-version=\"3\"><p data-fusor-text=\"0\">", ::std::option::Option::Some(5usize), false);
+            r#"__fusor_writer.static_markup("<main data-fusor-component=\"0\" data-fusor-version=\"4\"><p data-fusor-text=\"0\">", ::std::option::Option::Some(5usize), false);
                 { let __fusor_value = &(state.value); __fusor_writer.text(__fusor_value); }"#,
         );
         assert!(rust.contains(&direct), "{target}: {rust}");
@@ -600,7 +600,6 @@ fn script_and_style_strings_stay_literal_and_rust_syntax_is_left_to_rustc() {
 fn validates_template_roots_before_any_browser_code_runs() {
     for template in [
         "<template rust:component=Counter></template>",
-        "<template rust:component=Counter><p>One</p><p>Two</p></template>",
         "<template rust:component=Counter>Lost text<p>One</p></template>",
     ] {
         let source = format!("{STATE}\n{template}");
@@ -610,6 +609,12 @@ fn validates_template_roots_before_any_browser_code_runs() {
     }
     let source = "<template rust:component=Counter> &#32;<!-- comment --><p>{{ 1 }}</p><script type=text/rust>struct Counter;</script></template>";
     assert!(extract(source).is_ok());
+    let page = extract(&format!(
+        "{STATE}<template rust:component=Counter><p>One</p><p>{{{{ 2 }}}}</p></template>"
+    ))
+    .unwrap();
+    assert!(tokens(&page.rust).contains(&tokens("RootKind::Fragment")));
+    assert!(tokens(&page.rust).contains("prepare_fragment"));
 }
 
 #[test]
@@ -1107,6 +1112,10 @@ fn component_javascript_is_extracted_once_and_page_modules_keep_native_behavior(
 #[test]
 fn component_modules_diagnose_placement_duplicates_and_bad_sources() {
     for (body, message) in [
+        (
+            r#"<template rust:component="Scene"><script type="module"></script><p>One</p><p>Two</p></template>"#,
+            "modules require one native root",
+        ),
         (
             r#"<template rust:component="Scene"><section><script type="module"></script></section></template>"#,
             "direct children",

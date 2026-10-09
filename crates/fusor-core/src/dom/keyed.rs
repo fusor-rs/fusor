@@ -1,6 +1,4 @@
-use super::{
-    ElementTarget, JsValue, Scope, document, reconcile, remove_tree, strings, with_native_root,
-};
+use super::{ElementTarget, JsValue, Scope, document, hydration, reconcile, strings};
 use crate::{Signal, signal, untrack};
 use std::collections::BTreeMap;
 use wasm_bindgen::JsCast;
@@ -187,7 +185,7 @@ where
         }
     }
 
-    fn native_rows(&self, keys: &[K]) -> Result<Vec<Element>, JsValue> {
+    fn native_rows(&self, keys: &[K]) -> Result<Vec<hydration::Target>, JsValue> {
         if !self.hydrating || self.initialized {
             return Ok(Vec::new());
         }
@@ -195,7 +193,15 @@ where
             self.factory.encode.as_ref().ok_or_else(|| {
                 JsValue::from_str("hydrated lists require generated key metadata")
             })?;
+        if self
+            .container
+            .first_child()
+            .is_some_and(|node| node.node_type() != web_sys::Node::ELEMENT_NODE)
+        {
+            return server_fragment_rows(&self.container, keys, encode);
+        }
         server_rows(&self.container, keys, encode)
+            .map(|roots| roots.into_iter().map(hydration::Target::Root).collect())
     }
 
     fn prepare_rows(
@@ -203,7 +209,7 @@ where
         items: &[T],
         keys: &[K],
         retained: &[usize],
-        native_rows: &[Element],
+        native_rows: &[hydration::Target],
     ) -> Result<PreparedRows<T, K>, JsValue> {
         // Stage and validate every scope before changing the visible list.
         let mut staged = PreparedRows {
@@ -217,7 +223,8 @@ where
             }
             let state = signal(item.clone());
             let native = native_rows.get(index);
-            let scope = with_native_root(native, || (self.factory.render)(state.clone()))?;
+            let scope =
+                hydration::with_target(native.cloned(), || (self.factory.render)(state.clone()))?;
             // Adopted rows already occupy their final positions.
             if native.is_some() {
                 staged.positions[index] = index;
@@ -270,7 +277,7 @@ where
             Removal::Sorted(unique) => self.rows.retain(|key, row| {
                 let keep = unique.contains_next(key);
                 if !keep {
-                    remove_tree(&row.scope.root);
+                    row.scope.remove_nodes();
                 }
                 keep
             }),
@@ -279,7 +286,7 @@ where
                 reconcile::sort_few(removed, &self.order);
                 for &index in removed.iter() {
                     if let Some(entry) = self.rows.remove_entry(&self.order[index]) {
-                        remove_tree(&entry.1.scope.root);
+                        entry.1.scope.remove_nodes();
                         drop(entry);
                     }
                 }
@@ -304,12 +311,10 @@ where
                 let anchor = self
                     .order
                     .get(index + 1)
-                    .map(|key| self.rows[key].scope.root.as_ref());
-                strings::insert_before(
-                    &self.container,
-                    &self.rows[&self.order[index]].scope.root,
-                    anchor,
-                )?;
+                    .map(|key| self.rows[key].scope.first_node());
+                self.rows[&self.order[index]]
+                    .scope
+                    .insert_before(&self.container, anchor)?;
             }
         }
         Ok(())
@@ -333,6 +338,53 @@ where
 }
 
 /// Adopt the server-rendered rows, which must match `keys` in order.
+fn server_fragment_rows<K>(
+    container: &Element,
+    keys: &[K],
+    encode: &EncodeKey<K>,
+) -> Result<Vec<hydration::Target>, JsValue> {
+    let mut cursor = container.first_child();
+    let mut rows = Vec::with_capacity(keys.len());
+    for key in keys {
+        let start = row_start(cursor).ok_or_else(|| JsValue::from_str("missing native row"))?;
+        let (root, target, next) = if let Some(element) = start.dyn_ref::<Element>() {
+            (
+                element.clone(),
+                hydration::Target::Root(element.clone()),
+                start.next_sibling(),
+            )
+        } else {
+            let range = super::MountPoint::from_start(start)?;
+            let root = range.first_element()?;
+            let next = range.end.next_sibling();
+            (root, hydration::Target::Range(range), next)
+        };
+        if strings::attribute(&root, strings::Name::Key).as_deref() != Some(encode(key)?.as_str()) {
+            return Err(JsValue::from_str("native row key mismatch"));
+        }
+        rows.push(target);
+        cursor = next;
+    }
+    if row_start(cursor).is_some() {
+        return Err(JsValue::from_str("unexpected native row"));
+    }
+    Ok(rows)
+}
+
+fn row_start(mut cursor: Option<web_sys::Node>) -> Option<web_sys::Node> {
+    while let Some(node) = cursor {
+        let value = node.node_value().unwrap_or_default();
+        if node.node_type() == web_sys::Node::ELEMENT_NODE
+            || crate::template::reserved_comment(&value)
+            || (node.node_type() == web_sys::Node::TEXT_NODE && !value.trim().is_empty())
+        {
+            return Some(node);
+        }
+        cursor = node.next_sibling();
+    }
+    None
+}
+
 fn server_rows<K>(
     container: &Element,
     keys: &[K],

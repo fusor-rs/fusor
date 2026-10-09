@@ -1,5 +1,5 @@
 use crate::RustBlock;
-use crate::bindings::ir::{Component, Edit};
+use crate::bindings::ir::{Component, ComponentShape, Edit};
 use crate::bindings::markup;
 use std::ops::Range;
 
@@ -93,7 +93,7 @@ fn apply_edits(
         );
     }
     component.empty = html.trim().is_empty();
-    component.html = if component.fragment() {
+    component.html = if matches!(component.shape, ComponentShape::Fragment(_)) {
         let opening = markup::template_open(component.id);
         origins.splice(
             0..0,

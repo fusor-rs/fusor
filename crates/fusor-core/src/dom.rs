@@ -44,6 +44,8 @@ use web_sys::{Document, Element, Event, EventTarget, HtmlTemplateElement};
 /// State is shared by the generated closures without requiring `Clone`.
 /// Keep the returned scope alive; dropping it releases every binding.
 pub trait Component: Sized + 'static {
+    /// Whether the generated template owns a sibling range instead of one element.
+    const FRAGMENT: bool = false;
     const TEMPLATE_HASH: &'static str = "";
     const TEMPLATE_HTML: &'static str = "";
     fn mount(self) -> Result<Scope, JsValue>;
@@ -197,18 +199,6 @@ fn cached<T: Clone + 'static>(
         entries.push_back(entry.clone());
     });
     entry
-}
-
-/// Prepare a component on its server-rendered root, when there is one.
-fn with_native_root<R>(
-    root: Option<&Element>,
-    make: impl FnOnce() -> Result<R, JsValue>,
-) -> Result<R, JsValue> {
-    match root {
-        #[cfg(feature = "islands")]
-        Some(root) => hydration::with_root(root, make),
-        _ => make(),
-    }
 }
 
 /// Remove an owned root, first disposing islands activated inside it.
@@ -510,8 +500,15 @@ impl Scope {
             .dyn_into::<Element>()?)
     }
 
-    pub fn root(&self) -> &Element {
-        &self.root
+    /// The single native root. Fragment components have no root element and
+    /// return an error; use `attach` or `attach_at` to place their entire view.
+    pub fn root(&self) -> Result<&Element, JsValue> {
+        if self.fragment.is_some() {
+            return Err(JsValue::from_str(
+                "fragment components have no single root element",
+            ));
+        }
+        Ok(&self.root)
     }
 
     pub fn owner(&self) -> OwnerHandle {
@@ -572,9 +569,9 @@ impl Scope {
         self.retained.push(Box::new(guard));
     }
 
-    /// Insert a prepared view. Its root will be removed on drop. Does not commit.
+    /// Insert a prepared view. Its nodes will be removed on drop. Does not commit.
     pub fn attach(&mut self, container: &Element) -> Result<(), JsValue> {
-        container.append_child(&self.root)?;
+        self.insert_before(container, None)?;
         self.remove_on_drop = true;
         Ok(())
     }
@@ -594,26 +591,26 @@ impl Scope {
     }
 
     /// Append a component and adopt its lifetime. Dropping the parent detaches
-    /// its bindings and removes the mounted child's root from the document.
+    /// its bindings and removes the mounted child's nodes from the document.
     pub fn mount_child(
         &mut self,
         target: impl ElementTarget,
         mut child: Scope,
     ) -> Result<(), JsValue> {
-        target.resolve(self)?.append_child(&child.root)?;
-        child.remove_on_drop = true;
+        child.attach(&target.resolve(self)?)?;
         child.try_commit()?;
         self.children.push(child);
         Ok(())
     }
 
-    /// Select within this island. `:scope` addresses the root itself.
+    /// Select within a single-root view. `:scope` addresses the root itself.
+    /// Fragment scopes return an error because they have no selector root.
     pub fn select(&self, selector: &str) -> Result<Element, JsValue> {
-        if selector == ":scope" || self.root.matches(selector)? {
-            return Ok(self.root.clone());
+        let root = self.root()?;
+        if selector == ":scope" || root.matches(selector)? {
+            return Ok(root.clone());
         }
-        self.root
-            .query_selector(selector)?
+        root.query_selector(selector)?
             .ok_or_else(|| missing(selector))
     }
 }

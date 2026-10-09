@@ -14,6 +14,8 @@ pub type Result<T> = std::result::Result<T, String>;
 
 /// Implemented by `rust:render="server"` / `rust:render="shared"` HTML.
 pub trait Render {
+    /// Whether this component renders several native roots as a sibling range.
+    const FRAGMENT: bool = false;
     const TEMPLATE_HASH: &'static str;
     fn render(&self, context: &mut Context<'_>) -> Result<Html>;
     #[doc(hidden)]
@@ -260,6 +262,9 @@ impl Registry {
         &mut self,
         make: impl Fn(D::Props) -> C + 'static,
     ) -> Result<()> {
+        if C::FRAGMENT {
+            return Err("island entries require one native root element; wrap the fragment in a single-root component".into());
+        }
         if self.entries.contains_key(D::NAME) {
             return Err(format!("duplicate island {}", D::NAME));
         }

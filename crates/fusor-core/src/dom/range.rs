@@ -89,20 +89,89 @@ impl MountPoint {
         Ok(empty)
     }
 
-    /// The server-rendered root in this slot when hydration begins. There must
-    /// be exactly one element when a child is `present`, and nothing otherwise.
-    pub(super) fn hydrated_root(&self, present: bool) -> Result<Option<Element>, JsValue> {
+    /// A present server child is one element or a complete fragment range;
+    /// an absent child must leave the slot empty.
+    pub(super) fn hydrated_root(
+        &self,
+        present: bool,
+    ) -> Result<Option<super::hydration::Target>, JsValue> {
         let mut inner = Vec::new();
         self.walk(|node| inner.push(node))?;
         match (present, inner.as_slice()) {
             (false, []) => Ok(None),
-            (true, [root]) if root.node_type() == Node::ELEMENT_NODE => {
-                Ok(Some(root.clone().unchecked_into()))
-            }
+            (true, [root]) if root.node_type() == Node::ELEMENT_NODE => Ok(Some(
+                super::hydration::Target::Root(root.clone().unchecked_into()),
+            )),
+            (true, _) => self
+                .fragment()
+                .map(super::hydration::Target::Range)
+                .map(Some),
             _ => Err(JsValue::from_str(
                 "server component identity/shape mismatch",
             )),
         }
+    }
+
+    pub(super) fn fragment(&self) -> Result<Self, JsValue> {
+        self.validate()?;
+        let start = self
+            .start
+            .next_sibling()
+            .ok_or_else(|| JsValue::from_str("missing fragment start"))?;
+        let range = Self::from_start(start)?;
+        if !range
+            .end
+            .next_sibling()
+            .is_some_and(|node| node.is_same_node(Some(&self.end)))
+        {
+            return Err(JsValue::from_str(
+                "server component identity/shape mismatch",
+            ));
+        }
+        Ok(range)
+    }
+
+    pub(super) fn first_element(&self) -> Result<Element, JsValue> {
+        let mut first = None;
+        self.walk(|node| {
+            if first.is_none() && node.node_type() == Node::ELEMENT_NODE {
+                first = Some(node.unchecked_into());
+            }
+        })?;
+        first.ok_or_else(|| JsValue::from_str("fragment row requires a native element"))
+    }
+
+    pub(super) fn from_start(start: Node) -> Result<Self, JsValue> {
+        let marker = start
+            .node_value()
+            .filter(|value| {
+                start.node_type() == Node::COMMENT_NODE
+                    && value.starts_with(crate::template::FRAGMENT_START)
+            })
+            .ok_or_else(|| JsValue::from_str("missing fragment start"))?;
+        let mut markers = vec![marker];
+        let mut cursor = start.next_sibling();
+        while let Some(node) = cursor {
+            cursor = node.next_sibling();
+            if node.node_type() != Node::COMMENT_NODE {
+                continue;
+            }
+            let value = node.node_value().unwrap_or_default();
+            if value.starts_with(crate::template::FRAGMENT_START) {
+                markers.push(value);
+                continue;
+            }
+            if !value.starts_with(crate::template::FRAGMENT_END) {
+                continue;
+            }
+            if markers.pop().as_deref() != value.strip_prefix('/') {
+                return Err(JsValue::from_str("mismatched fragment anchors"));
+            }
+            if markers.is_empty() {
+                return Ok(Self { start, end: node });
+            }
+        }
+        Err(JsValue::from_str("missing or unpaired fragment anchors"))
     }
 
     /// Both anchors and everything between them.
@@ -124,15 +193,6 @@ impl MountPoint {
             .is_some_and(|next| next.is_same_node(Some(&self.end)))
     }
 
-    /// Insert `node` last, without validating the range.
-    pub(super) fn push(&self, node: &Node) -> Result<(), JsValue> {
-        self.end
-            .parent_node()
-            .ok_or_else(|| JsValue::from_str("detached mount range"))?
-            .insert_before(node, Some(&self.end))?;
-        Ok(())
-    }
-
     /// Remove this fragment's anchors and content from the document.
     pub(super) fn remove(&self) {
         let Ok(nodes) = self.nodes() else {
@@ -151,6 +211,58 @@ impl MountPoint {
 }
 
 impl Scope {
+    /// Whether this view is still in its detached preparation storage.
+    pub fn is_detached(&self) -> bool {
+        self.root.parent_node().is_none()
+            && self.fragment.as_ref().is_none_or(|range| {
+                range
+                    .validate()
+                    .is_ok_and(|parent| parent.is_same_node(Some(&self.root)))
+            })
+    }
+
+    pub(super) fn validate_nodes(&self) -> Result<(), JsValue> {
+        if let Some(range) = &self.fragment {
+            range.validate()?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn first_node(&self) -> &Node {
+        self.fragment
+            .as_ref()
+            .map_or(self.root.as_ref(), |range| &range.start)
+    }
+
+    pub(super) fn last_node(&self) -> &Node {
+        self.fragment
+            .as_ref()
+            .map_or(self.root.as_ref(), |range| &range.end)
+    }
+
+    pub(super) fn insert_before(
+        &self,
+        parent: &Element,
+        anchor: Option<&Node>,
+    ) -> Result<(), JsValue> {
+        if let Some(range) = &self.fragment {
+            for node in range.nodes()? {
+                super::strings::insert_before(parent, &node, anchor)?;
+            }
+        } else {
+            super::strings::insert_before(parent, &self.root, anchor)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn remove_nodes(&self) {
+        if let Some(range) = &self.fragment {
+            range.remove();
+        } else {
+            super::remove_tree(&self.root);
+        }
+    }
+
     /// Append an empty insertion range to a container. Dropping this scope
     /// removes the anchors, but not the nodes of views still inside them:
     /// callers retain and dispose any child views they mount there.
@@ -164,26 +276,16 @@ impl Scope {
     /// it. A root view is removed when the scope drops; a fragment removes its
     /// own range. Retain the scope and finish preparation before committing.
     pub fn attach_at(&mut self, target: &MountPoint) -> Result<(), JsValue> {
-        if self.fragment.is_some() {
-            return self.attach_fragment(target);
-        }
-        target
-            .validate()?
-            .insert_before(&self.root, Some(&target.end))?;
+        self.insert_before(&target.parent_element()?, Some(&target.end))?;
         self.remove_on_drop = true;
         Ok(())
     }
 
     /// Move this fragment scope's range to the end of `target`.
     pub(super) fn attach_fragment(&self, target: &MountPoint) -> Result<(), JsValue> {
-        let parent = target.validate()?;
-        let fragment = self
-            .fragment
-            .as_ref()
-            .ok_or_else(|| JsValue::from_str("expected a children fragment"))?;
-        for node in fragment.nodes()? {
-            parent.insert_before(&node, Some(&target.end))?;
+        if self.fragment.is_none() {
+            return Err(JsValue::from_str("expected a fragment scope"));
         }
-        Ok(())
+        self.insert_before(&target.parent_element()?, Some(&target.end))
     }
 }

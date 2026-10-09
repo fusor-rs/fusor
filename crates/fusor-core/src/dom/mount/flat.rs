@@ -38,7 +38,6 @@ extern "C" {
     /// The result of the last `*Ok` call, or what it threw.
     #[wasm_bindgen(js_name = takeOutcome)]
     fn take_outcome() -> JsValue;
-    #[cfg(feature = "islands")]
     #[wasm_bindgen(js_name = hydrateRootOk)]
     fn hydrate_root_ok(
         plan: &JsValue,
@@ -167,7 +166,6 @@ pub(super) fn mount_document_template(
 
 /// Adopt a server-rendered root of a bundled flat descriptor in one native
 /// call: identity, descriptor version, complete validation, then marking.
-#[cfg(feature = "islands")]
 pub(super) fn hydrate_root(
     descriptor: &TemplateDescriptor,
     root: &Element,

@@ -54,7 +54,7 @@ pub(super) struct Tree {
 impl Tree {
     fn new(scope: &Scope, context: BoundaryContext, renderer: Option<Rc<Renderer>>) -> Rc<Self> {
         Rc::new(Self {
-            root: scope.root().clone(),
+            root: scope.root.clone(),
             fragment: scope.fragment.clone(),
             context,
             owner: scope.owner(),

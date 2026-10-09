@@ -31,7 +31,13 @@ inside a double-quoted HTML attribute.
 ## rust:component — associate HTML with a Rust type {#component}
 
 Static Rust type path on a component declaration. On `<template>`, it defines reusable HTML
-with exactly one native root element. On an ordinary element, it binds that existing root.
+with one or more native root elements. Multiple roots form a fragment: Fusor mounts and
+removes the siblings together without adding an HTML wrapper. On an ordinary element,
+it binds that existing root.
+
+Keep text and component tags inside those native roots. Empty templates are rejected.
+JavaScript component modules and island entry components require a single native root;
+their descendants can use fragments. See [component fragments](/docs/components#fragments).
 
 The type must be in the Rust module associated with the HTML; `template!(...)` supplies that
 association.

@@ -1,8 +1,6 @@
 //! Structural bindings that show one child view at a time and keep it while
 //! its identity is unchanged. Construction runs once per identity, untracked.
-use super::{
-    Children, JsValue, MountPoint, Scope, TemplateComponent, remove_tree, with_native_root,
-};
+use super::{Children, JsValue, MountPoint, Scope, TemplateComponent, hydration};
 use crate::{OwnerHandle, untrack};
 
 /// The child view a structural binding shows now, and the identity it was
@@ -83,14 +81,14 @@ impl Scope {
                 if current.key() == Some(&key) {
                     return Ok(());
                 }
-                let child = with_native_root(server.as_ref(), || {
+                let child = hydration::with_target(server.clone(), || {
                     children.with(|| C::prepare(&parent, &make))
                 })?;
                 // A generated mount adopts the server root in place. Anything
                 // else, such as a hand-written component, replaces it.
                 let adopted = server
                     .as_ref()
-                    .is_some_and(|root| child.root().is_same_node(Some(root)));
+                    .is_some_and(|target| target.adopted_by(&child));
                 current.replace(key, child, |child| {
                     if adopted {
                         // Removal on drop still waits for hydration ownership.
@@ -101,7 +99,7 @@ impl Scope {
                     }
                 })?;
                 if let Some(stale) = server.filter(|_| !adopted) {
-                    remove_tree(&stale);
+                    stale.remove();
                 }
                 Ok(())
             })

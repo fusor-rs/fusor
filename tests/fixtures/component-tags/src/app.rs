@@ -1,5 +1,5 @@
 //! State stays in an ordinary Rust module; generated impls can see private fields.
-use crate::widgets::{Badge, Button, Counter as CounterAlias, Empty, Panel, Row};
+use crate::widgets::{Badge, Button, Counter as CounterAlias, Empty, FragmentControls, Panel, Row};
 use fusor::prelude::*;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
@@ -33,6 +33,8 @@ struct App {
     choice: Signal<String>,
     pulse: Signal<u32>,
     _event_effects: Vec<fusor::Effect>,
+    fragment: Content,
+    fragment_visible: Signal<bool>,
 }
 
 impl App {
@@ -53,7 +55,16 @@ impl App {
             event_effect("select", choice.clone()),
             event_effect("pulse", pulse.clone()),
         ];
+        let fragment_visible = signal(true);
+        let visible = fragment_visible.clone();
+        let count = controls.count.clone();
+        let fragment = Content::new(move |_| FragmentControls {
+            visible: visible.clone(),
+            count: count.clone(),
+        });
         Self {
+            fragment,
+            fragment_visible,
             count: controls.count,
             visible: controls.visible,
             key: controls.key,
@@ -122,6 +133,34 @@ pub fn reset_panel(value: u32) {
 #[wasm_bindgen]
 pub fn metrics() -> Vec<u32> {
     METRICS.with(|metrics| metrics.borrow().to_vec())
+}
+
+#[wasm_bindgen]
+pub fn fragment_contracts() -> Result<Vec<u32>, JsValue> {
+    let parent = fusor::Owner::new();
+    let content = Content::new(|_| FragmentControls {
+        visible: signal(true),
+        count: signal(42),
+    });
+    let mut child = content.prepare(&parent.handle())?;
+    let mut result = vec![
+        u32::from(child.root().is_err()),
+        u32::from(child.select("button").is_err()),
+        u32::from(child.is_detached()),
+    ];
+    let container = fusor::dom::document()?.create_element("div")?;
+    child.attach(&container)?;
+    result.extend([
+        u32::from(child.is_detached()),
+        container.child_element_count(),
+    ]);
+    let moved = std::cell::RefCell::new(Some(child));
+    let reused = Content::from_prepared(move |_| {
+        Ok(moved.borrow_mut().take().expect("one preparation attempt"))
+    });
+    result.push(u32::from(reused.prepare(&parent.handle()).is_err()));
+    result.push(container.child_element_count());
+    Ok(result)
 }
 #[wasm_bindgen]
 pub fn unmount() -> Result<(), JsValue> {

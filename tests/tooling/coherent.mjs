@@ -92,6 +92,8 @@ try {
     await wait(() => requests.length === 6);
     assert.equal(await page.locator("#mounts").textContent(), "2");
     assert.equal(await page.locator("#items").textContent(), "onetwo");
+    assert.deepEqual(await page.locator("#items > .row-tail").evaluateAll(nodes => nodes.map(node => node.dataset.row)), ["1", "2"]);
+    assert.equal(await page.locator(".coherent-panel + .panel-tail").count(), 2);
     assert.deepEqual(await page.locator("#inline-items > li").allTextContents(), ["0:one", "1:two"]);
     await page.evaluate(() => document.querySelector("#inside").click());
     assert.equal(await page.locator("#clicks").textContent(), "0");
@@ -118,6 +120,8 @@ try {
       ),
     );
     assert.equal(await page.locator("#items").textContent(), "secondthird");
+    assert.deepEqual(await page.locator("#items > .row-tail").evaluateAll(nodes => nodes.map(node => node.dataset.row)), ["2", "3"]);
+    assert.equal(await page.locator(".coherent-panel + .panel-tail").count(), 2);
     assert.deepEqual(await page.locator("#inline-items > li").allTextContents(), ["0:second", "1:third"]);
     assert.equal(await page.locator("#mounts").textContent(), "3");
     await page.click("#inside");

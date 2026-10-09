@@ -106,6 +106,11 @@ fn prepare<D: Island, C: Component>(
     host: &Element,
     text: &str,
 ) -> Result<Prepared, JsValue> {
+    if C::FRAGMENT {
+        return Err(JsValue::from_str(
+            "island entries require one native root element; wrap the fragment in a single-root component",
+        ));
+    }
     let props = crate::decode::<D::Props>(text)
         .map_err(|error| JsValue::from_str(&format!("island props: {error}")))?;
     if host.get_attribute(attributes::SCHEMA).as_deref() != Some(D::SCHEMA)
@@ -114,7 +119,11 @@ fn prepare<D: Island, C: Component>(
         return Err(JsValue::from_str("island schema/template mismatch"));
     }
     let initial = initial_root(host)?;
-    let prepare = || C::prepare_component(None, Box::new(|owner| Ok(make(owner, props))));
+    let prepare = || {
+        let scope = C::prepare_component(None, Box::new(|owner| Ok(make(owner, props))))?;
+        scope.root()?;
+        Ok(scope)
+    };
     match D::MODE {
         RenderMode::Attach => Ok(Prepared::Attach(delivery::with_root(&initial, prepare)?)),
         RenderMode::Preview => {
