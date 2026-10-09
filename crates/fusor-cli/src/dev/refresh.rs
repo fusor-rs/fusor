@@ -119,7 +119,12 @@ fn resolve_data(source: &Path, literal: &str) -> Option<PathBuf> {
 }
 
 /// `false` for any edit that needs a real build.
-pub(crate) fn try_refresh(cx: &Context, project: &Project, changed: &[PathBuf]) -> Result<bool> {
+pub(crate) fn try_refresh(
+    cx: &Context,
+    project: &Project,
+    changed: &[PathBuf],
+    watched: &mut super::sources::Snapshot,
+) -> Result<bool> {
     let started = std::time::Instant::now();
     if project.config.delivery.is_some() {
         return Ok(false);
@@ -171,6 +176,7 @@ pub(crate) fn try_refresh(cx: &Context, project: &Project, changed: &[PathBuf]) 
         Changes {
             html: &html,
             paths: changed,
+            watched,
         },
     )?;
     cx.reporter.done(format!(
@@ -184,6 +190,7 @@ pub(crate) fn try_refresh(cx: &Context, project: &Project, changed: &[PathBuf]) 
 struct Changes<'a> {
     html: &'a [PathBuf],
     paths: &'a [PathBuf],
+    watched: &'a mut super::sources::Snapshot,
 }
 
 fn publish_revision(
@@ -194,7 +201,7 @@ fn publish_revision(
     changes: Changes,
 ) -> Result<&'static str> {
     let site = project.output(cx);
-    let publication = Publication::revise(cx, project, output.generation.clone())?;
+    let publication = Publication::revise(cx, project, output.generation.clone(), changes.watched)?;
     let revision = output
         .revision()
         .checked_add(1)
@@ -402,9 +409,54 @@ mod tests {
                 &Context::default(),
                 &fixture.project,
                 &[fixture.dependency.join("runtime/registry.js")],
+                &mut super::super::sources::Snapshot::new(),
             )
             .unwrap()
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn asset_hook_outputs_are_consumed_without_losing_concurrent_edits() {
+        let cx = Context::default();
+        for exit_code in [0, 1] {
+            let mut fixture = RefreshFixture::new();
+            let root = &fixture.project.root;
+            let source = root.join("web/index.html");
+            let asset = root.join("public/data.bin");
+            fs::write(root.join("public/stale.css"), "stale").unwrap();
+            fixture.project.config.assets_build = vec![
+                "sh".into(),
+                "-c".into(),
+                r#"
+printf generated > public/data.bin
+printf added > public/new.css
+rm public/stale.css
+printf edited > web/index.html
+exit "$1"
+"#
+                .into(),
+                "asset-hook".into(),
+                exit_code.to_string(),
+            ];
+            let mut watched = super::super::sources::snapshot(&cx, &fixture.project).unwrap();
+            let original_source = watched[&source];
+            let result = Publication::begin(&cx, &fixture.project, Some(&mut watched));
+            match result {
+                Ok(_) => assert_eq!(exit_code, 0),
+                Err(error) => {
+                    assert_eq!(exit_code, 1);
+                    assert!(error.to_string().contains("exit status: 1"), "{error}");
+                }
+            }
+            let mut current = super::super::sources::snapshot(&cx, &fixture.project).unwrap();
+            assert_ne!(current[&source], original_source);
+            current.insert(source, original_source);
+            assert_eq!(watched, current);
+            fs::write(&asset, "manual edit after the hook").unwrap();
+            let edited = super::super::sources::snapshot(&cx, &fixture.project).unwrap();
+            assert_ne!(watched[&asset], edited[&asset]);
+        }
     }
 
     #[test]

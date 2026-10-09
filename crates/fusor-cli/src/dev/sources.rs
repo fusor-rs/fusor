@@ -41,29 +41,6 @@ pub(crate) fn source_snapshot(cx: &Context, project: &Project) -> io::Result<Sna
         project.output(cx),
         project.root.join(&project.config.output),
     ];
-    fn collect(path: &Path, generated: &[PathBuf], out: &mut Snapshot) -> io::Result<()> {
-        if generated.contains(&path.to_path_buf()) {
-            return Ok(());
-        }
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            return Ok(());
-        };
-        if IGNORED.contains(&name) || name.starts_with(".fusor-") {
-            return Ok(());
-        }
-        let kind = fs::symlink_metadata(path)?;
-        if kind.is_symlink() {
-            return Ok(());
-        }
-        if kind.is_dir() {
-            for entry in fs::read_dir(path)? {
-                collect(&entry?.path(), generated, out)?;
-            }
-        } else if kind.is_file() {
-            out.insert(path.to_owned(), fingerprint(&fs::read(path)?));
-        }
-        Ok(())
-    }
     let mut files = Snapshot::new();
     for root in &project.watch_roots {
         collect(root, &generated, &mut files)?;
@@ -76,6 +53,46 @@ pub(crate) fn source_snapshot(cx: &Context, project: &Project) -> io::Result<Sna
         }
     }
     Ok(files)
+}
+
+pub(crate) fn record_assets(project: &Project, previous: &mut Snapshot) -> io::Result<()> {
+    let Some(assets) = &project.config.assets else {
+        return Ok(());
+    };
+    let assets = project.root.join(assets);
+    let mut files = Snapshot::new();
+    if assets.try_exists()? {
+        collect(&assets, &[], &mut files)?;
+    }
+    // Assets are copied after the hook. Retain the earlier source snapshot
+    // so source edits during the hook and any later edits still trigger a build.
+    previous.retain(|path, _| !path.starts_with(&assets));
+    previous.extend(files);
+    Ok(())
+}
+
+fn collect(path: &Path, generated: &[PathBuf], out: &mut Snapshot) -> io::Result<()> {
+    if generated.contains(&path.to_path_buf()) {
+        return Ok(());
+    }
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return Ok(());
+    };
+    if IGNORED.contains(&name) || name.starts_with(".fusor-") {
+        return Ok(());
+    }
+    let kind = fs::symlink_metadata(path)?;
+    if kind.is_symlink() {
+        return Ok(());
+    }
+    if kind.is_dir() {
+        for entry in fs::read_dir(path)? {
+            collect(&entry?.path(), generated, out)?;
+        }
+    } else if kind.is_file() {
+        out.insert(path.to_owned(), fingerprint(&fs::read(path)?));
+    }
+    Ok(())
 }
 
 fn fingerprint(contents: &[u8]) -> u64 {

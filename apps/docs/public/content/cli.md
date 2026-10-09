@@ -227,6 +227,11 @@ The command runs without a shell. A string such as `"node build-assets.mjs"` is 
 For more complex commands, put the build steps in a script and invoke it with the array
 form. Use `[]` or omit `assets-build` to disable the hook.
 
+During `fusor dev`, the configured `assets` directory is recorded after the hook
+finishes, so generated files do not trigger a second build. Edits outside that
+directory made during the hook, and any edits made afterward, remain watched.
+Keep generated assets in the configured `assets` directory.
+
 ## Environment variables {#environment}
 
 `FUSOR_WASM_BINDGEN` wins even when it points at the wrong version; the command then reports
