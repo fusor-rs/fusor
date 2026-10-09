@@ -39,7 +39,7 @@ struct ScannedNodes {
 
 fn scan(descriptor: &TemplateDescriptor, scope: &Scope) -> Result<ScannedNodes, JsValue> {
     let document = document()?;
-    let root = scope.root();
+    let root = &scope.root;
     let fragment = scope.fragment.as_ref();
     let mut found = ScannedNodes::default();
     let managed: BTreeSet<_> = descriptor

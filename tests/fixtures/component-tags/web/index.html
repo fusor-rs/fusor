@@ -18,6 +18,7 @@
     <table><tbody><Row count="{{ state.count.clone() }}"></Row></tbody></table>
     <Empty></Empty>
     <Button></Button>
+    <div id="fragment-slot" rust:slot="state.fragment.clone()" rust:if="state.fragment_visible.get()"></div>
     <section id="event-parity">
       <input id="event-text" on:input="state.input()" bind="state.text">
       <select id="event-select" on:change="state.change()" bind="state.choice">

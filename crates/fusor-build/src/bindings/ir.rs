@@ -97,7 +97,10 @@ impl Component {
     }
 
     pub fn fragment(&self) -> bool {
-        matches!(self.shape, ComponentShape::Fragment(_))
+        matches!(
+            self.shape,
+            ComponentShape::Fragment(_) | ComponentShape::Declared(RootKind::Fragment)
+        )
     }
 
     pub fn kind(&self) -> RootKind {

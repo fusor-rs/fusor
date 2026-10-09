@@ -104,6 +104,14 @@ impl Emission {
     }
 }
 
+fn fragment_marker(component: &Component) -> String {
+    if component.kind() == RootKind::Fragment {
+        template::fragment_marker(component.id, template::VERSION)
+    } else {
+        template::FRAGMENT_START.to_owned()
+    }
+}
+
 fn component_body(component: &Component, components: &[Component], into: bool) -> TokenStream {
     if let Some(child) = forwarding_child(component, components, into) {
         return child;
@@ -118,7 +126,9 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
         select: None,
     };
     if component.fragment() {
-        render.body.literal("<!--fusor:fragment-->");
+        render
+            .body
+            .literal(&format!("<!--{}-->", fragment_marker(component)));
     }
     let tokens: Vec<_> = crate::html::tokens(&component.html).collect();
     for (index, token) in tokens.iter().enumerate() {
@@ -131,7 +141,9 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
         }
     }
     if component.fragment() {
-        render.body.literal("<!--/fusor:fragment-->");
+        render
+            .body
+            .literal(&format!("<!--/{}-->", fragment_marker(component)));
     }
     let body = render.body.finish();
     if into {
@@ -193,7 +205,7 @@ impl<'a> ServerRender<'a> {
     fn start_tag(&mut self, tag: &StartTag<usize>, following: &[Token<usize>]) {
         let component = self.component;
         let name = String::from_utf8_lossy(&tag.name).into_owned();
-        if name == "template" && self.depth == 0 && component.kind() == RootKind::Template {
+        if name == "template" && self.depth == 0 && component.kind() != RootKind::Existing {
             self.depth += 1;
             return;
         }
@@ -373,7 +385,7 @@ impl<'a> ServerRender<'a> {
     fn end_tag(&mut self, tag: &EndTag<usize>) {
         self.depth -= 1;
         let name = String::from_utf8_lossy(&tag.name).into_owned();
-        if name == "template" && self.depth == 0 && self.component.kind() == RootKind::Template {
+        if name == "template" && self.depth == 0 && self.component.kind() != RootKind::Existing {
             return;
         }
         self.body.literal(&format!("</{name}>"));
@@ -537,11 +549,13 @@ pub(super) fn component(component: &Component, components: &[Component]) -> Toke
     let ty = &component.ty;
     let span = ty.span();
     let hash = hash(component, components);
+    let fragment = component.kind() == RootKind::Fragment;
     let body = component_body(component, components, true);
     quote_spanned! {span=>
         #[cfg(not(target_arch = "wasm32"))]
         impl ::fusor_server::Render for #ty {
             const TEMPLATE_HASH: &'static str = #hash;
+            const FRAGMENT: bool = #fragment;
             fn render(&self, __fusor_context: &mut ::fusor_server::Context<'_>) -> ::fusor_server::Result<::fusor_server::Html> {
                 self.render_with_children(__fusor_context, ::std::option::Option::None)
             }

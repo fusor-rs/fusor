@@ -95,6 +95,20 @@ pub struct Row {
 }
 
 #[derive(FromInputs)]
+pub struct Cells {
+    #[input]
+    count: Signal<i32>,
+}
+
+#[derive(FromInputs)]
+pub struct FragmentControls {
+    #[input]
+    pub visible: Signal<bool>,
+    #[input]
+    pub count: Signal<i32>,
+}
+
+#[derive(FromInputs)]
 pub struct Empty;
 
 fusor::template!("web/components/widgets.html");

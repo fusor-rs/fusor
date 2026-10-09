@@ -280,9 +280,8 @@ impl TemplateDescriptor {
         mode: MountMode<'_>,
         embedded: bool,
     ) -> Result<Mounted, JsValue> {
-        #[cfg(feature = "islands")]
         {
-            if let Some(root) = super::hydration::take_root() {
+            if let Some(root) = super::hydration::take_root()? {
                 if mode.bundled() && mounts.is_empty() && self.is_flat() {
                     // The same identity checks and resolution as below, in one
                     // native call.
@@ -313,6 +312,9 @@ impl TemplateDescriptor {
                         .map_err(|_| invalid("expected embedded HTML template"))?,
                 )?,
                 RootKind::Existing => mode.scope(root),
+                RootKind::Fragment => {
+                    return Err(invalid("fragment templates require range mounting"));
+                }
             };
             return self.resolve(scope, mounts, mode.bundled());
         }
@@ -326,22 +328,17 @@ impl TemplateDescriptor {
         mode: MountMode<'_>,
     ) -> Result<Mounted, JsValue> {
         let document = document()?;
-        if let Some(target) = super::hydration::take_range() {
-            target.validate()?;
-            let start = target
-                .start
-                .next_sibling()
-                .ok_or_else(|| invalid("missing children start"))?;
-            let end = target
-                .end
-                .previous_sibling()
-                .ok_or_else(|| invalid("missing children end"))?;
-            if start.node_value().as_deref() != Some("fusor:fragment")
-                || end.node_value().as_deref() != Some("/fusor:fragment")
+        let marker = if self.kind == RootKind::Fragment {
+            template::fragment_marker(self.component, self.version)
+        } else {
+            template::FRAGMENT_START.to_owned()
+        };
+        if let Some(fragment) = super::hydration::take_range()? {
+            if fragment.start.node_value().as_deref() != Some(&marker)
+                || fragment.end.node_value().as_deref() != Some(&format!("/{marker}"))
             {
-                return Err(invalid("server children fragment mismatch"));
+                return Err(invalid("server fragment identity/shape mismatch"));
             }
-            let fragment = MountPoint { start, end };
             fragment.validate()?;
             let mut scope = mode.scope(document.create_element("div")?);
             scope.fragment = Some(fragment);
@@ -355,12 +352,12 @@ impl TemplateDescriptor {
         let root = document.create_element("div")?;
         root.append_child(&template.content().clone_node_with_deep(true)?)?;
         let (mut scope, nodes) = self.resolve(mode.scope(root), mounts, mode.bundled())?;
-        let start: Node = document.create_comment("fusor:fragment").into();
-        let end: Node = document.create_comment("/fusor:fragment").into();
+        let start: Node = document.create_comment(&marker).into();
+        let end: Node = document.create_comment(&format!("/{marker}")).into();
         scope
-            .root()
-            .insert_before(&start, scope.root().first_child().as_ref())?;
-        scope.root().append_child(&end)?;
+            .root
+            .insert_before(&start, scope.root.first_child().as_ref())?;
+        scope.root.append_child(&end)?;
         scope.fragment = Some(MountPoint { start, end });
         Ok((scope, nodes))
     }
@@ -415,6 +412,7 @@ impl TemplateDescriptor {
                     .map_err(|_| invalid("expected an HTML template"))?;
                 mode.clone_template(&template)?
             }
+            RootKind::Fragment => return Err(invalid("fragment templates require range mounting")),
         };
         self.resolve(scope, mounts, mode.bundled())
     }
@@ -432,8 +430,8 @@ impl TemplateDescriptor {
         }
         let cached = self.kind == RootKind::Template && !scope.hydrating;
         if bundled && expected_mounts.is_empty() && scope.fragment.is_none() && self.is_flat() {
-            let binding_bundle = flat::resolve_bundle(self, scope.root(), cached)?;
-            strings::descriptor(self.component, self.version).mark_instance(scope.root())?;
+            let binding_bundle = flat::resolve_bundle(self, &scope.root, cached)?;
+            strings::descriptor(self.component, self.version).mark_instance(&scope.root)?;
             return Ok((scope, TemplateNodes::bundle(binding_bundle)));
         }
         #[cfg(feature = "islands")]
@@ -445,12 +443,12 @@ impl TemplateDescriptor {
                 .iter()
                 .all(|element| element.children == ChildPolicy::Static)
         {
-            let (handles, slots, mounts) = flat::resolve(self, scope.root())?;
+            let (handles, slots, mounts) = flat::resolve(self, &scope.root)?;
             return self.finish_resolution(scope, handles, slots, mounts);
         }
         if cached {
             if let Some((handles, slots, mounts)) =
-                cache::resolve(self, expected_mounts, scope.root())?
+                cache::resolve(self, expected_mounts, &scope.root)?
             {
                 return self.finish_resolution(scope, handles, slots, mounts);
             }
@@ -459,7 +457,7 @@ impl TemplateDescriptor {
         if cached {
             // Cache construction is optional; inability to retain an inert
             // certificate must not make a correctly validated mount fail.
-            let _ = cache::remember(self, expected_mounts, scope.root(), &resolution);
+            let _ = cache::remember(self, expected_mounts, &scope.root, &resolution);
         }
         let (handles, slots, mounts) = resolution;
         self.finish_resolution(scope, handles, slots, mounts)
@@ -501,7 +499,7 @@ impl TemplateDescriptor {
             texts.insert(id, text);
         }
         texts.finish();
-        strings::descriptor(self.component, self.version).mark_instance(scope.root())?;
+        strings::descriptor(self.component, self.version).mark_instance(&scope.root)?;
         Ok((
             scope,
             TemplateNodes {

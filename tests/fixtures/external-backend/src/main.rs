@@ -48,6 +48,14 @@ fn main() {
     assert!(root.text().contains("Static & complete"));
     assert!(root.text().contains("Shared:one"));
     assert!(root.text().contains("Shared:10"));
+    assert_eq!(
+        root.elements("p")
+            .iter()
+            .filter(|node| node.attribute("class") == Some("child-tail"))
+            .map(|node| node.text())
+            .collect::<Vec<_>>(),
+        ["Shared tail", "one tail", "two tail"]
+    );
     assert_eq!(root.find("projected").unwrap().text(), "Shared");
     let payload = root.find("payload").unwrap();
     assert_eq!(payload.text(), "3");

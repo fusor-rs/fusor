@@ -221,6 +221,33 @@ trait does not change either lifecycle.
 - [Use the owner for lifecycle work](/docs/ownership)
 - [What is owner, and where does it come from?](/docs/ownership/mounting#owner-variable)
 
+## Multiple roots without a wrapper {#fragments}
+
+A reusable template can contain several native HTML root elements. They form a fragment:
+one component instance owns all the siblings, without an extra element in the page.
+For example, a component used inside a table row can render two cells:
+
+```html
+<template rust:component="PriceCells">
+  <td>$25</td>
+  <td>In stock</td>
+</template>
+```
+
+The matching Rust type and `template!` association follow the same rules as `Counter`.
+Use `<PriceCells></PriceCells>` inside a `<tr>`. Bindings, inputs, conditional mounting,
+keyed rows, slots, and cleanup apply to the entire fragment. Shared templates hydrate
+the existing siblings in place.
+
+Templates require at least one native root. Put text and component tags inside those
+roots. `<App>`, `<Async>`, and `<Await>` retain their single-root rules. JavaScript component
+modules and island entry components require a single root; nested components can be fragments.
+
+For manual DOM integrations, `Scope::root()` returns `Result<&Element, JsValue>`:
+use `scope.root()?` for a single-root view. A fragment has no single element, so `root()`
+and selector-based `select()` return an error. `attach()` and `attach_at()` place the whole
+view, and `is_detached()` reports whether it remains in its preparation storage.
+
 ## Continue with composition {#next}
 
 You now have a complete reusable component. Continue with `<ForEach>` to repeat inline HTML,

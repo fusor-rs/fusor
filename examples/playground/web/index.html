@@ -64,7 +64,7 @@ pub fn mount() -> Result<(), JsValue> {
     ui.mount_child("#demo-grid", Greeting::new().mount()?)?;
     ui.select("#runtime-state")?
         .set_text_content(Some("WebAssembly connected"));
-    ui.root().set_attribute("data-ready", "true")?;
+    ui.root()?.set_attribute("data-ready", "true")?;
     APP.with(|app| *app.borrow_mut() = Some(ui));
     Ok(())
 }

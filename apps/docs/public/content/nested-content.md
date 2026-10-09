@@ -114,7 +114,8 @@ Removing `Panel` cleans up its mounted children and listeners. Updating a shared
 keeps their local state; changing `Panel`’s `rust:key` creates fresh children.
 
 > `<Children>` works in browser, coherent, server, and shared templates. A reusable
-> component still needs one native HTML root. `<Children>` itself has no attributes, names,
+> component can have multiple native HTML roots; put `<Children>` inside one of them.
+> `<Children>` itself has no attributes, names,
 > or fallback body. Do not repeat the same incoming `<Children>` inside `<ForEach>`; put a
 > component with its own children in each row instead.
 

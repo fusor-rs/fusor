@@ -44,7 +44,7 @@ impl Content {
         if owner.is_disposed()
             || owner.is_active()
             || !owner.is_child_of(parent)
-            || scope.root().parent_node().is_some()
+            || !scope.is_detached()
         {
             return Err(JsValue::from_str(
                 "fusor: slot content must be a detached, prepared child of its receiving owner",

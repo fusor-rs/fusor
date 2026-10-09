@@ -396,7 +396,7 @@ pub fn mount(scope: &mut Scope, id: &str, inputs: Inputs) -> Result<(), JsValue>
         guard.set_owner(scope.owner());
     }
     let module = Rc::new(Module {
-        javascript: module_create(scope.root(), &inputs.object, id),
+        javascript: module_create(scope.root()?, &inputs.object, id),
         inputs,
         closed: Cell::new(false),
     });

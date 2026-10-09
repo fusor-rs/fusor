@@ -21,7 +21,7 @@ impl view::RouteScope for Scope {
     }
 
     fn prepare_at(&mut self, target: &MountPoint, parent_active: bool) -> Result<(), JsValue> {
-        if self.root().is_connected() {
+        if !self.is_detached() {
             return Err(error(
                 "route views must return a detached, prepared child of their supplied owner",
             ));

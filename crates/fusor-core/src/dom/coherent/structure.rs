@@ -146,7 +146,11 @@ struct ChildPlan<K> {
 impl<K: Clone + 'static> Structure for ChildPlan<K> {
     fn validate(&self) -> Result<(), String> {
         self.target.validate().map_err(error)?;
+        if let Some((_, scope)) = self.state.current.borrow().as_ref() {
+            scope.validate_nodes().map_err(error)?;
+        }
         if let Some((_, scope)) = &self.next {
+            scope.validate_nodes().map_err(error)?;
             if scope.owner().is_disposed() {
                 return Err("prepared child was disposed".into());
             }
@@ -156,13 +160,17 @@ impl<K: Clone + 'static> Structure for ChildPlan<K> {
         Ok(())
     }
     fn apply(&self) -> Result<(), String> {
-        let next = self.next.as_ref().map(|(_, scope)| scope.root());
-        if let Some(next) = next.filter(|next| !self.target.precedes_end(next)) {
-            self.target.push(next).map_err(error)?;
+        let next = self.next.as_ref().map(|(_, scope)| scope);
+        if let Some(next) = next.filter(|next| !self.target.precedes_end(next.last_node())) {
+            next.insert_before(
+                &self.target.parent_element().map_err(error)?,
+                Some(&self.target.end),
+            )
+            .map_err(error)?;
         }
         if let Some((_, old)) = self.state.current.borrow().as_ref() {
-            if next.is_none_or(|next| !next.is_same_node(Some(old.root()))) {
-                old.root().remove();
+            if next.is_none_or(|next| !Rc::ptr_eq(next, old)) {
+                old.remove_nodes();
             }
         }
         Ok(())
@@ -395,9 +403,9 @@ impl Frame<'_> {
             .borrow()
             .iter()
             .filter(|(key, _)| !next.contains_key(*key))
-            .map(|(_, (_, scope))| scope.root().clone())
+            .map(|(_, (_, scope))| scope.clone())
             .collect();
-        let order = keys.iter().map(|key| next[key].1.root().clone()).collect();
+        let order = keys.iter().map(|key| next[key].1.clone()).collect();
         self.publication.structures.push(Box::new(ListPlan {
             container: container.clone(),
             state,
@@ -417,31 +425,34 @@ struct ListPlan<K, T> {
     state: Rc<ListSlot<K, T>>,
     next: Rows<K, T>,
     updates: Vec<(Signal<T>, Rc<T>)>,
-    remove: Vec<Element>,
-    order: Vec<Element>,
+    remove: Vec<Rc<Scope>>,
+    order: Vec<Rc<Scope>>,
 }
 impl<K: Ord + Clone + 'static, T: Clone + PartialEq + 'static> Structure for ListPlan<K, T> {
     fn validate(&self) -> Result<(), String> {
+        for scope in &self.remove {
+            scope.validate_nodes().map_err(error)?;
+        }
         for (_, scope) in self.next.values() {
+            scope.validate_nodes().map_err(error)?;
             scope.finish_prepare().map_err(error)?;
         }
         Ok(())
     }
     fn apply(&self) -> Result<(), String> {
         for root in &self.remove {
-            root.remove();
+            root.remove_nodes();
         }
         let mut cursor = self.container.first_child();
         for root in &self.order {
             if !cursor
                 .as_ref()
-                .is_some_and(|node| node.is_same_node(Some(root)))
+                .is_some_and(|node| node.is_same_node(Some(root.first_node())))
             {
-                self.container
-                    .insert_before(root, cursor.as_ref())
+                root.insert_before(&self.container, cursor.as_ref())
                     .map_err(error)?;
             }
-            cursor = root.next_sibling();
+            cursor = root.last_node().next_sibling();
         }
         Ok(())
     }

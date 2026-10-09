@@ -30,6 +30,7 @@ crate-type=["cdylib","rlib"]
 [dependencies]
 fusor-core={path=${dep('fusor-core')},features=["islands"]}
 fusor-islands={path=${dep('fusor-islands')}}
+fusor-components={path=${dep('fusor-components')}}
 wasm-bindgen="=0.2.117"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 fusor-server={path=${dep('fusor-server')}}
@@ -49,19 +50,20 @@ use fusor::dom::{Component, FromInputs, JsValue, Scope, TemplateComponent, docum
 struct Fixture {
     show: Signal<bool>,
     key: Signal<u32>,
+    rows: Signal<Vec<u32>>,
 }
 impl Fixture {
     fn new() -> Self {
-        Self { show: signal(true), key: signal(0) }
+        Self { show: signal(true), key: signal(0), rows: signal(vec![1, 2]) }
     }
 }
-struct Generated;
+struct Generated { draft: Signal<String> }
 struct GeneratedInputs {}
 impl FromInputs for Generated {
     type Error = fusor::dom::JsValue;
     type Inputs = GeneratedInputs;
     fn from_inputs(_: Self::Inputs, _: fusor::OwnerHandle) -> Result<Self, JsValue> {
-        Ok(Self)
+        Ok(Self { draft: signal("server".into()) })
     }
 }
 // A hand-written component builds its own root and ignores server DOM.
@@ -133,6 +135,10 @@ mod browser {
         APP.with(|app| app.borrow().as_ref().unwrap().0.clone())
     }
     #[wasm_bindgen]
+    pub fn reverse_rows() {
+        state().rows.update(|rows| rows.reverse());
+    }
+    #[wasm_bindgen]
     pub fn set_key(key: u32) {
         state().key.set(key);
     }
@@ -148,8 +154,8 @@ mod browser {
 `);
   await writeFile(join(scratch, 'web/index.html'), `<!doctype html><html><head><meta charset="utf-8"></head><body><div id="host"></div>
 <script type="text/rust" src="../src/lib.rs" rust:module="crate"></script>
-<template rust:component="Fixture" rust:render="shared"><section id="fixture"><div id="manual"><Manual rust:if="state.show.get()" rust:key="state.key.get()"></Manual></div><div id="generated"><Generated rust:key="state.key.get()"></Generated></div></section></template>
-<template rust:component="Generated" rust:render="shared"><b>generated</b></template>
+<template rust:component="Fixture" rust:render="shared"><section id="fixture"><div id="manual"><Manual rust:if="state.show.get()" rust:key="state.key.get()"></Manual></div><div id="generated"><Generated rust:key="state.key.get()"></Generated></div><div id="rows"><ForEach items="{{ state.rows.get() }}" key="{{ |row| *row }}"><Generated></Generated></ForEach></div></section></template>
+<template rust:component="Generated" rust:render="shared"><b>generated</b> <!-- between roots --> <input class="draft" bind="state.draft"></template>
 </body></html>`);
 
   await exec('cargo', ['build', '-p', 'fusor-cli', '--locked', '--offline'], { cwd: root, timeout: 240000, maxBuffer: 8e6 });
@@ -195,17 +201,26 @@ mod browser {
       host.innerHTML = html;
       const fixture = host.firstElementChild;
       const serverManual = manual('server');
-      const [serverGenerated] = shown('generated');
+      const [serverGenerated, serverInput] = shown('generated');
+      serverInput.value = "native draft";
+      const serverRows = shown('rows');
       app.mount();
       require(host.firstElementChild === fixture, 'hydration replaced the parent root');
       const browserManual = manual('browser');
       require(!serverManual.isConnected, 'the unadopted server root stayed in the document');
-      require(shown('generated').length === 1 && shown('generated')[0] === serverGenerated, 'the generated child did not adopt its server root');
+      require(shown('generated').length === 2 && shown('generated')[0] === serverGenerated, 'the generated child did not adopt its server root');
 
+      require(shown('generated')[1] === serverInput && serverInput.value === 'native draft', 'fragment hydration lost a native edit');
+      require(shown('rows').every((node, index) => node === serverRows[index]), 'forwarding rows lost native identity');
+      serverRows[1].focus();
+      serverRows[1].setSelectionRange(1, 3);
+      app.reverse_rows();
+      require(shown('rows').every((node, index) => node === serverRows[(index + 2) % 4]), 'fragment rows did not move as groups');
+      require(document.activeElement === serverRows[1] && serverRows[1].selectionStart === 1 && serverRows[1].selectionEnd === 3, 'fragment row reorder lost focus or selection');
       app.set_key(1);
       const replaced = manual('browser');
       require(replaced !== browserManual && !browserManual.isConnected, 'a new identity kept the previous manual child');
-      require(shown('generated').length === 1 && shown('generated')[0] !== serverGenerated && !serverGenerated.isConnected, 'a new identity kept the adopted generated child');
+      require(shown('generated').length === 2 && shown('generated')[0] !== serverGenerated && !serverGenerated.isConnected, 'a new identity kept the adopted generated child');
 
       app.set_show(false);
       require(shown('manual').length === 0 && !replaced.isConnected, 'None kept the manual child');
@@ -214,9 +229,34 @@ mod browser {
 
       app.unmount();
       require(host.firstElementChild === fixture, 'unmount removed hydrated DOM it does not own');
+      require(shown('rows').length === 0 && shown('generated').length === 0, 'unmount left owned fragment roots');
+      for (const change of ['identity', 'closing', 'shape']) {
+        host.innerHTML = html;
+        const generated = host.querySelector('#generated');
+        const nativeInput = generated.querySelector('input');
+        nativeInput.value = 'preserve after failure';
+        const anchors = [...generated.childNodes].filter(node => node.nodeType === Node.COMMENT_NODE && node.data.startsWith('fusor:fragment:'));
+        if (change === 'identity') anchors[0].data += ':wrong';
+        if (change === 'closing') generated.childNodes[generated.childNodes.length - 2].data += ':wrong';
+        if (change === 'shape') {
+          for (const node of [...generated.childNodes].slice(1, -1)) if (node !== nativeInput) node.remove();
+        }
+        let failure;
+        try { app.mount(); } catch (error) { failure = String(error); }
+        require(failure?.includes('fragment') || failure?.includes('shape'), 'malformed fragment hydration succeeded');
+        require(nativeInput.isConnected && nativeInput.value === 'preserve after failure', 'failed hydration removed or rewrote native input');
+      }
+      host.innerHTML = html;
+      const rows = host.querySelector('#rows');
+      const nativeRows = [...rows.childNodes];
+      rows.append(document.createComment('/fusor:fragment:extra'));
+      let rowFailure;
+      try { app.mount(); } catch (error) { rowFailure = String(error); }
+      require(rowFailure === 'unexpected native row', 'stray fragment closing anchor was accepted');
+      require(nativeRows.every(node => node.parentNode === rows), 'row validation failure removed native siblings');
     }, html);
     assert.deepEqual(errors, []);
-    console.log(`PASS ${engine}: a generated child adopts its server root; a hand-written child replaces it; identity changes and None replace or remove either`);
+    console.log(`PASS ${engine}: fragment hydration, keyed group moves, focus and native edits, mismatch rollback, cleanup, and hand-written root replacement`);
     await browser.close(); browser = null;
   }
 } finally {

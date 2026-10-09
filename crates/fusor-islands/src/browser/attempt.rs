@@ -87,7 +87,8 @@ impl Preview {
                 "preview registration changed while loading",
             ));
         }
-        self.host.append_child(scope.root())?;
+        self.host
+            .append_child(scope.root().expect("island entries have one native root"))?;
         // Fallible setup runs while the native fallback is still owned by its
         // host; failure removes the candidate and leaves that fallback intact.
         scope.finish_prepare()?;
@@ -99,7 +100,10 @@ impl Preview {
         self.initial.remove();
         let result = scope.try_commit();
         if result.is_err() && self.host.is_connected() {
-            let _ = self.host.insert_before(&self.initial, Some(scope.root()));
+            let _ = self.host.insert_before(
+                &self.initial,
+                Some(scope.root().expect("island entries have one native root")),
+            );
         }
         result
     }
@@ -200,7 +204,10 @@ impl Attempt {
                 // An attached root is the server's DOM, which the page keeps.
                 // A preview candidate was never shown in its place.
                 if let Prepared::Preview(scope, _) = &self.prepared {
-                    scope.root().remove();
+                    scope
+                        .root()
+                        .expect("island entries have one native root")
+                        .remove();
                 }
                 let _ = self.reject.call1(&JsValue::UNDEFINED, &error);
             }
