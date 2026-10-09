@@ -17,6 +17,11 @@ A component input uses `{{ expression }}` for a Rust value, or a plain attribute
 that input accepts one. Built-in tags document their own inputs on the separate reference
 page.
 
+Rust strings use double quotes (`"dark"`); single quotes denote character literals
+such as `'d'`. HTML attribute quotes are separate, so you can write
+`class:dark='state.theme.get() == "dark"'` or escape Rust double quotes as `&quot;`
+inside a double-quoted HTML attribute.
+
 > Examples below are syntax fragments, not standalone apps. Their state fields, types, and
 > imports must exist in your Rust module. Follow the guide links for complete working files.
 
