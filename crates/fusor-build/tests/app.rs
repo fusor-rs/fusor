@@ -204,10 +204,23 @@ fn optional_asset_command_and_refresh_policy_are_explicit_configuration() {
     assert!(AppConfig::load(&path).unwrap().dev_refresh);
     fs::create_dir(dir.path().join("public")).unwrap();
     let source = fs::read_to_string(&path).unwrap().replace("entry =", "assets = \"public\"\nassets-build = [\"node\", \"build-assets.mjs\"]\ndev-refresh = false\nentry =");
-    fs::write(&path, source).unwrap();
+    fs::write(&path, &source).unwrap();
     let config = AppConfig::load(&path).unwrap();
     assert!(!config.dev_refresh);
     assert_eq!(config.assets_build, ["node", "build-assets.mjs"]);
+    fs::write(
+        &path,
+        source.replace(
+            r#"["node", "build-assets.mjs"]"#,
+            r#""npx some-tool build""#,
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        AppConfig::load(&path).unwrap_err().to_string(),
+        "assets-build expects an array of executable and arguments, not a string; \
+         commands run without a shell. Use assets-build = [\"npx\", \"some-tool\", \"build\"]"
+    );
 }
 
 #[test]

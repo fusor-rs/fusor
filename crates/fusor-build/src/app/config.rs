@@ -102,6 +102,17 @@ impl AppConfig {
             .and_then(|p| p.get("metadata"))
             .and_then(|m| m.get("fusor"))
             .ok_or("expected [package.metadata.fusor] in Cargo.toml")?;
+        if metadata
+            .get("assets-build")
+            .is_some_and(toml::Value::is_str)
+        {
+            return Err(
+                "assets-build expects an array of executable and arguments, not a string; \
+                 commands run without a shell. \
+                 Use assets-build = [\"npx\", \"some-tool\", \"build\"]"
+                    .into(),
+            );
+        }
         let config: Self = metadata.clone().try_into()?;
         config.validate()?;
         Ok(config)
