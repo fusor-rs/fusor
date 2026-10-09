@@ -213,6 +213,20 @@ dev-refresh = true              # false when build logic reads HTML or assets
 
 - [Set up island delivery](/docs/islands/setup)
 
+`assets-build` must be an array: the first item is the executable, and each remaining
+item is one argument. For example, to run an asset script from the package directory:
+
+```toml title=Cargo.toml
+[package.metadata.fusor]
+assets = "public"
+assets-build = ["node", "build-assets.mjs"]
+```
+
+The command runs without a shell. A string such as `"node build-assets.mjs"` is invalid;
+`&&`, pipes (`|`), and environment variable expansion such as `$HOME` are not interpreted.
+For more complex commands, put the build steps in a script and invoke it with the array
+form. Use `[]` or omit `assets-build` to disable the hook.
+
 ## Environment variables {#environment}
 
 `FUSOR_WASM_BINDGEN` wins even when it points at the wrong version; the command then reports
