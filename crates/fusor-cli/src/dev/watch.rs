@@ -43,7 +43,7 @@ pub(crate) fn start(cx: &Context, project: Project, current: Arc<RwLock<Project>
             previous = next;
             cx.reporter.blank();
             cx.reporter.step(format!("Changed {}", changes(&changed)));
-            match refresh::try_refresh(&cx, &project, &changed) {
+            match refresh::try_refresh(&cx, &project, &changed, &mut previous) {
                 Ok(true) => continue,
                 Ok(false) => {}
                 Err(error) => {
@@ -51,10 +51,10 @@ pub(crate) fn start(cx: &Context, project: Project, current: Arc<RwLock<Project>
                     continue;
                 }
             }
-            match rebuild(&cx, &project) {
+            match rebuild(&cx, &project, &mut previous) {
                 Ok(next) => {
                     project = next;
-                    // Keep the pre-build snapshot: an edit made while Cargo
+                    // Keep the pre-build source snapshot: an edit made while Cargo
                     // ran must trigger another build.
                     *current.write().expect("preview state") = project.clone();
                 }
@@ -65,13 +65,18 @@ pub(crate) fn start(cx: &Context, project: Project, current: Arc<RwLock<Project>
     Ok(())
 }
 
-fn rebuild(cx: &Context, project: &Project) -> Result<Project> {
+fn rebuild(cx: &Context, project: &Project, watched: &mut sources::Snapshot) -> Result<Project> {
     let next = project.rediscover(cx)?;
     if next.config.base_path != project.config.base_path {
         return Err(Error::project("base-path changed")
             .remedy("restart `fusor dev` to serve from the new URL"));
     }
-    crate::commands::build::run(cx, &next, crate::pipeline::BuildMode::Development)?;
+    crate::commands::build::run(
+        cx,
+        &next,
+        crate::pipeline::BuildMode::Development,
+        Some(watched),
+    )?;
     Ok(next)
 }
 

@@ -25,12 +25,21 @@ try {
   for (const path of ["Cargo.toml", "Cargo.lock", ".cargo", "crates", "examples", "apps", "benchmarks/workloads"]) {
     await copyProject(join(root, path), join(scratch, path));
   }
+  const application = join(scratch, "examples/playground");
+  const manifest = join(application, "Cargo.toml");
+  await writeFile(manifest, (await readFile(manifest, "utf8")).replace(
+    "[package.metadata.fusor]",
+    '[package.metadata.fusor]\nassets-build = ["node", "asset-hook.mjs"]',
+  ));
+  await copyProject(join(root, "tests/fixtures/asset-hook.mjs"), join(application, "asset-hook.mjs"));
+  const hookRuns = async () => Number(await readFile(join(application, ".fusor/asset-hook-count"), "utf8"));
   server = startProcess("cargo", ["run", "--locked", "-p", "fusor-cli", "--bin", "fusor", "--", "dev", "-p", "fusor-playground", "--offline", "--port", String(port)], {
     cwd: scratch,
     env,
   });
 
   await waitUntil(() => server.output.includes("watching for changes"), "initial build from HTML", { timeout: 180_000, interval: 150, process: server });
+  assert.equal(await hookRuns(), 1);
   browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || undefined });
   const page = await browser.newPage();
   // Bindings are empty until the Wasm mounts, and a click before then is lost.
@@ -79,6 +88,7 @@ try {
   assert.equal(await page.locator("#count").textContent(), "7");
   assert.equal(await page.locator("#doubled").textContent(), "14");
   assert.equal(await page.locator('script[type="text/rust"]').count(), 0);
+  assert.equal(await hookRuns(), 2, server.output);
   console.log("PASS: Rust edited inside HTML recompiles, reloads, and changes browser state");
 
   // Playground metadata now participates in the CLI's static refresh contract.
@@ -94,6 +104,7 @@ try {
   assert.equal(await hashWasm(), staticWasm);
   assert.equal(await page.locator("#count").textContent(), "8", reloadReasons.join("\n"));
   assert(await page.evaluate(() => retainedCounter === document.querySelector("#count")));
+  assert.equal(await hookRuns(), 3, server.output);
   await saveHtml(edited);
   await waitFor(async () => await page.locator("#hero-title").getAttribute("title") === null, "restoring static HTML");
   assert.equal(await page.locator("#count").textContent(), "8");

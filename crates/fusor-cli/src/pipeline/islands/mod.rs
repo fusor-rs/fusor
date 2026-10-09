@@ -8,6 +8,7 @@ use super::{
 };
 use crate::{
     context::Context,
+    dev::sources::Snapshot,
     error::{Error, Result},
     layout, toolchain,
     workspace::Project,
@@ -26,12 +27,17 @@ pub(crate) fn check(cx: &Context, project: &Project) -> Result {
     Ok(())
 }
 
-pub(crate) fn build(cx: &Context, project: &Project, mode: BuildMode) -> Result {
+pub(crate) fn build(
+    cx: &Context,
+    project: &Project,
+    mode: BuildMode,
+    watched: Option<&mut Snapshot>,
+) -> Result {
     let dev = mode == BuildMode::Development;
     let bindgen = toolchain::bindgen::resolve()?;
     let (executable, native_registrations) = build_renderer(cx, project, mode)?;
 
-    let publication = Publication::begin(cx, project)?;
+    let publication = Publication::begin(cx, project, watched)?;
     // A page holds props and markup from the generation it was served; pairing
     // them with new code is worse than a missing asset.
     publication.retain_previous()?;

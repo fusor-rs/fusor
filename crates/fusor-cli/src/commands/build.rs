@@ -1,6 +1,7 @@
 use crate::reporter::elapsed_text;
 use crate::{
     context::Context,
+    dev::sources::Snapshot,
     error::{Error, Result},
     layout,
     pipeline::{
@@ -22,7 +23,7 @@ pub(crate) fn single(cx: &Context, project: &Project, mode: BuildMode) -> Result
     } else {
         "production build"
     });
-    run(cx, project, mode)?;
+    run(cx, project, mode, None)?;
     cx.reporter
         .done(format!("Published {}", shown(&project.output(cx))));
     Ok(())
@@ -50,7 +51,7 @@ pub(crate) fn site(cx: &Context, mode: BuildMode) -> Result {
             .join(&project.name);
         let mount = Mount::new(path, &project, built.clone())?;
         app.output = Some(built);
-        run(&app, &project, mode).map_err(|error| error.context(&project.name))?;
+        run(&app, &project, mode, None).map_err(|error| error.context(&project.name))?;
         mounts.push(mount);
     }
     let output = metadata.workspace_root.join(&config.output);
@@ -71,13 +72,18 @@ pub(crate) fn site(cx: &Context, mode: BuildMode) -> Result {
 }
 
 /// Build and publish one application, in development or release mode.
-pub(crate) fn run(cx: &Context, project: &Project, mode: BuildMode) -> Result {
+pub(crate) fn run(
+    cx: &Context,
+    project: &Project,
+    mode: BuildMode,
+    watched: Option<&mut Snapshot>,
+) -> Result {
     cx.reporter.step(format!("Compiling {} ...", project.name));
     let started = Instant::now();
     if project.config.delivery.is_some() {
-        pipeline::islands::build(cx, project, mode)?;
+        pipeline::islands::build(cx, project, mode, watched)?;
     } else {
-        application(cx, project, mode)?;
+        application(cx, project, mode, watched)?;
     }
     cx.reporter.done(format!(
         "Compiled {} in {}",
@@ -87,12 +93,17 @@ pub(crate) fn run(cx: &Context, project: &Project, mode: BuildMode) -> Result {
     Ok(())
 }
 
-fn application(cx: &Context, project: &Project, mode: BuildMode) -> Result {
+fn application(
+    cx: &Context,
+    project: &Project,
+    mode: BuildMode,
+    watched: Option<&mut Snapshot>,
+) -> Result {
     let dev = mode == BuildMode::Development;
     let bindgen = toolchain::bindgen::resolve()?;
     cx.reporter
         .note(format!("using wasm-bindgen at {}", bindgen.display()));
-    let publication = Publication::begin(cx, project)?;
+    let publication = Publication::begin(cx, project, watched)?;
     if dev {
         // A production build has no in-flight page to keep serving.
         publication.retain_previous()?;

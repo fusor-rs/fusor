@@ -13,6 +13,7 @@ pub(crate) mod workers;
 
 use crate::{
     context::Context,
+    dev::sources::{self, Snapshot},
     error::{Error, Result},
     layout,
     process::checked,
@@ -72,8 +73,12 @@ impl<'a> Publication<'a> {
         Ok(output)
     }
 
-    pub fn begin(cx: &'a Context, project: &'a Project) -> Result<Self> {
-        let publication = Self::stage(cx, project, publish::generation())?;
+    pub fn begin(
+        cx: &'a Context,
+        project: &'a Project,
+        watched: Option<&mut Snapshot>,
+    ) -> Result<Self> {
+        let publication = Self::stage(cx, project, publish::generation(), watched)?;
         std::fs::create_dir(publication.staging.join(layout::GENERATED))?;
         std::fs::create_dir(&publication.generated)?;
         Ok(publication)
@@ -81,8 +86,13 @@ impl<'a> Publication<'a> {
 
     /// A development refresh republishes the current generation, and the one
     /// it retained, under a new document.
-    pub fn revise(cx: &'a Context, project: &'a Project, generation: String) -> Result<Self> {
-        let publication = Self::stage(cx, project, generation)?;
+    pub fn revise(
+        cx: &'a Context,
+        project: &'a Project,
+        generation: String,
+        watched: &mut Snapshot,
+    ) -> Result<Self> {
+        let publication = Self::stage(cx, project, generation, Some(watched))?;
         publish::copy_tree(
             &publication.site.join(layout::GENERATED),
             &publication.staging.join(layout::GENERATED),
@@ -97,9 +107,14 @@ impl<'a> Publication<'a> {
         Ok(publication)
     }
 
-    fn stage(cx: &'a Context, project: &'a Project, generation: String) -> Result<Self> {
+    fn stage(
+        cx: &'a Context,
+        project: &'a Project,
+        generation: String,
+        watched: Option<&mut Snapshot>,
+    ) -> Result<Self> {
         project.validate_output(cx)?;
-        build_assets(cx, project)?;
+        build_assets(cx, project, watched)?;
         let site = project.output(cx);
         let parent = site
             .parent()
@@ -170,7 +185,7 @@ impl<'a> Publication<'a> {
     }
 }
 
-fn build_assets(cx: &Context, project: &Project) -> Result {
+fn build_assets(cx: &Context, project: &Project, watched: Option<&mut Snapshot>) -> Result {
     let Some((program, args)) = project.config.assets_build.split_first() else {
         return Ok(());
     };
@@ -181,5 +196,9 @@ fn build_assets(cx: &Context, project: &Project) -> Result {
             .env("CARGO_NET_OFFLINE", "true")
             .env("npm_config_offline", "true");
     }
-    checked(&mut command)
+    let result = checked(&mut command);
+    if let Some(watched) = watched {
+        sources::record_assets(project, watched)?;
+    }
+    result
 }
