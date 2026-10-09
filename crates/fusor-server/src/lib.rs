@@ -41,9 +41,10 @@ pub trait Render {
 }
 
 /// Compiler-owned, borrowed children renderer. It keeps the caller's lexical
-/// state while the receiving component decides where to render it.
+/// state while the receiving component decides where to render it. The selector
+/// is `None` for default children and `Some(name)` for a named slot.
 #[doc(hidden)]
-pub type Children<'a> = dyn Fn(&mut Context<'_>) -> Result<Html> + 'a;
+pub type Children<'a> = dyn Fn(&mut Context<'_>, Option<&str>) -> Result<Html> + 'a;
 
 pub struct Context<'a> {
     owner: Owner,

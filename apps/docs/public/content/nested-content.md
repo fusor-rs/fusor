@@ -103,20 +103,54 @@ location.
 > `Wrapper` must import `Panel` in its associated Rust module. `<Children>` requires no
 > import.
 
+## Named slots {#named-slots}
+
+Give each layout area its own name. The caller supplies named fragments using templates
+directly inside the component tag; ordinary children still fill the unnamed slot.
+
+```html title=Panel template
+<template rust:component="Panel">
+  <section>
+    <Children></Children>
+    <footer><Children name="footer"></Children></footer>
+  </section>
+</template>
+```
+
+```html title=Caller template
+<Panel>
+  <p>Body content</p>
+  <template slot="footer"><button>Close</button><span>Footer text</span></template>
+</Panel>
+```
+
+Names are case-sensitive, nonempty literals containing ASCII letters, digits, `_` or `-`.
+A named fragment may contain text, multiple sibling elements, or nothing. It adds no
+wrapper and retains the caller's state and lexical bindings. Omitted slots render nothing;
+supplied names the component does not place never mount. A name may be supplied only once.
+
+Forwarding can rename an incoming slot. In a wrapper's invocation of `Panel`, write
+`<template slot="footer"><Children name="actions"></Children></template>` to place the
+wrapper's incoming `actions` content in Panel's `footer`.
+
+Named slots require no Rust input fields. The separate `rust:content` mechanism supplies
+Rust content inputs and cannot be mixed with ordinary or named children in one invocation.
+
 ## What Children does {#rules}
 
 An empty `<Panel></Panel>` supplies nothing. If `Panel` has no `<Children>`, supplied HTML
 is unused: its components and owned work never start.
 
-Use one `<Children>` placement per component, including forwarding.
+Use one `<Children>` placement per slot in a component, including forwarding. Mutually
+exclusive branches may each place the same slot.
 
 Removing `Panel` cleans up its mounted children and listeners. Updating a shared signal
 keeps their local state; changing `Panel`’s `rust:key` creates fresh children.
 
 > `<Children>` works in browser, coherent, server, and shared templates. A reusable
 > component can have multiple native HTML roots; put `<Children>` inside one of them.
-> `<Children>` itself has no attributes, names,
-> or fallback body. Do not repeat the same incoming `<Children>` inside `<ForEach>`; put a
+> `<Children>` accepts only an optional `name` and has no fallback body.
+> Do not repeat the same incoming `<Children>` inside `<ForEach>`; put a
 > component with its own children in each row instead.
 
 - [How ownership and cleanup work](/docs/ownership)

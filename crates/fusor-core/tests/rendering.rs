@@ -46,10 +46,22 @@ fn children_delivery_is_nested_typed_and_restored_after_unwind() {
         assert!(owner.is_active(), "factory uses the placement owner");
         Ok(1)
     });
+    let outer = outer.with_named([("footer", Fragment::new(|_| Ok(3)))]);
     outer.with(|| {
         Fragment::default().with(|| {
             assert_eq!(Fragment::take().prepare(&owner.handle()), Ok(None));
         });
+        Fragment::default()
+            .with_named([("footer", Fragment::new(|_| Ok(4)))])
+            .with(|| {
+                let incoming = Fragment::take();
+                assert_eq!(incoming.prepare(&owner.handle()), Ok(None));
+                assert_eq!(
+                    incoming.named("footer").prepare(&owner.handle()),
+                    Ok(Some(4))
+                );
+                assert_eq!(incoming.named("missing").prepare(&owner.handle()), Ok(None));
+            });
         Other::new(|_| Ok("other".into())).with(|| {
             let failed = catch_unwind(AssertUnwindSafe(|| {
                 Fragment::new(|_| Ok(2)).with(|| {
@@ -58,7 +70,12 @@ fn children_delivery_is_nested_typed_and_restored_after_unwind() {
                 });
             }));
             assert!(failed.is_err());
-            assert_eq!(Fragment::take().prepare(&owner.handle()), Ok(Some(1)));
+            let restored = Fragment::take();
+            assert_eq!(restored.prepare(&owner.handle()), Ok(Some(1)));
+            assert_eq!(
+                restored.named("footer").prepare(&owner.handle()),
+                Ok(Some(3))
+            );
             assert_eq!(
                 Other::take().prepare(&owner.handle()),
                 Ok(Some("other".into()))

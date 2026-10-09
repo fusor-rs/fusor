@@ -50,10 +50,13 @@ pub(super) fn binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStre
             })?; }
         }
 
-        Binding::Children { point: id, .. } => {
+        Binding::Children {
+            point: id, name, ..
+        } => {
+            let children = selected_children(name);
             let slot = id.index();
             let point = point(*id);
-            quote! { __fusor_frame.children_at(#slot, &#point, &__fusor_children)?; }
+            quote! { __fusor_frame.children_at(#slot, &#point, &#children)?; }
         }
         Binding::ForEach {
             node,
@@ -70,7 +73,7 @@ pub(super) fn binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStre
             })?; }
         }
         Binding::Invocation { children, .. } => {
-            let children = children_factory(*children, ctx);
+            let children = children_factory(children, ctx);
             invocation(binding, children, ctx)
         }
         Binding::Region {

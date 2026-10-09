@@ -55,18 +55,21 @@ pub(super) fn components(source: &str, components: &[Component]) -> Result<(), E
         .filter(|component| !matches!(component.shape, ComponentShape::Fragment(_)))
     {
         let placements = count_children(&component.bindings, components);
-        if component.app().is_some() && placements > 0 {
+        if component.app().is_some() && !placements.is_empty() {
             return Err(error(
                 source,
                 component.ty.offset,
                 "App has no incoming Children; use Children in a reusable component",
             ));
         }
-        if placements > 1 {
+        if let Some((name, _)) = placements.iter().find(|(_, count)| **count > 1) {
             return Err(error(
                 source,
                 component.ty.offset,
-                "a component can place Children only once, including forwarded children",
+                format!(
+                    "a component can place Children slot {} only once, including forwarded children",
+                    name.unwrap_or("<default>")
+                ),
             ));
         }
     }
@@ -117,21 +120,43 @@ fn render_bindings(source: &str, component: &Component) -> Result<(), ExtractErr
     Ok(())
 }
 
-fn count_children(bindings: &[Binding], components: &[Component]) -> usize {
-    let count = |child: usize| count_children(&components[child].bindings, components);
-    Binding::walk(bindings)
-        .into_iter()
-        .map(|binding| match binding {
-            Binding::Children { .. } => 1,
-            // Cases and sibling routes are exclusive placements of the caller's children.
-            Binding::Branch { .. } | Binding::Router { .. } => binding
-                .components()
-                .into_iter()
-                .map(count)
-                .max()
-                .unwrap_or(0),
-            Binding::Invocation { .. } => binding.components().into_iter().map(count).sum(),
-            _ => 0,
-        })
-        .sum()
+fn count_children<'a>(
+    bindings: &'a [Binding],
+    components: &'a [Component],
+) -> BTreeMap<Option<&'a str>, usize> {
+    let mut placements = BTreeMap::new();
+    for binding in Binding::walk(bindings) {
+        for (name, count) in binding_children(binding, components) {
+            *placements.entry(name).or_insert(0) += count;
+        }
+    }
+    placements
+}
+
+fn binding_children<'a>(
+    binding: &'a Binding,
+    components: &'a [Component],
+) -> BTreeMap<Option<&'a str>, usize> {
+    let mut placements = BTreeMap::new();
+    if let Binding::Children { name, .. } = binding {
+        placements.insert(name.as_deref(), 1);
+        return placements;
+    }
+    if !matches!(
+        binding,
+        Binding::Branch { .. } | Binding::Router { .. } | Binding::Invocation { .. }
+    ) {
+        return placements;
+    }
+    for child in binding.components() {
+        for (name, count) in count_children(&components[child].bindings, components) {
+            let total = placements.entry(name).or_insert(0);
+            *total = if matches!(binding, Binding::Invocation { .. }) {
+                *total + count
+            } else {
+                (*total).max(count)
+            };
+        }
+    }
+    placements
 }

@@ -94,9 +94,12 @@ impl CompilerBackend for ExternalBackend<'_> {
                 name: name.clone(),
                 handler: quote_spanned! {span=> move |#[allow(unused_variables, reason = "handlers may ignore the event")] event| { #handler } },
             },
-            Binding::Children { .. } => OperationKind::Children {
-                children: quote! { __fusor_children.clone() },
-            },
+            Binding::Children { name, .. } => {
+                let children = selected_children(name);
+                OperationKind::Children {
+                    children: quote! { (#children).clone() },
+                }
+            }
             Binding::Bind { control, value, .. } => {
                 return self.bound_control(binding, (control, value), ctx, locals);
             }
@@ -660,14 +663,23 @@ fn borrowed_structure(operation: OperationKind) -> OperationKind {
     }
 }
 
-fn supplied_children(item: &Binding, ctx: Ctx) -> Option<(fusor::template::MountId, usize)> {
+fn supplied_children<'a>(
+    item: &'a Binding,
+    ctx: Ctx,
+) -> Option<(fusor::template::MountId, &'a [ChildFragment])> {
     match item {
         Binding::Invocation {
             point,
-            children: Some(child),
+            children,
             inputs,
             ..
-        } if !ctx.components[*child].empty && !has_content(inputs) => Some((*point, *child)),
+        } if children
+            .iter()
+            .any(|child| !ctx.components[child.body].empty)
+            && !has_content(inputs) =>
+        {
+            Some((*point, children))
+        }
         _ => None,
     }
 }

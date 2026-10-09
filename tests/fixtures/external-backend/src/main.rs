@@ -57,6 +57,8 @@ fn main() {
         ["Shared tail", "one tail", "two tail"]
     );
     assert_eq!(root.find("projected").unwrap().text(), "Shared");
+    let named = root.find("named-number").unwrap();
+    assert_eq!(named.text(), "3");
     let payload = root.find("payload").unwrap();
     assert_eq!(payload.text(), "3");
     let increment = root.find("increment").unwrap();
@@ -72,6 +74,8 @@ fn main() {
     let input = root.find("number").unwrap();
     input.edit("12");
     assert_eq!(number.get(), 12);
+    assert_eq!(root.find("named-number").unwrap().id(), named.id());
+    assert_eq!(named.text(), "12");
     assert_eq!(
         observed.get(),
         12,
@@ -247,6 +251,7 @@ fn async_contract() {
         "Async:first:first"
     );
     assert_eq!(root.find("async-children").unwrap().text(), "first");
+    assert_eq!(root.find("async-named").unwrap().text(), "first");
     let before = root.elements("li");
     let click = root.find("async-click").unwrap();
     click.dispatch("click");

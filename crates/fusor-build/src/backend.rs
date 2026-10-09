@@ -12,7 +12,7 @@ use proc_macro2::TokenStream;
 use syn::Path;
 
 /// Changes when the backend callback or generated-code contract changes.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 /// An authored location, using a byte offset and one-based line/character column.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -114,7 +114,9 @@ pub enum Control {
 
 /// Paths supplied by the external build helper, never inferred from architecture.
 /// `Scope` implements `fusor::render::Scope`. `Children` supplies
-/// `default`, `new`, `take` and `Clone`. Error conversion is a generic function.
+/// `default`, `new`, `take`, `with_named`, `named` and `Clone`.
+/// `with_named` accepts `(static name, Children)` pairs; `named` selects one
+/// fragment, returning empty children for omitted names. Error conversion is a generic function.
 pub struct Runtime {
     pub scope: Path,
     pub error: Path,

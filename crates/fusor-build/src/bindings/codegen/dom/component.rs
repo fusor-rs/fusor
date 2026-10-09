@@ -52,7 +52,7 @@ fn forwarding_row(component: &Component, ctx: Ctx) -> Option<TokenStream> {
     };
     let local_clones = clone_locals(&component.async_locals);
     let construct = codegen::construct_inputs(Span::call_site(), ty, inputs, ctx);
-    let supplied = children_factory(*children, ctx);
+    let supplied = children_factory(children, ctx);
     Some(quote! {{
         #local_clones
         #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = ::std::rc::Rc::new(state);

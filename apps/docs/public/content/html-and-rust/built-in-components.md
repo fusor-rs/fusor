@@ -171,7 +171,23 @@ Bindings use the caller’s state. There is no wrapper element, import, or input
 <Panel><p>Hello {{ state.name.get() }}</p></Panel>
 ```
 
-> Use one placement, with no attributes or fallback body. Empty children render nothing.
+Use `<Children name="footer"></Children>` to place a named fragment supplied by
+`<template slot="footer">…</template>` directly inside the component invocation:
+
+```html title=HTML
+<Panel>
+  <p>Body content</p>
+  <template slot="footer"><button>Close</button></template>
+</Panel>
+```
+
+Ordinary children fill the unnamed slot. Named fragments can contain text and several
+sibling elements; the template adds no wrapper. Names are case-sensitive, nonempty literals
+containing ASCII letters, digits, `_` or `-`.
+
+> Use one placement per slot, including forwarding, and no fallback body. Missing slots
+> render nothing; unused slots never mount. The same slot may appear in mutually exclusive
+> branches. Duplicate supplied names are rejected.
 
 - [Complete Panel and caller files](/docs/nested-content)
 

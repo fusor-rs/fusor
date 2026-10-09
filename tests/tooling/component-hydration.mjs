@@ -51,12 +51,17 @@ struct Fixture {
     show: Signal<bool>,
     key: Signal<u32>,
     rows: Signal<Vec<u32>>,
+    footer: Signal<String>,
 }
 impl Fixture {
     fn new() -> Self {
-        Self { show: signal(true), key: signal(0), rows: signal(vec![1, 2]) }
+        Self { show: signal(true), key: signal(0), rows: signal(vec![1, 2]), footer: signal("footer".into()) }
     }
 }
+#[derive(fusor::FromInputs)]
+struct NamedPanel;
+#[derive(fusor::FromInputs)]
+struct NamedWrapper;
 struct Generated { draft: Signal<String> }
 struct GeneratedInputs {}
 impl FromInputs for Generated {
@@ -154,8 +159,10 @@ mod browser {
 `);
   await writeFile(join(scratch, 'web/index.html'), `<!doctype html><html><head><meta charset="utf-8"></head><body><div id="host"></div>
 <script type="text/rust" src="../src/lib.rs" rust:module="crate"></script>
-<template rust:component="Fixture" rust:render="shared"><section id="fixture"><div id="manual"><Manual rust:if="state.show.get()" rust:key="state.key.get()"></Manual></div><div id="generated"><Generated rust:key="state.key.get()"></Generated></div><div id="rows"><ForEach items="{{ state.rows.get() }}" key="{{ |row| *row }}"><Generated></Generated></ForEach></div></section></template>
+<template rust:component="Fixture" rust:render="shared"><section id="fixture"><div id="manual"><Manual rust:if="state.show.get()" rust:key="state.key.get()"></Manual></div><div id="generated"><Generated rust:key="state.key.get()"></Generated></div><div id="rows"><ForEach items="{{ state.rows.get() }}" key="{{ |row| *row }}"><Generated></Generated></ForEach></div><div id="slots"><NamedWrapper><span class="slot-body-value">body {{ state.key.get() }}</span><template slot="footer"><input class="slot-input" bind="state.footer"><span class="slot-footer-value">{{ state.footer.get() }}</span></template></NamedWrapper><NamedPanel></NamedPanel></div></section></template>
 <template rust:component="Generated" rust:render="shared"><b>generated</b> <!-- between roots --> <input class="draft" bind="state.draft"></template>
+<template rust:component="NamedWrapper" rust:render="shared"><div class="slot-wrapper"><NamedPanel><Children></Children><template slot="footer"><Children name="footer"></Children></template></NamedPanel></div></template>
+<template rust:component="NamedPanel" rust:render="shared"><article><div class="slot-body"><Children></Children></div><footer><Children name="footer"></Children></footer><aside><Children name="omitted"></Children></aside></article></template>
 </body></html>`);
 
   await exec('cargo', ['build', '-p', 'fusor-cli', '--locked', '--offline'], { cwd: root, timeout: 240000, maxBuffer: 8e6 });
@@ -163,6 +170,7 @@ mod browser {
   await run(join(root, 'target/debug', `fusor${suffix}`), ['build', '--locked', '--offline']);
   const { stdout: html } = await run('cargo', ['run', '--quiet', '--bin', 'render', '--locked', '--offline']);
   assert.match(html, /<p data-origin="server">server<\/p>/);
+  assert.match(html, /class="slot-input"[^>]*value="footer"/);
 
   const dist = join(scratch, 'dist');
   server = createServer(async (req, res) => {
@@ -204,6 +212,12 @@ mod browser {
       const [serverGenerated, serverInput] = shown('generated');
       serverInput.value = "native draft";
       const serverRows = shown('rows');
+      const serverSlotInput = host.querySelector('.slot-input');
+      const panels = [...host.querySelectorAll('#slots article')];
+      require(panels[0].querySelector('.slot-body').textContent === 'body 0', 'server default slot lost caller state');
+      require(panels[0].querySelector('footer').textContent === 'footer', 'server named slot lost forwarded caller state');
+      require(panels[0].querySelector('aside').textContent === '' && panels[1].textContent === '', 'omitted slots rendered content');
+      serverSlotInput.value = 'native footer draft';
       app.mount();
       require(host.firstElementChild === fixture, 'hydration replaced the parent root');
       const browserManual = manual('browser');
@@ -212,12 +226,17 @@ mod browser {
 
       require(shown('generated')[1] === serverInput && serverInput.value === 'native draft', 'fragment hydration lost a native edit');
       require(shown('rows').every((node, index) => node === serverRows[index]), 'forwarding rows lost native identity');
+      require(host.querySelector('.slot-input') === serverSlotInput && serverSlotInput.value === 'native footer draft', 'named slot hydration lost input identity or native edits');
+      serverSlotInput.value = 'edited footer';
+      serverSlotInput.dispatchEvent(new Event('input', { bubbles: true }));
+      require(host.querySelector('.slot-footer-value').textContent === 'edited footer', 'named slot binding did not update caller state');
       serverRows[1].focus();
       serverRows[1].setSelectionRange(1, 3);
       app.reverse_rows();
       require(shown('rows').every((node, index) => node === serverRows[(index + 2) % 4]), 'fragment rows did not move as groups');
       require(document.activeElement === serverRows[1] && serverRows[1].selectionStart === 1 && serverRows[1].selectionEnd === 3, 'fragment row reorder lost focus or selection');
       app.set_key(1);
+      require(host.querySelector('.slot-body-value').textContent === 'body 1', 'forwarded default slot did not retain caller reactivity');
       const replaced = manual('browser');
       require(replaced !== browserManual && !browserManual.isConnected, 'a new identity kept the previous manual child');
       require(shown('generated').length === 2 && shown('generated')[0] !== serverGenerated && !serverGenerated.isConnected, 'a new identity kept the adopted generated child');

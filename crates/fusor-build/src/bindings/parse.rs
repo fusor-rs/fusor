@@ -1,4 +1,5 @@
 //! HTML traversal and validation. This module does not generate Rust code.
+mod children;
 mod component_modules;
 mod materialize;
 mod native_attributes;
@@ -188,6 +189,7 @@ impl Frame {
             FrameKind::Invocation(invocation) => (invocation.authored.as_str(), ""),
             FrameKind::Hydrated { authored } => (authored.as_str(), "</div>"),
             FrameKind::ForEach => (builtin(), "</template>"),
+            FrameKind::NamedChildren => ("template", ""),
             FrameKind::Control(_)
             | FrameKind::Async(_)
             | FrameKind::App
@@ -214,6 +216,7 @@ enum FrameKind {
     App,
     ForEach,
     Children,
+    NamedChildren,
     Router { binding: usize },
     Route { alias: Option<Rust> },
     Invocation(InvocationFrame),
@@ -619,6 +622,9 @@ impl Parser<'_> {
             return self.start_foreach(tag, cx);
         }
         self.check_named_content_child(&tag, &cx)?;
+        if cx.name == "template" && tag.attributes.contains_key(b"slot".as_slice()) {
+            return self.start_named_children(tag, cx);
+        }
         match builtin {
             Some(BuiltIn::If | BuiltIn::Else | BuiltIn::Match | BuiltIn::Case) => {
                 return self.start_control(tag, cx);
@@ -1138,13 +1144,7 @@ impl Parser<'_> {
                 "Children requires a reusable component template",
             )
         })?;
-        if tag.self_closing || !tag.attributes.is_empty() {
-            return Err(error(
-                source,
-                tag.span.start,
-                "write <Children></Children> without attributes",
-            ));
-        }
+        let slot = children::placement_name(source, &tag)?;
         if parent.is_some_and(|frame| frame.requires_native_root()) {
             return Err(error(
                 source,
@@ -1162,6 +1162,7 @@ impl Parser<'_> {
         let point = MountId::new(*mount);
         *mount += 1;
         components[owner].bindings.push(Binding::Children {
+            name: slot,
             point,
             origin: Rust::ident("Children", tag.span.start),
         });
@@ -1423,7 +1424,6 @@ impl Parser<'_> {
         cx: TagContext,
     ) -> Result<(), ExtractError> {
         let source = self.source;
-        let first_component = self.first_component;
         let owner = self.invocation_owner(&tag, &cx)?;
         let parent = cx.parent(&self.stack);
         let point = MountId::new(self.mount);
@@ -1445,23 +1445,12 @@ impl Parser<'_> {
                 "ForEach owns row identity; put conditional or separately keyed components inside a native row element",
             ));
         }
-        let fragment_index = self.components.len();
-        let id = ComponentId::new(first_component + fragment_index);
-        let capture = self.components[owner].ty.clone();
-        let render = self.components[owner].render;
-        let row_locals = self.components[owner].row_locals.clone();
-        self.components.push(Component {
-            row_locals,
-            ..cx.lexicals.open(Component::new(
-                id,
-                Rust::ident(&format!("__FusorChildren{}", id.index()), tag.span.start),
-                ComponentShape::Fragment(capture),
-                render,
-                tag.span.end..tag.span.end,
-            ))
-        });
+        let fragment_index = self.open_children_fragment(&tag, &cx, owner);
         if let Binding::Invocation { children, .. } = &mut invocation {
-            *children = Some(fragment_index);
+            children.push(ChildFragment {
+                name: None,
+                body: fragment_index,
+            });
         }
         self.components[owner].bindings.push(invocation);
         self.edits
@@ -2114,6 +2103,11 @@ impl Parser<'_> {
                 } else {
                     tag.span.start
                 };
+            }
+            FrameKind::NamedChildren => {
+                self.components[owner.expect("named children fragment")]
+                    .range
+                    .end = tag.span.start;
             }
             FrameKind::Route { .. } => {
                 self.components[owner.expect("route body")].range.end = tag.span.start
