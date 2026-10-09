@@ -6,7 +6,7 @@
 //! the build-script boundary requires tokens to be written as a .rs file.
 
 use crate::{BindingLocation, ExtractError, error};
-use proc_macro2::{Delimiter, Group, Ident, Spacing, Span, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, LexError, Spacing, Span, TokenStream, TokenTree};
 use quote::ToTokens;
 use std::collections::BTreeMap;
 
@@ -21,9 +21,10 @@ pub(super) struct Rust {
 
 impl Rust {
     pub fn parse(source: &str, code: &str, offset: usize) -> Result<Self, ExtractError> {
-        let tokens = code
-            .parse()
-            .map_err(|problem| error(source, offset, format!("invalid Rust tokens: {problem}")))?;
+        let tokens = code.parse().map_err(|problem| {
+            quote_error(source, code, offset, &problem)
+                .unwrap_or_else(|| error(source, offset, format!("invalid Rust tokens: {problem}")))
+        })?;
         Self::new(source, tokens, offset)
     }
 
@@ -85,6 +86,34 @@ impl Rust {
     pub fn span(&self) -> Span {
         self.span
     }
+}
+
+pub(super) fn quote_error(
+    source: &str,
+    code: &str,
+    offset: usize,
+    problem: &LexError,
+) -> Option<ExtractError> {
+    let position = problem.span().byte_range().start;
+    if !code[position..].starts_with('\'') {
+        return None;
+    }
+    // HTML entity decoding can change offsets. Refine the binding's location
+    // only when the Rust prefix still matches the authored source.
+    let offset = if source
+        .get(offset..)
+        .is_some_and(|authored| authored.starts_with(&code[..position]))
+    {
+        offset + position
+    } else {
+        offset
+    };
+    Some(error(
+        source,
+        offset,
+        "Rust strings use double quotes, e.g. \"dark\"; \
+         single-quoted character literals must contain one character, e.g. 'd'",
+    ))
 }
 
 /// Every parsed string is a new source file to proc-macro2, so its span is a
@@ -269,6 +298,7 @@ mod tests {
             r#"{ let π = 1..=3; π.map(|n| n << 2).sum::<i32>() >= -1 }"#,
             r###"format!(r#"{{ }} {}"#, "quotes \" backslash \\ newline\n")"###,
             "'outer: loop { break 'outer; }",
+            r#"('d', '🦀', '\n', '\'', b'd', "'dark'")"#,
             "macro_rules! test { ($($t:tt)*) => { $($t)* }; }",
             "{ /* ignored */ 1 // line comment\n+ 2 }",
         ] {

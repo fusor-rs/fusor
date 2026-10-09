@@ -418,6 +418,61 @@ fn server_direct_text_uses_escaped_writer_content_and_preserves_anchored_sibling
 }
 
 #[test]
+fn single_quoted_strings_explain_rust_quotes_at_the_bad_literal() {
+    for markup in [
+        r#"<p class:dark="state.theme == 'dark'"></p>"#,
+        r#"<p title="{{ 'dark' }}"></p>"#,
+        "<p>{{ 'dark' }}</p>",
+        "<p>{{ { let café = 1;\n'dark' } }}</p>",
+    ] {
+        let source = format!("{STATE}\n<section rust:component=Counter>{markup}</section>");
+        let error = extract(&source).unwrap_err();
+        let prefix = &source[..source.find("'dark'").unwrap()];
+        assert_eq!(
+            error.line,
+            prefix.lines().count() + usize::from(prefix.ends_with('\n'))
+        );
+        assert_eq!(
+            error.column,
+            prefix.rsplit('\n').next().unwrap().chars().count() + 1
+        );
+        assert_eq!(
+            error.message,
+            "Rust strings use double quotes, e.g. \"dark\"; \
+             single-quoted character literals must contain one character, e.g. 'd'"
+        );
+    }
+}
+
+#[test]
+fn unrelated_token_errors_do_not_suggest_changing_valid_quotes() {
+    for expression in [
+        "'d' + 🦀",
+        "{ /* 'dark' */ 🦀 }",
+        r#"{ let text = "'dark'"; 🦀 }"#,
+        "{ let text: &'static str = 🦀; }",
+    ] {
+        for markup in [
+            format!("<p>{{{{ {expression} }}}}</p>"),
+            format!(
+                "<button on:click=\"{}\"></button>",
+                expression.replace('&', "&amp;").replace('"', "&quot;")
+            ),
+        ] {
+            let error = extract(&format!(
+                "{STATE}<section rust:component=Counter>{markup}</section>"
+            ))
+            .unwrap_err();
+            assert!(
+                error.message.starts_with("invalid Rust tokens:")
+                    || error.message.starts_with("unclosed {{ Rust expression }}"),
+                "{error}"
+            );
+        }
+    }
+}
+
+#[test]
 fn handles_rust_blocks_strings_raw_strings_comments_and_html_entities() {
     let source = format!(
         r###"{STATE}

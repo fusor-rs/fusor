@@ -23,7 +23,8 @@
       <p>{{ {
         fn borrow&lt;'a>(value: &amp;'a str) -> &amp;'a str { value }
         let r#type = (1..=3).map(|n| n &lt;&lt; 1).sum::&lt;i32>();
-        format!("{} {}", borrow("🦀"), r#type)
+        let character = '🦀';
+        format!("{} {}", borrow(&amp;character.to_string()), r#type)
       } }}</p>
       <ul><ForEach items="{{ state.items.get() }}"
           key="{{ |item| item.id }}">

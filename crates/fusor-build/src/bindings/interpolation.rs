@@ -1,7 +1,7 @@
 //! Find HTML interpolation boundaries without defining a Rust expression grammar.
 use super::{
     ir::{InterpolatedString, StringPart},
-    tokens::Rust,
+    tokens::{Rust, quote_error},
 };
 use crate::{ExtractError, error};
 use html5gum::{Token, Tokenizer};
@@ -34,6 +34,7 @@ pub(super) fn interpolations(
     while let Some(start) = value[cursor..].find("{{").map(|n| cursor + n) {
         let mut search = start + 2;
         let mut found = None;
+        let mut quote_hint = None;
         while let Some(end) = value[search..].find("}}").map(|n| search + n) {
             let raw = &value[start + 2..end];
             let expression = if html_text {
@@ -45,7 +46,12 @@ pub(super) fn interpolations(
             // delimiter inside a line comment consumes the closing brace and
             // fails this check. No sentinel identifier or custom Rust lexer.
             let probe = format!("{{{expression}}}");
-            if let Ok(tokens) = probe.parse::<TokenStream>() {
+            let parsed = probe.parse::<TokenStream>();
+            if let Err(problem) = &parsed {
+                quote_hint =
+                    quote_hint.or_else(|| quote_error(source, &probe, offset + start + 1, problem));
+            }
+            if let Ok(tokens) = parsed {
                 let mut tokens = tokens.into_iter();
                 if let (Some(TokenTree::Group(group)), None) = (tokens.next(), tokens.next()) {
                     debug_assert_eq!(group.delimiter(), Delimiter::Brace);
@@ -62,10 +68,10 @@ pub(super) fn interpolations(
             // Advance one byte, so nested `}}}` endings are not skipped.
             search = end + 1;
         }
-        let interpolation = found.ok_or_else(|| error(
+        let interpolation = found.ok_or_else(|| quote_hint.unwrap_or_else(|| error(
             source, offset + start,
             "unclosed {{ Rust expression }} or unbalanced Rust tokens; escape < and & using HTML entities in text",
-        ))?;
+        )))?;
         cursor = interpolation.range.end;
         result.push(interpolation);
     }

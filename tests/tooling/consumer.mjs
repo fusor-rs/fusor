@@ -62,6 +62,23 @@ try {
   assert.ok(!html.includes('type="text/rust"') && !html.includes("rust:component"));
   console.log("PASS: a separate Cargo application compiles every supported binding through public APIs");
 
+  for (const [before, after] of [
+    ['class:active="state.enabled.get()"', 'class:active="state.name.get() == \'dark\'"'],
+    ['{{ selected.get().name }}', "{{ 'dark' }}"],
+  ]) {
+    assert.ok(good.includes(before));
+    const broken = good.replace(before, after);
+    const prefix = broken.slice(0, broken.indexOf("'dark'", broken.indexOf(after)));
+    const line = prefix.split("\n").length;
+    const column = [...prefix.split("\n").at(-1)].length + 1;
+    await writeFile(htmlPath, broken);
+    const result = await compile();
+    assert.equal(result.success, false, after);
+    assert.ok(result.stderr.includes(`index.html:${line}:${column}: Rust strings use double quotes`), result.stderr);
+    assert.ok(result.stderr.includes("single-quoted character literals must contain one character"), result.stderr);
+    console.log(`PASS: single-quoted strings point to HTML ${line}:${column} with Rust quote guidance`);
+  }
+
   for (const [before, after, errorCode] of [
     ['key="{{ |item| item.id }}"', 'key="{{ |item| item.missing_id }}"', "E0609"],
     ['<Row item="{{ item.clone() }}">', '<Row nonexistent="{{ item.clone() }}">', "E0560"],
