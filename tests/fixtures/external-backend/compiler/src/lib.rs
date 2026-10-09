@@ -17,13 +17,13 @@ impl Backend for Memory {
         quote! {
             use ::memory_renderer::Component as __MemoryComponent;
             const _: () = assert!(::memory_renderer::VERSION == 1);
-            const _: () = assert!(::fusor::render::VERSION == 1);
+            const _: () = assert!(::fusor::render::VERSION == 2);
             const _: () = assert!(::fusor::coherence::VERSION == 2);
             const _: () = assert!(::fusor_components::BACKEND_VERSION == 1);
         }
     }
     fn version(&self) -> u32 {
-        3
+        4
     }
     fn name(&self) -> &str {
         "memory fixture"

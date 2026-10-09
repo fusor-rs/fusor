@@ -114,7 +114,36 @@ fn incoming_children(component: &Component, ctx: Ctx) -> TokenStream {
     }
 }
 
-fn children_factory(index: Option<usize>, ctx: Ctx) -> TokenStream {
+fn children_factory(slots: &[ChildFragment], ctx: Ctx) -> TokenStream {
+    let default = slots
+        .iter()
+        .find(|slot| slot.name.is_none())
+        .map(|slot| slot.body);
+    let default = child_factory(default, ctx);
+    let mut named = slots
+        .iter()
+        .filter_map(|slot| {
+            slot.name.as_ref().map(|name| {
+                let factory = child_factory(Some(slot.body), ctx);
+                quote! { (#name, #factory) }
+            })
+        })
+        .peekable();
+    if named.peek().is_none() {
+        default
+    } else {
+        quote! { (#default).with_named([#(#named),*]) }
+    }
+}
+
+fn selected_children(name: &Option<String>) -> TokenStream {
+    match name {
+        Some(name) => quote! { __fusor_children.named(#name) },
+        None => quote! { __fusor_children },
+    }
+}
+
+fn child_factory(index: Option<usize>, ctx: Ctx) -> TokenStream {
     let children = &ctx.runtime.children;
     let Some(index) = index.filter(|index| !ctx.components[*index].empty) else {
         return quote! { #children::default() };
@@ -144,12 +173,16 @@ fn children_factory(index: Option<usize>, ctx: Ctx) -> TokenStream {
 
 fn shared_children_factory(
     id: fusor::template::MountId,
-    child: usize,
+    slots: &[ChildFragment],
     ctx: Ctx,
 ) -> (Ident, TokenStream) {
     let make = indexed("make_children", id.index());
-    let children = children_factory(Some(child), ctx);
-    let captures = captures(Span::call_site(), ctx, &ctx.components[child].async_locals);
+    let children = children_factory(slots, ctx);
+    let locals = slots
+        .first()
+        .map(|slot| ctx.components[slot.body].async_locals.as_slice())
+        .unwrap_or(&[]);
+    let captures = captures(Span::call_site(), ctx, locals);
     let setup = quote! {
         let #make = {
             #captures
@@ -549,7 +582,7 @@ fn binding(item: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream {
         Binding::ForEach { .. } => list(item, ctx, locals),
         Binding::Router { routes, .. } => (TokenStream::new(), router(routes, ctx, locals)),
         Binding::Invocation { children, .. } => {
-            return invocation(item, children_factory(*children, ctx), ctx, locals);
+            return invocation(item, children_factory(children, ctx), ctx, locals);
         }
         _ => return ctx.backend.binding(item, ctx, locals),
     };

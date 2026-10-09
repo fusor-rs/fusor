@@ -129,7 +129,7 @@ fn children_render_with_receiving_context_and_restore_the_caller_on_error() {
             children: Option<&fusor_server::Children<'_>>,
         ) -> Result<Html, String> {
             assert_eq!(*context.owner().context::<Locale>().unwrap(), "child");
-            children.unwrap()(context)
+            children.unwrap()(context, Some("footer"))
         }
     }
     let mut context = Context::new();
@@ -139,12 +139,13 @@ fn children_render_with_receiving_context_and_restore_the_caller_on_error() {
             owner.provide::<Locale>("child").unwrap();
             Ok(Panel)
         },
-        Some(&|context| {
+        Some(&|context, slot| {
+            assert_eq!(slot, Some("footer"));
             assert_eq!(*context.owner().context::<Locale>().unwrap(), "child");
             Err("failed child render".into())
         }),
     );
-    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), "failed child render");
     assert_eq!(*context.owner().context::<Locale>().unwrap(), "parent");
 }
 
@@ -166,7 +167,7 @@ fn streamed_custom_renderers_keep_children_owner_and_key_metadata() {
             children: Option<&fusor_server::Children<'_>>,
         ) -> Result<Html, String> {
             assert_eq!(*context.owner().context::<Locale>().unwrap(), "child");
-            children.unwrap()(context)
+            children.unwrap()(context, None)
         }
     }
     let mut context = Context::new();
@@ -181,7 +182,8 @@ fn streamed_custom_renderers_keep_children_owner_and_key_metadata() {
                     owner.provide::<Locale>("child").unwrap();
                     Ok(Panel)
                 },
-                Some(&|context| {
+                Some(&|context, slot| {
+                    assert_eq!(slot, None);
                     assert_eq!(*context.owner().context::<Locale>().unwrap(), "child");
                     if fail {
                         return Err("failure".into());

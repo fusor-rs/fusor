@@ -297,6 +297,11 @@ pub(super) struct CaseBranch {
     pub body: usize,
 }
 
+pub(super) struct ChildFragment {
+    pub name: Option<String>,
+    pub body: usize,
+}
+
 pub(super) enum Binding {
     Branch {
         point: MountId,
@@ -316,6 +321,7 @@ pub(super) enum Binding {
         body: usize,
     },
     Children {
+        name: Option<String>,
         point: MountId,
         origin: Rust,
     },
@@ -323,7 +329,7 @@ pub(super) enum Binding {
         point: MountId,
         ty: Rust,
         inputs: Vec<Input>,
-        children: Option<usize>,
+        children: Vec<ChildFragment>,
         condition: Option<Rust>,
         key: Option<Rust>,
     },
@@ -477,7 +483,7 @@ impl Binding {
                 children, inputs, ..
             } => children
                 .iter()
-                .copied()
+                .map(|child| child.body)
                 .chain(inputs.iter().filter_map(|input| match input.value {
                     InputValue::Content { component, .. } => Some(component),
                     _ => None,

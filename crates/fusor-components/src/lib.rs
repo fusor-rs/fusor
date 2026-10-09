@@ -31,7 +31,9 @@ impl App {
 
 /// The built-in child-content placement. In HTML, `<Children></Children>`
 /// renders the receiving component's nested HTML, without a wrapper or Rust input.
-/// Each component may place it once. The compiler supplies its runtime factory.
+/// An optional `name="footer"` selects the caller's `<template slot="footer">`.
+/// Each component may place each slot once. Missing slots render nothing;
+/// unused fragments never mount. The compiler supplies their runtime factories.
 pub struct Children;
 
 /// Coordinates all participating Await reads under one native HTML root.

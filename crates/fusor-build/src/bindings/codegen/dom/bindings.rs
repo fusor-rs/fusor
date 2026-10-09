@@ -14,9 +14,12 @@ pub(super) fn emit(binding: &Binding, ctx: Ctx<'_>, locals: &[Rust]) -> TokenStr
         } => {
             unreachable!("recursive browser bindings share their constructors across modes")
         }
-        Binding::Children { point: id, .. } => {
+        Binding::Children {
+            point: id, name, ..
+        } => {
+            let children = selected_children(name);
             let point = point(*id);
-            quote! { __fusor_scope.children_at(&#point, &__fusor_children)?; }
+            quote! { __fusor_scope.children_at(&#point, &#children)?; }
         }
         Binding::Island { .. } => fail(span, "independent islands must be rendered by the server"),
         Binding::Region {
@@ -154,10 +157,14 @@ fn browser_binding(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> B
         Binding::Invocation {
             point,
             inputs,
-            children: Some(child),
+            children,
             ..
-        } if !ctx.components[*child].empty && !has_content(inputs) => {
-            shared_children(item, *point, *child, ctx, locals)
+        } if children
+            .iter()
+            .any(|child| !ctx.components[child.body].empty)
+            && !has_content(inputs) =>
+        {
+            shared_children(item, *point, children, ctx, locals)
         }
         Binding::Region {
             node,
@@ -175,11 +182,11 @@ fn browser_binding(item: &Binding, shared: bool, ctx: Ctx, locals: &[Rust]) -> B
 fn shared_children(
     item: &Binding,
     id: MountId,
-    child: usize,
+    children: &[ChildFragment],
     ctx: Ctx,
     locals: &[Rust],
 ) -> BindingCode {
-    let (make, shared) = shared_children_factory(id, child, ctx);
+    let (make, shared) = shared_children_factory(id, children, ctx);
     BindingCode {
         shared,
         ordinary: codegen::invocation(

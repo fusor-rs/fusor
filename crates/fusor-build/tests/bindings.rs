@@ -880,10 +880,52 @@ fn children_lower_to_lazy_fragments_with_lexical_bindings_and_no_wrapper() {
 }
 
 #[test]
+fn children_allow_distinct_named_placements() {
+    let page = extract(&format!(
+        r#"{STATE}<template rust:component="Counter"><section>
+<Children></Children><footer><Children name="footer"></Children></footer>
+</section></template>"#
+    ))
+    .unwrap();
+    assert!(!page.html.contains("<Children"));
+    assert_eq!(page.html.matches("<!--fusor:mount:").count(), 2);
+    for body in [
+        "<template slot=footer>Footer</template>",
+        "Before<template slot=footer>Footer</template>After",
+        "<template slot=footer></template><template slot=header></template>",
+    ] {
+        let page = extract(&format!(
+            "{STATE}<main rust:component=Counter><Panel>{body}</Panel></main>"
+        ))
+        .unwrap();
+        assert!(!page.html.contains("slot="));
+        assert_eq!(
+            page.html.matches("Footer").count(),
+            usize::from(body.contains("Footer"))
+        );
+        if body.starts_with("Before") {
+            assert!(page.html.contains("BeforeAfter"));
+        }
+    }
+}
+
+#[test]
 fn children_reject_duplicate_placement_attributes_fallbacks_and_app_forwarding() {
     for markup in [
         "<Children></Children><Children></Children>",
-        "<Children name=body></Children>",
+        "<Children unknown=body></Children>",
+        "<Children name=body></Children><Children name=body></Children>",
+        "<Children name=\"\"></Children>",
+        "<Children name=\"{{ state.name }}\"></Children>",
+        "<Panel><template slot=footer></template><template slot=footer></template></Panel>",
+        "<template slot=footer></template>",
+        "<Panel><div><template slot=footer></template></div></Panel>",
+        "<Panel><template slot=\"\"></template></Panel>",
+        "<Panel><template slot=footer class=extra></template></Panel>",
+        "<Panel><template slot=footer /></Panel>",
+        "<Panel><template slot=footer></template><template rust:content=body><p></p></template></Panel>",
+        "<Panel><template rust:content=body><p></p></template><template slot=footer></template></Panel>",
+        "<Panel><template slot=footer><Children name=actions></Children></template></Panel><Children name=actions></Children>",
         "<Children>Fallback</Children>",
         "<Children />",
         "<children></children>",
@@ -937,6 +979,16 @@ fn children_html_changes_rebuild_instead_of_statically_refreshing_live_fragments
             .collect()
     }
     assert_ne!(hashes(&first.rust), hashes(&second.rust));
+    for markup in [
+        "<Children name=footer></Children>",
+        "<Panel><template slot=footer><p>Same</p></template></Panel>",
+    ] {
+        let source =
+            format!("{STATE}<main rust:component=Counter rust:render=shared>{markup}</main>");
+        let first = extract(&source).unwrap();
+        let second = extract(&source.replace("footer", "header")).unwrap();
+        assert_ne!(hashes(&first.rust), hashes(&second.rust));
+    }
 }
 
 #[test]
@@ -1683,14 +1735,14 @@ fn nested_lists_do_not_multiply_emitted_row_bodies() {
 
 #[test]
 fn nested_supplied_children_share_bodies_across_wrapper_mode_selection() {
-    let mut body = "<span>{{ state.shared_leaf() }}</span>".to_owned();
+    let mut body = "<Wrapper><template slot=footer><span>{{ state.shared_leaf() }}</span></template></Wrapper>".to_owned();
     for depth in 1..=6 {
         body = format!(
             "<Wrapper><section><If condition=\"{{{{ state.visible.get() }}}}\">{body}</If></section></Wrapper>"
         );
         let page = extract(&format!(
             "{STATE}<template rust:component=Counter><main>{body}</main></template>\
-             <template rust:component=Wrapper><section><Children></Children></section></template>"
+             <template rust:component=Wrapper><section><Children></Children><Children name=footer></Children></section></template>"
         ))
         .unwrap();
         assert_eq!(
@@ -1754,11 +1806,17 @@ fn structural_control_flow_rejects_ambiguous_structure_and_invalid_patterns() {
 
 #[test]
 fn exclusive_branches_can_each_place_children_but_not_duplicate_them() {
+    for placement in ["<Children></Children>", "<Children name=footer></Children>"] {
+        let source = format!(
+            r#"{STATE}<template rust:component=Counter><main><If condition="{{{{ true }}}}">{placement}<Else>{placement}</Else></If></main></template>"#
+        );
+        extract(&source).unwrap();
+        assert!(extract(&source.replace("<main>", &format!("<main>{placement}"))).is_err());
+    }
     let source = format!(
-        r#"{STATE}<template rust:component=Counter><main><If condition="{{{{ true }}}}"><Children></Children><Else><Children></Children></Else></If></main></template>"#
+        r#"{STATE}<main rust:component=Counter><If condition="{{{{ true }}}}"><Children name=header></Children><Else><Children name=footer></Children></Else></If><Children name=footer></Children></main>"#
     );
-    extract(&source).unwrap();
-    assert!(extract(&source.replace("<main>", "<main><Children></Children>")).is_err());
+    assert!(extract(&source).is_err());
 }
 
 /// Extract `markup` inside a component and return the error's column and message.

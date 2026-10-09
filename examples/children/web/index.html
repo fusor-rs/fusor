@@ -9,10 +9,14 @@
   <Forward rust:if="state.visible.get()" rust:key="state.version.get()">
     Hello {{ state.count.get() }}!
     <button id="add" on:click="state.count.update(|n| *n += 1)">Add</button>
+    <template slot="actions">
+      <button id="named-remove" on:click="state.visible.set(false)">Remove {{ state.count.get() }}</button>
+      <input id="named-draft" aria-label="Footer draft">
+    </template>
     <input id="draft" aria-label="Draft">
     <Tracked live="{{ state.live.clone() }}"></Tracked>
     <ul><ForEach items="{{ state.rows.get() }}" key="{{ |item| *item }}"><li>
-      <Panel><span class="row">{{ index.get() }}:{{ item.get() }}</span></Panel>
+      <Panel><span class="row">{{ index.get() }}:{{ item.get() }}</span><template slot="footer"><span class="row-footer">{{ index.get() }}:{{ item.get() }}</span></template></Panel>
     </li></ForEach></ul>
   </Forward>
   <CoherentForward placed="{{ state.placed.clone() }}" rust:if="state.visible.get()">
@@ -24,14 +28,18 @@
         </li></ForEach></ul>
       </If>
     </Case><Case pattern="None"></Case></Match>
+    <template slot="footer">Named text {{ state.count.get() }}<button id="coherent-footer" on:click="state.count.update(|n| *n += 1)">Footer {{ state.count.get() }}</button></template>
   </CoherentForward>
+  <div id="named-rows"><ForEach items="{{ state.rows.get() }}" key="{{ |item| *item }}">
+    <Panel><template slot="footer"><span class="direct-row-footer">{{ index.get() }}:{{ item.get() }}</span></template></Panel>
+  </ForEach></div>
   <Table><tr><td id="cell">{{ state.count.get() }}</td></tr></Table>
   <div id="empty"><Panel></Panel></div>
-  <Ignore><Tracked live="{{ state.live.clone() }}"></Tracked></Ignore>
+  <Ignore><Tracked live="{{ state.live.clone() }}"></Tracked><template slot="unused"><Tracked live="{{ state.live.clone() }}"></Tracked></template></Ignore>
 </main></App>
-<template rust:component="Panel"><section class="panel"><Children></Children></section></template>
-<template rust:component="Forward"><aside class="forward"><Panel><Children></Children></Panel></aside></template>
-<template rust:component="CoherentForward"><Async><section id="coherent-forward"><Panel><If condition="{{ state.placed.get() }}"><Children></Children><Else><p class="unplaced">Children paused</p></Else></If></Panel></section></Async></template>
+<template rust:component="Panel"><section class="panel"><Children></Children><footer><Children name="footer"></Children></footer></section></template>
+<template rust:component="Forward"><aside class="forward"><Panel><Children></Children><template slot="footer"><Children name="actions"></Children></template></Panel></aside></template>
+<template rust:component="CoherentForward"><Async><section id="coherent-forward"><Panel><If condition="{{ state.placed.get() }}"><Children></Children><Else><p class="unplaced">Children paused</p></Else></If><template slot="footer"><Children name="footer"></Children></template></Panel></section></Async></template>
 <template rust:component="Ignore"><p>Unused children do not start work.</p></template>
 <template rust:component="Tracked"><button id="local" on:click="state.clicks.update(|n| *n += 1)">{{ state.clicks.get() }}</button></template>
 </body></html>

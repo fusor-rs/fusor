@@ -15,6 +15,21 @@ pub(super) fn hash(component: &Component, components: &[Component]) -> String {
         hash.update([0]);
     }
     for binding in Binding::walk(&component.bindings) {
+        match binding {
+            Binding::Children { name, .. } => {
+                hash.update([0]);
+                hash.update(name.as_deref().unwrap_or("").as_bytes());
+                hash.update([0]);
+            }
+            Binding::Invocation { children, .. } => {
+                for child in children {
+                    hash.update([0]);
+                    hash.update(child.name.as_deref().unwrap_or("").as_bytes());
+                    hash.update([0]);
+                }
+            }
+            _ => {}
+        }
         if let Binding::Router { routes, .. } = binding {
             for route in routes {
                 hash.update(route.path.as_deref().unwrap_or("<fallback>").as_bytes());
@@ -34,15 +49,30 @@ pub(super) fn hash(component: &Component, components: &[Component]) -> String {
 fn construct_child(
     ty: &Rust,
     inputs: &[Input],
-    children: Option<usize>,
+    children: &[ChildFragment],
     components: &[Component],
     into: bool,
 ) -> TokenStream {
     let fields = super::emit::fields(inputs, super::emit::braced);
-    let body = children
-        .filter(|index| !components[*index].empty)
-        .map(|index| component_body(&components[index], components, false));
-    let content = super::emit::option(body.map(|body| quote! { &(|__fusor_context: &mut ::fusor_server::Context<'_>| { #body }) as &::fusor_server::Children<'_> }));
+    let mut children = children
+        .iter()
+        .filter(|child| !components[child.body].empty)
+        .peekable();
+    let content = super::emit::option(children.peek().is_some().then(|| {
+        let arms = children.map(|child| {
+            let name = super::emit::option(child.name.as_ref().map(|name| quote! { #name }));
+            let body = component_body(&components[child.body], components, false);
+            quote! { #name => #body }
+        });
+        quote! {
+            &(|__fusor_context: &mut ::fusor_server::Context<'_>, __fusor_slot: ::std::option::Option<&str>| {
+                match __fusor_slot {
+                    #(#arms,)*
+                    _ => ::std::result::Result::Ok(::fusor_server::Writer::new().finish()),
+                }
+            }) as &::fusor_server::Children<'_>
+        }
+    }));
     let method = if into {
         quote! { try_child_into_with_children }
     } else {
@@ -183,7 +213,7 @@ fn forwarding_child(
     else {
         return None;
     };
-    Some(construct_child(ty, inputs, *children, components, into))
+    Some(construct_child(ty, inputs, children, components, into))
 }
 
 /// Walks a component's compiled HTML and emits the Rust that writes it on the server.
@@ -453,12 +483,13 @@ impl<'a> ServerRender<'a> {
             });
             self.body.push(quote_spanned! {value.span()=> { let __fusor_value = { #value }; #[deny(non_snake_case)] match __fusor_value { #(#arms),* } } });
         }
-        if component
+        if let Some(Binding::Children { name, .. }) = component
             .bindings
             .iter()
-            .any(|binding| matches!(binding, Binding::Children { point, .. } if *point == id))
+            .find(|binding| matches!(binding, Binding::Children { point, .. } if *point == id))
         {
-            self.body.push(quote! { if let ::std::option::Option::Some(children) = __fusor_children { let child = children(__fusor_context)?; __fusor_writer.child(&child); } });
+            let name = super::emit::option(name.as_ref().map(|name| quote! { #name }));
+            self.body.push(quote! { if let ::std::option::Option::Some(children) = __fusor_children { let child = children(__fusor_context, #name)?; __fusor_writer.child(&child); } });
         }
         if let Some(Binding::Invocation {
             ty,
@@ -472,7 +503,7 @@ impl<'a> ServerRender<'a> {
             .find(|binding| matches!(binding, Binding::Invocation { point, .. } if *point == id))
         {
             let condition = super::emit::or(condition.as_ref(), quote! { true });
-            let child = construct_child(ty, inputs, *children, components, true);
+            let child = construct_child(ty, inputs, children, components, true);
             self.body.push(quote_spanned! {ty.span()=> if #condition {
                 __fusor_writer.child_into(|__fusor_writer| #child)?;
             } });

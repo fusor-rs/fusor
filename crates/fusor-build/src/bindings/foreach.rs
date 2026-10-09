@@ -130,8 +130,8 @@ fn forwards_item_only(component: &Component, components: &[Component]) -> bool {
     };
     // The parser retains an empty Children fragment for explicit closing tags.
     // children_factory discards it. No descendant code is evaluated or captured.
-    if children.is_some_and(|index| {
-        let child = &components[index];
+    if children.iter().any(|slot| {
+        let child = &components[slot.body];
         !child.empty || !child.bindings.is_empty()
     }) {
         return false;

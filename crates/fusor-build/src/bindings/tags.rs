@@ -271,7 +271,7 @@ pub(super) fn invocation(
         }
     }
     Ok(Binding::Invocation {
-        children: None,
+        children: Vec::new(),
         point,
         ty,
         inputs,

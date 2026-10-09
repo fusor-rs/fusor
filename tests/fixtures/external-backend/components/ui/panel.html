@@ -4,7 +4,7 @@
     <button id="increment" on:click="state.count.update(|count| *count += 1)">{{ state.title }}: {{ state.count.get() }}</button>
     <input id="number" type="text" bind="state.number" on:input="state.observed.set(state.number.get())">
     <input id="checked" type="checkbox" bind="state.checked">
-    <Frame title="Receiver"><span id="projected">{{ state.title }}</span></Frame>
+    <Frame title="Receiver"><span id="projected">{{ state.title }}</span><template slot="footer"><span id="named-number">{{ state.number.get() }}</span></template></Frame>
     <Match value="{{ Some(state.number.get()) }}">
       <Case pattern="Some(number)"><span id="payload">{{ number.get() }}</span></Case>
       <Case pattern="None"><span>Absent</span></Case>
@@ -36,7 +36,7 @@
       <Await value="{{ state.read }}" let="result"><div>
         <p id="async-value">{{ result.as_str() }}</p>
         <Await value="{{ state.read }}" let="again"><p id="nested-ready">{{ format!("{}:{}:{}", state.prefix, result.as_str(), again.as_str()) }}</p></Await>
-        <Frame title="Async"><Frame title="Nested"><span id="async-children">{{ result.as_str() }}</span></Frame></Frame>
+        <Frame title="Async"><Frame title="Nested"><span id="async-children">{{ result.as_str() }}</span><template slot="footer"><span id="async-named">{{ result.as_str() }}</span></template></Frame></Frame>
         <If condition="{{ state.visible.get() }}"><button id="async-remove" on:click="state.visible.set(false)">Remove</button></If>
         <button id="async-click" on:click="state.clicks.update(|n| *n += 1)">{{ state.clicks.get() }}</button>
       </div></Await>
@@ -51,7 +51,7 @@
   <Await value="{{ state.read }}" let="row"><p class="async-row">{{ row.as_str() }}</p></Await>
 </template>
 <template rust:component="Frame">
-  <div class="frame"><span>{{ state.title }}</span><Children></Children></div>
+  <div class="frame"><span>{{ state.title }}</span><Children></Children><div class="frame-footer"><Children name="footer"></Children></div></div>
 </template>
 <template rust:component="Child">
   <div class="child">
