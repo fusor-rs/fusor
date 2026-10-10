@@ -173,6 +173,27 @@ fn source_graph_links_unique_templates_once_and_emits_normal_rust_modules() {
 }
 
 #[test]
+fn artifact_lists_every_class_binding_name_once() {
+    let dir = setup();
+    fs::write(
+        dir.path().join("web/counter.html"),
+        r#"
+<script type="text/rust">pub struct Counter;</script>
+<template rust:component="Counter"><p class="static" class:md:bg-[#ABC]="true">
+  <If condition="{{ true }}"><b class:hover:underline="false"></b></If>
+  <i class:md:bg-[#ABC]="false"></i>
+</p></template>
+"#,
+    )
+    .unwrap();
+    let artifact = generate(&dir.path().join("Cargo.toml"), &dir.path().join("out")).unwrap();
+    assert_eq!(
+        artifact.classes.iter().collect::<Vec<_>>(),
+        ["hover:underline", "md:bg-[#abc]"]
+    );
+}
+
+#[test]
 fn duplicate_files_and_non_template_components_are_rejected_with_source_context() {
     let dir = setup();
     let path = dir.path().join("web/counter.html");
@@ -226,6 +247,8 @@ fn configuration_rejects_typos_invalid_modules_and_overlapping_output() {
         ),
         valid.replace("entry =", "assets-build = [\"\"]\nentry ="),
         valid.replace("entry =", "dev-refresh = \"false\"\nentry ="),
+        valid.replace("entry =", "tailwind = \"../app.css\"\nentry ="),
+        valid.replace("entry =", "tailwind = \"dist/app.css\"\nentry ="),
     ] {
         fs::write(&path, &text).unwrap();
         assert!(AppConfig::load(&path).is_err(), "accepted {text}");

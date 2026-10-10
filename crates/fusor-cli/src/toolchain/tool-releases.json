@@ -4,5 +4,12 @@
   "wasm-bindgen-0.2.117-aarch64-unknown-linux-musl.tar.gz": "a9e2c56bf58a95bdfd8f2a67f726a3d11fa873cfe984468e5bbf0e48cb7dd923",
   "wasm-bindgen-0.2.117-x86_64-apple-darwin.tar.gz": "17d991583d7036cd773b62eb8c0f295dd31cde7bf9ab250276be56f9138723d3",
   "wasm-bindgen-0.2.117-x86_64-pc-windows-msvc.tar.gz": "54d52650adcf93e332d1d02c94c81925dfbda1f1292cecf276a0507263a4936f",
-  "wasm-bindgen-0.2.117-x86_64-unknown-linux-musl.tar.gz": "97f527f7c7956f69a88a4bdb5176142ebc4e255c2dbe3805ec4f373421028240"
+  "wasm-bindgen-0.2.117-x86_64-unknown-linux-musl.tar.gz": "97f527f7c7956f69a88a4bdb5176142ebc4e255c2dbe3805ec4f373421028240",
+  "tailwindcss-v4.3.3-linux-arm64": "55fd0b241214eff3de1e8ee4f22796662f2d2e7a49bcfca7477cfd0bac398195",
+  "tailwindcss-v4.3.3-linux-arm64-musl": "71ea4be79c9de9827545682df3e040053fb535d37c71ed2cfdedf9385a0868e0",
+  "tailwindcss-v4.3.3-linux-x64": "dc61b3ac6b8c9ca874c0cc4c57b2409791a64c5540404ca5f5367360babc313a",
+  "tailwindcss-v4.3.3-linux-x64-musl": "a04d34ceacc8f52cbe8920ad846cdeb61d3d0021dba32db0d1f77c9d9fad7a6c",
+  "tailwindcss-v4.3.3-macos-arm64": "cdf646702987a743464dff4d9c60fd4480d1c1e73dd819a9a67f1078815dce9d",
+  "tailwindcss-v4.3.3-macos-x64": "7922e0953f2110c05976e3bf58f14e643d90427575e766b7d433f5f80cbee7e1",
+  "tailwindcss-v4.3.3-windows-x64.exe": "e0e260ce048014e9268f6237ff18f8ccf02cef521cbd0ae04e82c2cdf7aa3955"
 }

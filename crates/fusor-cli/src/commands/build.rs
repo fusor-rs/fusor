@@ -139,6 +139,11 @@ fn application(
         &format!("{prefix}/{}", layout::PACKAGE),
         mode == BuildMode::Release,
     )?)?;
+    let styles: Vec<String> =
+        pipeline::tailwind::compile(project, &compilation.manifest, &package, mode)?
+            .into_iter()
+            .chain(bundle.styles.iter().cloned())
+            .collect();
     write_boot(project, &publication, &compilation.manifest, workers, mode)?;
     // Development pages keep the loader's own discovery order.
     let modules = if dev {
@@ -152,7 +157,7 @@ fn application(
             &compilation.manifest,
             &prefix,
             dev.then_some(0),
-            &bundle.styles,
+            &styles,
             &modules,
         )?,
     )?;

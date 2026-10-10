@@ -1,13 +1,15 @@
-//! Rust, the Wasm target, wasm-bindgen and npm packages. `build` and `check`
-//! never prepare; `install`, `new` and `dev` do, and may use the network.
+//! Rust, the Wasm target, wasm-bindgen, Tailwind CSS and npm packages.
+//! `build` and `check` never prepare; `install`, `new` and `dev` do, and may
+//! use the network.
 pub(crate) mod bindgen;
+mod download;
 pub(crate) mod node;
 pub(crate) mod rust;
+pub(crate) mod tailwind;
 
 use crate::{
     context::Context,
     error::{Error, Result},
-    layout,
     process::{cargo, checked},
     workspace::Project,
 };
@@ -36,10 +38,10 @@ pub(crate) fn cache_dir() -> Result<PathBuf> {
 
 /// Keyed by version and host, so projects on different releases do not fight
 /// over one binary.
-pub(crate) fn tools_root() -> Result<PathBuf> {
+fn tool_root(tool: &str, version: &str) -> Result<PathBuf> {
     Ok(cache_dir()?
-        .join("wasm-bindgen")
-        .join(layout::BINDGEN_VERSION)
+        .join(tool)
+        .join(version)
         .join(env!("FUSOR_HOST")))
 }
 
@@ -76,6 +78,9 @@ pub(crate) fn prepare(
     }
     rust::install_target(cx, &project.root)?;
     bindgen::install(cx, &project.root)?;
+    if project.config.tailwind.is_some() {
+        tailwind::install(cx)?;
+    }
     node::prepare(cx, project, explicit, initial_javascript)?;
     if explicit {
         cx.reporter

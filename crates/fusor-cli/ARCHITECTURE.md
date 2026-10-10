@@ -47,8 +47,8 @@ src/
   transaction.rs   Staging and OwnedFile: how a partial write is undone
   commands/        one module per verb, plus the hidden repo check
   workspace/       Project, typed cargo metadata, application selection
-  toolchain/       Rust, the Wasm target, wasm-bindgen, npm
-  pipeline/        Publication, sites, Cargo, wasm-bindgen, diagnostics, output
+  toolchain/       Rust, the Wasm target, wasm-bindgen, Tailwind CSS, npm
+  pipeline/        Publication, sites, Cargo, wasm-bindgen, Tailwind, diagnostics, output
   dev/             server, HTTP policy, watcher, fast refresh
 ```
 
@@ -78,8 +78,8 @@ locations. Anything unclear (a source that does not tokenize, an unresolved
 file include, a JavaScript module) falls back to a normal build. `fusor-build`
 recognizes its generated includes and direct literal data includes. The CLI
 may clear a data include only when its file remains watched across publications
-and lies outside authored HTML and published assets; editing that file still
-requires a normal build.
+and lies outside authored HTML, published assets and the Tailwind stylesheet;
+editing that file still requires a normal build.
 
 ## Exit codes
 

@@ -121,6 +121,10 @@ export function patchDocument(before, after, live = document) {
 function refreshStyles(base, revision) {
   for (const link of document.querySelectorAll('link[rel="stylesheet"][href]')) {
     const url = new URL(link.href);
+    // Generated stylesheets are immutable; a changed one arrives under a new
+    // name through the document patch. A query here would make that patch
+    // see an attribute controlled by someone else and reload the page.
+    if (url.pathname.startsWith(`${base}__fusor/`)) continue;
     if (url.origin === location.origin && url.pathname.startsWith(base)) {
       url.searchParams.set("__fusor", String(revision));
       link.href = url.href;

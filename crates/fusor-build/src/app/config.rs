@@ -45,6 +45,8 @@ pub struct AppConfig {
     /// Optional executable and arguments, run in the package before publishing
     /// assets. No shell expansion or implicit dependency installation.
     pub assets_build: Vec<String>,
+    /// A Tailwind CSS stylesheet, compiled and linked into the page.
+    pub tailwind: Option<PathBuf>,
     /// Disable compatible refresh when custom build logic reads HTML/assets.
     pub dev_refresh: bool,
     pub output: PathBuf,
@@ -65,6 +67,7 @@ impl Default for AppConfig {
             entry: "web/index.html".into(),
             assets: BTreeMap::new(),
             assets_build: Vec::new(),
+            tailwind: None,
             dev_refresh: true,
             output: "dist".into(),
             base_path: "/".into(),
@@ -129,6 +132,9 @@ impl AppConfig {
     pub fn validate(&self) -> Result<()> {
         if let Some(delivery) = &self.delivery {
             delivery.validate()?;
+            if self.tailwind.is_some() {
+                return Err("tailwind is not supported with islands delivery".into());
+            }
         }
         if self
             .assets_build
@@ -182,6 +188,7 @@ impl AppConfig {
         for path in std::iter::once(&self.entry)
             .chain(self.components.values())
             .chain(self.templates.iter())
+            .chain(self.tailwind.iter())
             .chain(std::iter::once(&self.output))
         {
             if path.as_os_str().is_empty()
@@ -208,6 +215,7 @@ impl AppConfig {
         for source in std::iter::once(&self.entry)
             .chain(self.components.values())
             .chain(self.templates.iter())
+            .chain(self.tailwind.iter())
         {
             if source.starts_with(&self.output) || self.output.starts_with(source) {
                 return Err("output cannot overlap an application source path".into());

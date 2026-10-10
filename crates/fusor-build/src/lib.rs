@@ -62,6 +62,8 @@ pub struct Page {
     pub blocks: Vec<RustBlock>,
     pub locations: Vec<BindingLocation>,
     pub javascript: Vec<JavaScriptModule>,
+    /// Names toggled by `class:name` bindings, which leave no class in the HTML.
+    pub(crate) classes: std::collections::BTreeSet<String>,
     pub(crate) loader_offset: Option<usize>,
     pub(crate) component_count: usize,
     pub(crate) app_offset: Option<usize>,

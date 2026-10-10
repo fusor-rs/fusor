@@ -53,6 +53,7 @@ pub(crate) fn extract_from(
         component_count: compiled.component_count,
         app_offset: compiled.app_offset,
         javascript: compiled.javascript,
+        classes: compiled.classes,
     })
 }
 

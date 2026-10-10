@@ -19,6 +19,9 @@ pub(crate) const OUTPUT_MANIFEST: &str = ".fusor-output.json";
 /// Project-local CLI state; safe to delete.
 pub(crate) const STATE: &str = ".fusor";
 
+/// Under Cargo's target directory: each application's generated Tailwind entry.
+pub(crate) const TAILWIND_BUILD: &str = "fusor/tailwind";
+
 /// Kept apart from `dist/` so a dev run never clobbers a deployable build.
 pub(crate) const DEV_OUTPUT: &str = ".fusor/dev";
 
@@ -56,6 +59,7 @@ pub(crate) const TARGET: &str = "wasm32-unknown-unknown";
 pub(crate) const BINDGEN_VERSION: &str = "0.2.117";
 pub(crate) const ESBUILD_VERSION: &str = fusor_npm::ESBUILD_VERSION;
 pub(crate) const WASM_OPT_VERSION: &str = "132";
+pub(crate) const TAILWIND_VERSION: &str = "4.3.3";
 
 /// The Rust toolchain new projects pin. The CLI itself builds on older Rust;
 /// see the workspace `rust-version`.
