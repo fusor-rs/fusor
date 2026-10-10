@@ -113,8 +113,8 @@ Source watchers stop and join when the dev server returns. An active build finis
 before a watcher exits.
 
 A literal `include_str!` or `include_bytes!` can keep live refresh enabled when it reads a
-watched file outside the app's HTML templates and public assets. Editing that file rebuilds
-the app. Embedding a template or public asset, custom Rust file includes, and include paths
+watched file outside the app's HTML templates and published assets. Editing that file rebuilds
+the app. Embedding a template or published asset, custom Rust file includes, and include paths
 the CLI cannot resolve keep refresh disabled.
 
 In a workspace that declares a site, `fusor dev --site` does the same for every mounted
@@ -204,13 +204,14 @@ Progress output is best effort.
 An application declares `[package.metadata.fusor]` in its `Cargo.toml`. Paths are relative
 to the package, and unknown keys are rejected.
 
-The values below are the defaults, except `assets`, which new applications set to `public`.
+The values below are the defaults, except `assets`, which new applications set to publish
+`public/` at the site root.
 
 ```toml title=Cargo.toml
 [package.metadata.fusor]
 entry = "web/index.html"        # the HTML entry page
 templates = ["web/components"]  # searched for reusable HTML; [] turns discovery off
-assets = "public"               # copied into the published site
+assets = { "/" = "public" }     # files copied into the published site
 assets-build = []               # a program and its arguments, run before assets are copied
 output = "dist"                 # where fusor build publishes
 base-path = "/"                 # the URL path the site is served under
@@ -223,12 +224,43 @@ dev-refresh = true              # false when build logic reads HTML or assets
 
 - [Set up island delivery](/docs/islands/setup)
 
+### Publish static files {#assets}
+
+Each entry under `assets` maps a URL path, relative to `base-path`, to the files published
+there. A URL ending in `/` is a directory; any other URL is a single file.
+
+```toml title=Cargo.toml
+[package.metadata.fusor.assets]
+"/" = "public"
+"/install.sh" = "../../install.sh"
+"/source/" = { files = ["src/*.rs", "web/**/*.html"], suffix = ".txt" }
+```
+
+| Source | What it publishes |
+| --- | --- |
+| A directory, such as `"public"` | Every file beneath it, hidden files included, keeping its layout |
+| A file, such as `"../../install.sh"` | That file, under the URL's file name |
+| A pattern, such as `"src/*.rs"` | Each matching file, relative to the path before the first wildcard |
+| A list | Everything each item publishes |
+| `{ files = …, suffix = ".txt" }` | The same files, with the suffix added to each published name |
+
+Patterns use `*`, `?`, `[…]` and `**` for any number of directories. `*` does not match a
+leading dot, so write `.well-known/*` to publish hidden files. With the entry above,
+`src/app.rs` becomes `/source/app.rs.txt` and `web/components/card.html` becomes
+`/source/components/card.html.txt`. The `.txt` suffix makes browsers display source code
+instead of running it or downloading it.
+
+Paths are relative to the package and may start with `../`. A build fails when a pattern
+matches no files, when a file URL matches more than one file, when two files would be
+published at the same URL, or when a file would replace `index.html` or another name fusor
+writes. A pattern must start with a directory so it cannot search the output directory.
+
 `assets-build` must be an array: the first item is the executable, and each remaining
 item is one argument. For example, to run an asset script from the package directory:
 
 ```toml title=Cargo.toml
 [package.metadata.fusor]
-assets = "public"
+assets = { "/" = "public" }
 assets-build = ["node", "build-assets.mjs"]
 ```
 
@@ -237,10 +269,10 @@ The command runs without a shell. A string such as `"node build-assets.mjs"` is 
 For more complex commands, put the build steps in a script and invoke it with the array
 form. Use `[]` or omit `assets-build` to disable the hook.
 
-During `fusor dev`, the configured `assets` directory is recorded after the hook
-finishes, so generated files do not trigger a second build. Edits outside that
-directory made during the hook, and any edits made afterward, remain watched.
-Keep generated assets in the configured `assets` directory.
+During `fusor dev`, the files `assets` publishes are recorded after the hook
+finishes, so generated files do not trigger a second build. Edits to other files
+made during the hook, and any edits made afterward, remain watched. Write
+generated files where an `assets` entry publishes them.
 
 ## Environment variables {#environment}
 

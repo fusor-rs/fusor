@@ -233,12 +233,55 @@ fn configuration_rejects_typos_invalid_modules_and_overlapping_output() {
 }
 
 #[test]
+fn asset_entries_take_paths_patterns_and_suffixes_and_reject_unsafe_urls() {
+    let dir = setup();
+    let path = dir.path().join("Cargo.toml");
+    let valid = fs::read_to_string(&path).unwrap();
+    let with_assets =
+        |assets: &str| valid.replace("entry =", &format!("assets = {assets}\nentry ="));
+    fs::write(
+        &path,
+        with_assets(
+            r#"{ "/" = "public", "/install.sh" = "../../install.sh", "/source/" = { files = ["src/*.rs", "web/**/*.html"], suffix = ".txt" } }"#,
+        ),
+    )
+    .unwrap();
+    let config = AppConfig::load(&path).unwrap();
+    let source = &config.assets["/source/"];
+    let patterns: Vec<_> = source.patterns().iter().map(|p| p.as_str()).collect();
+    assert_eq!(patterns, ["src/*.rs", "web/**/*.html"]);
+    assert_eq!(source.suffix(), Some(".txt"));
+    assert_eq!(config.assets["/install.sh"].suffix(), None);
+    fs::write(&path, with_assets(r#""public""#)).unwrap();
+    assert_eq!(
+        AppConfig::load(&path).unwrap_err().to_string(),
+        r#"assets maps URL paths to files, not a single directory; write assets = { "/" = "public" }"#
+    );
+    for assets in [
+        r#"{ "source/" = "public" }"#,
+        r#"{ "/a/../b" = "public" }"#,
+        r#"{ "//" = "public" }"#,
+        r#"{ "/" = [] }"#,
+        r#"{ "/" = "" }"#,
+        r#"{ "/" = "/etc" }"#,
+        r#"{ "/" = "*.txt" }"#,
+        r#"{ "/" = "dist/old" }"#,
+        r#"{ "/" = { files = "public", suffix = "" } }"#,
+        r#"{ "/" = { files = "public", suffix = "a/b" } }"#,
+        r#"{ "/" = { files = "public", suffix = ".txt", rename = true } }"#,
+    ] {
+        fs::write(&path, with_assets(assets)).unwrap();
+        assert!(AppConfig::load(&path).is_err(), "accepted {assets}");
+    }
+}
+
+#[test]
 fn optional_asset_command_and_refresh_policy_are_explicit_configuration() {
     let dir = setup();
     let path = dir.path().join("Cargo.toml");
     assert!(AppConfig::load(&path).unwrap().dev_refresh);
     fs::create_dir(dir.path().join("public")).unwrap();
-    let source = fs::read_to_string(&path).unwrap().replace("entry =", "assets = \"public\"\nassets-build = [\"node\", \"build-assets.mjs\"]\ndev-refresh = false\nentry =");
+    let source = fs::read_to_string(&path).unwrap().replace("entry =", "assets = { \"/\" = \"public\" }\nassets-build = [\"node\", \"build-assets.mjs\"]\ndev-refresh = false\nentry =");
     fs::write(&path, &source).unwrap();
     let config = AppConfig::load(&path).unwrap();
     assert!(!config.dev_refresh);

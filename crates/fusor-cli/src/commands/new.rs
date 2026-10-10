@@ -141,7 +141,7 @@ wasm-bindgen = "={bindgen}"
 fusor-build = {compiler}
 
 [package.metadata.fusor]
-assets = "public"
+assets = {{ "/" = "public" }}
 output = "dist"
 base-path = "/"
 

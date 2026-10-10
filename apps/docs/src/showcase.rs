@@ -70,7 +70,7 @@ impl DemoPage {
             2 => "js",
             _ => "rs",
         };
-        format!("/docs/source/showcase-{}.{extension}.txt", self.demo.slug)
+        format!("/docs/source/showcase/{}.{extension}.txt", self.demo.slug)
     }
 }
 

@@ -59,7 +59,7 @@ wasm-bindgen = "=0.2.117"
 fusor-build = { version = "=0.1.5" }
 
 [package.metadata.fusor]
-assets = "public"
+assets = { "/" = "public" }
 output = "dist"
 base-path = "/"
 

@@ -6,7 +6,6 @@ use std::{
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let highlighter = Highlighter::default();
-    copy_resources()?;
     let guides = docs_base_build::compile(
         &Config {
             root: Path::new("."),
@@ -26,22 +25,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         source,
     )?;
     fusor_build::compile_app()?;
-    Ok(())
-}
-
-fn copy_resources() -> Result<(), Box<dyn std::error::Error>> {
-    println!("cargo:rerun-if-changed=content/resources.json");
-    let resources: std::collections::BTreeMap<String, String> =
-        serde_json::from_slice(&fs::read("content/resources.json")?)?;
-    fs::create_dir_all("public/source")?;
-    for (name, path) in resources {
-        println!("cargo:rerun-if-changed={path}");
-        let contents = fs::read(path)?;
-        let output = PathBuf::from("public/source").join(name);
-        // Watched too: a fresh checkout with a cached target/ lacks the copy.
-        println!("cargo:rerun-if-changed={}", output.display());
-        write_changed(&output, &contents)?;
-    }
     Ok(())
 }
 
@@ -86,7 +69,7 @@ fn compile_showcase(
                 source.push_str("javascript: None,");
                 continue;
             }
-            compile_demo_source(source, highlighter, slug, language, &path)?;
+            compile_demo_source(source, highlighter, language, &path)?;
         }
         source.push_str("},\n");
     }
@@ -97,7 +80,6 @@ fn compile_showcase(
 fn compile_demo_source(
     source: &mut String,
     highlighter: &Highlighter,
-    slug: &str,
     language: &str,
     path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -110,23 +92,5 @@ fn compile_demo_source(
         value
     };
     source.push_str(&format!("{language}: {value},"));
-    let extension = std::path::Path::new(path)
-        .extension()
-        .ok_or("demo source requires an extension")?
-        .to_string_lossy();
-    let output = format!("public/source/showcase-{slug}.{extension}.txt");
-    println!("cargo:rerun-if-changed={output}");
-    write_changed(std::path::Path::new(&output), code.as_bytes())?;
     Ok(())
-}
-
-fn write_changed(path: &std::path::Path, contents: &[u8]) -> std::io::Result<()> {
-    // Missing or changed generated assets must be written before compilation.
-    match fs::read(path) {
-        Ok(previous) if previous == contents => return Ok(()),
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    fs::write(path, contents)
 }

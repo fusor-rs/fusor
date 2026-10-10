@@ -24,7 +24,7 @@ fusor-build.workspace = true
 
 [package.metadata.fusor]
 entry = "web/index.html"
-assets = "public"
+assets = { "/" = "public" }
 output = "dist"
 base-path = "/reader/"
 history-fallback = ["/articles", "/missing"]

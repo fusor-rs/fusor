@@ -3,7 +3,6 @@
 use crate::{
     context::Context,
     error::{Error, Result},
-    layout,
     workspace::Project,
 };
 use std::{
@@ -29,41 +28,6 @@ pub(crate) fn generation() -> Result<String> {
             .as_nanos(),
         std::process::id()
     ))
-}
-
-pub(crate) fn copy_assets(project: &Project, staging: &Path) -> Result {
-    let Some(assets) = &project.config.assets else {
-        return Ok(());
-    };
-    let assets = project.root.join(assets);
-    if fs::symlink_metadata(&assets).is_ok_and(|meta| meta.file_type().is_symlink()) {
-        return Err(Error::project(format!(
-            "the assets directory is a symlink: {}",
-            assets.display()
-        ))
-        .remedy("point assets at a real directory"));
-    }
-    if !assets.is_dir() {
-        return Err(Error::project(format!(
-            "the assets directory does not exist: {}",
-            assets.display()
-        ))
-        .remedy("create it, or change assets in [package.metadata.fusor]"));
-    }
-    for name in [
-        "index.html",
-        layout::GENERATED,
-        layout::OUTPUT_MANIFEST,
-        layout::WORKER_HEADERS,
-    ] {
-        if assets.join(name).exists() {
-            return Err(Error::project(format!(
-                "the asset named {name:?} would be overwritten by generated output"
-            ))
-            .remedy("rename it; fusor owns that name in the published site"));
-        }
-    }
-    copy_tree(&assets, staging)
 }
 
 /// A published symlink would escape the site root on some hosts.
@@ -123,7 +87,7 @@ pub(crate) fn swap(cx: &Context, site: &Path, staging: &Path) -> Result {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{context::Context, workspace::Project};
+    use crate::{context::Context, layout, workspace::Project};
 
     fn project(root: std::path::PathBuf) -> Project {
         Project {
@@ -212,14 +176,5 @@ mod tests {
         assert_eq!(fs::read_to_string(site.join("index.html")).unwrap(), "next");
         assert!(!staging.exists());
         assert!(!staging.with_extension("previous").exists());
-    }
-
-    #[test]
-    fn a_missing_assets_directory_is_named_with_its_remedy() {
-        let root = std::env::temp_dir().join(format!("fusor-assets-{}", generation().unwrap()));
-        let mut project = project(root.clone());
-        project.config.assets = Some("public".into());
-        let error = copy_assets(&project, &root.join("stage")).unwrap_err();
-        assert!(error.to_string().contains("does not exist"), "{error}");
     }
 }

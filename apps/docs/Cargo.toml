@@ -30,9 +30,26 @@ serde_json = "1"
 [package.metadata.fusor]
 entry = "web/index.html"
 templates = ["web/components", "web/demos"]
-assets = "public"
 base-path = "/docs/"
 history-fallback = ["/"]
+# The .txt suffix makes browsers display published source instead of running it.
+[package.metadata.fusor.assets]
+"/" = "public"
+"/source/catalog-types.rs.txt" = "../../examples/islands/types/src/lib.rs"
+"/source/catalog-site.rs.txt" = "../../examples/islands/site/src/main.rs"
+"/source/catalog-site.toml.txt" = "../../examples/islands/site/Cargo.toml"
+"/source/catalog-views.rs.txt" = "../../examples/islands/views/src/lib.rs"
+"/source/catalog-views.html.txt" = "../../examples/islands/views/web/cart.html"
+"/source/navigation-pages.rs.txt" = "../../examples/navigation/src/pages.rs"
+"/source/navigation-pages.html.txt" = "../../examples/navigation/web/pages.html"
+"/source/tutorial-app.rs.txt" = "tutorial/src/app.rs"
+"/source/tutorial-index.html.txt" = "tutorial/web/index.html"
+"/source/tutorial-Cargo.toml.txt" = "tutorial/Cargo.toml"
+"/source/tutorial-lib.rs.txt" = "tutorial/src/lib.rs"
+"/source/showcase-package.json.txt" = "package.json"
+"/source/showcase.css.txt" = "public/showcase.css"
+"/source/island-browser.rs.txt" = "../../crates/fusor-islands/src/browser.rs"
+"/source/showcase/" = { files = ["src/demos/*.rs", "web/demos/*.html", "web/demos/*.js"], suffix = ".txt" }
 [package.metadata.fusor.components]
 article = "web/article.html"
 code = "web/code.html"

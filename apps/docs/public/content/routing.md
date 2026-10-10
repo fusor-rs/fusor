@@ -263,7 +263,7 @@ or a typed `Route` with `BasePath::href` for checked link generation.
 ```toml title=Cargo.toml
 [package.metadata.fusor]
 entry = "web/index.html"
-assets = "public"
+assets = { "/" = "public" }
 output = "dist"
 base-path = "/"
 history-fallback = ["/articles", "/dashboard", "/missing"]

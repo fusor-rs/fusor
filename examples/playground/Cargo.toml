@@ -8,7 +8,7 @@ publish = false
 
 [package.metadata.fusor]
 entry = "web/index.html"
-assets = "public"
+assets = { "/" = "public" }
 
 [lib]
 crate-type = ["cdylib", "rlib"]

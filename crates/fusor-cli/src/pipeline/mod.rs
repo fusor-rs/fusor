@@ -1,5 +1,6 @@
 //! [`Publication`] is the staged build both paths share: stage beside the
 //! output, optionally keep the previous generation, swap atomically.
+pub(crate) mod assets;
 pub(crate) mod cargo;
 pub(crate) mod declarations;
 pub(crate) mod diagnostics;
@@ -128,7 +129,7 @@ impl<'a> Publication<'a> {
         ));
         std::fs::create_dir(&staging)?;
         let guard = Staging(staging.clone());
-        publish::copy_assets(project, &staging)?;
+        assets::copy(project, &staging)?;
         let generated = layout::generated(&staging, &generation);
         cx.reporter.note(format!(
             "staging generation {generation} in {}",
@@ -183,7 +184,7 @@ impl<'a> Publication<'a> {
     /// Assets are copied again, after Cargo has run the build scripts that
     /// generate some of them; staging already had them for the refresh check.
     pub fn commit(self, manifest: &OutputManifest) -> Result {
-        publish::copy_assets(self.project, &self.staging)?;
+        assets::copy(self.project, &self.staging)?;
         manifest.write(&self.staging)?;
         publish::publish(self.cx, self.project, &self.staging)
     }
@@ -200,9 +201,10 @@ fn build_assets(cx: &Context, project: &Project, watched: Option<&mut Snapshot>)
             .env("CARGO_NET_OFFLINE", "true")
             .env("npm_config_offline", "true");
     }
+    let hooked = assets::sources(project)?;
     let result = checked(&mut command);
     if let Some(watched) = watched {
-        sources::record_assets(project, watched)?;
+        sources::record_assets(project, &hooked, watched)?;
     }
     result
 }

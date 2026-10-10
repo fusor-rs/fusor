@@ -1,10 +1,14 @@
 //! Hash polling rather than filesystem events behaves the same on every
 //! platform and with editors that write through a temporary file.
 use crate::{
-    context::Context, error::Result, layout, pipeline::manifest::OutputManifest, workspace::Project,
+    context::Context,
+    error::Result,
+    layout,
+    pipeline::{assets, manifest::OutputManifest},
+    workspace::Project,
 };
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     hash::{Hash, Hasher},
     io,
@@ -38,7 +42,7 @@ pub(crate) fn snapshot(cx: &Context, project: &Project) -> Result<Snapshot> {
 
 /// These files stay watched across publications. Previous output metadata may
 /// add JavaScript inputs that disappear after the next full build.
-pub(crate) fn source_snapshot(cx: &Context, project: &Project) -> io::Result<Snapshot> {
+pub(crate) fn source_snapshot(cx: &Context, project: &Project) -> Result<Snapshot> {
     let generated = [
         project.target.clone(),
         project.output(cx),
@@ -55,22 +59,27 @@ pub(crate) fn source_snapshot(cx: &Context, project: &Project) -> io::Result<Sna
             collect(&path, &generated, &mut files)?;
         }
     }
+    record_asset_files(project, &mut files)?;
     Ok(files)
 }
 
-pub(crate) fn record_assets(project: &Project, previous: &mut Snapshot) -> io::Result<()> {
-    let Some(assets) = &project.config.assets else {
-        return Ok(());
-    };
-    let assets = project.root.join(assets);
-    let mut files = Snapshot::new();
-    if assets.try_exists()? {
-        collect(&assets, &[], &mut files)?;
+/// Assets are copied after the hook. The earlier snapshot of every other file
+/// is kept, so edits made during the hook and afterward still trigger a build.
+pub(crate) fn record_assets(
+    project: &Project,
+    hooked: &BTreeSet<PathBuf>,
+    previous: &mut Snapshot,
+) -> Result {
+    previous.retain(|path, _| !hooked.contains(path));
+    record_asset_files(project, previous)
+}
+
+/// Asset files can lie outside every watch root, such as `../../install.sh`.
+fn record_asset_files(project: &Project, files: &mut Snapshot) -> Result {
+    for path in assets::sources(project)? {
+        let contents = fs::read(&path)?;
+        files.insert(path, fingerprint(&contents));
     }
-    // Assets are copied after the hook. Retain the earlier source snapshot
-    // so source edits during the hook and any later edits still trigger a build.
-    previous.retain(|path, _| !path.starts_with(&assets));
-    previous.extend(files);
     Ok(())
 }
 

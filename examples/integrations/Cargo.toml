@@ -21,7 +21,7 @@ fusor-build.workspace = true
 
 [package.metadata.fusor]
 entry = "web/index.html"
-assets = "public"
+assets = { "/" = "public" }
 base-path = "/lab/"
 output = "dist"
 

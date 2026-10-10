@@ -4,7 +4,7 @@ use crate::{
     context::Context,
     error::{Error, Result},
     layout,
-    pipeline::{Publication, html, manifest::OutputManifest},
+    pipeline::{Publication, assets, html, manifest::OutputManifest},
     workspace::Project,
 };
 use fusor_build::app::{self, ArtifactManifest};
@@ -55,19 +55,11 @@ pub(crate) fn enabled(
 struct RefreshInputs {
     watched: BTreeSet<PathBuf>,
     html: BTreeSet<PathBuf>,
-    assets: Option<PathBuf>,
+    assets: BTreeSet<PathBuf>,
 }
 
 impl RefreshInputs {
     fn new(project: &Project, watched: &super::sources::Snapshot) -> Result<Self> {
-        let assets = match project.config.assets.as_ref() {
-            Some(path) => match project.root.join(path).canonicalize() {
-                Ok(path) => Some(path),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-                Err(error) => return Err(error.into()),
-            },
-            None => None,
-        };
         Ok(Self {
             watched: watched
                 .keys()
@@ -79,7 +71,10 @@ impl RefreshInputs {
                 .into_iter()
                 .map(|source| source.canonical)
                 .collect(),
-            assets,
+            assets: assets::sources(project)?
+                .iter()
+                .map(fs::canonicalize)
+                .collect::<std::io::Result<_>>()?,
         })
     }
 
@@ -87,12 +82,7 @@ impl RefreshInputs {
         let Some(path) = resolve_data(source, literal) else {
             return false;
         };
-        self.watched.contains(&path)
-            && !self.html.contains(&path)
-            && !self
-                .assets
-                .as_ref()
-                .is_some_and(|assets| path.starts_with(assets))
+        self.watched.contains(&path) && !self.html.contains(&path) && !self.assets.contains(&path)
     }
 }
 
@@ -118,6 +108,15 @@ fn resolve_data(source: &Path, literal: &str) -> Option<PathBuf> {
     fs::symlink_metadata(&path).ok()?.is_file().then_some(path)
 }
 
+/// Publishing a copy of a Rust module or Cargo manifest does not stop it from
+/// being compiled.
+fn compiled(path: &Path) -> bool {
+    path.extension().is_some_and(|extension| extension == "rs")
+        || path
+            .file_name()
+            .is_some_and(|name| name == "Cargo.toml" || name == "Cargo.lock")
+}
+
 /// `false` for any edit that needs a real build.
 pub(crate) fn try_refresh(
     cx: &Context,
@@ -135,17 +134,10 @@ pub(crate) fn try_refresh(
         .into_iter()
         .map(|source| project.root.join(source.path))
         .collect();
-    let assets = project
-        .config
-        .assets
-        .as_ref()
-        .map(|path| project.root.join(path));
-    let only_html_and_assets = changed.iter().all(|path| {
-        html.contains(path)
-            || assets
-                .as_ref()
-                .is_some_and(|assets| path.starts_with(assets))
-    });
+    let assets = assets::sources(project)?;
+    let only_html_and_assets = changed
+        .iter()
+        .all(|path| html.contains(path) || assets.contains(path) && !compiled(path));
     if !only_html_and_assets {
         cx.reporter
             .note("a changed file is neither authored HTML nor an asset; rebuilding");
@@ -367,7 +359,7 @@ mod tests {
                 target: root.join("target"),
                 watch_roots: vec![app.clone(), dependency.clone()],
                 config: app::AppConfig {
-                    assets: Some("public".into()),
+                    assets: toml::from_str(r#""/" = "public""#).unwrap(),
                     ..Default::default()
                 },
                 root: app,
@@ -409,6 +401,24 @@ mod tests {
                 &Context::default(),
                 &fixture.project,
                 &[fixture.dependency.join("runtime/registry.js")],
+                &mut super::super::sources::Snapshot::new(),
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn a_rust_source_published_as_an_asset_still_rebuilds() {
+        let mut fixture = RefreshFixture::new();
+        let module = fixture.project.root.join("src/lib.rs");
+        fs::create_dir(module.parent().unwrap()).unwrap();
+        fs::write(&module, "pub struct App;").unwrap();
+        fixture.project.config.assets = toml::from_str(r#""/source/" = "src/*.rs""#).unwrap();
+        assert!(
+            !try_refresh(
+                &Context::default(),
+                &fixture.project,
+                &[module],
                 &mut super::super::sources::Snapshot::new(),
             )
             .unwrap()
