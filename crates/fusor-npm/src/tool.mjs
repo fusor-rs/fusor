@@ -6,15 +6,20 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 
 try {
-  const [rootArg, entryArg, modulesArg, publicPath, release] = process.argv.slice(2);
+  const [rootArg, entryArg, modulesArg, publicPath, esbuildVersion, release] = process.argv.slice(2);
   if (Number(process.versions.node.split('.')[0]) < 22) throw Error('JavaScript modules require Node.js 22 or newer');
-  const root = fs.realpathSync(rootArg), entry = path.resolve(entryArg), output = path.dirname(entry);
+  const root = fs.realpathSync(rootArg);
+  const entry = path.resolve(entryArg);
+  const output = path.dirname(entry);
   const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
-  const manifestFile = path.join(root, 'package.json'), lockFile = path.join(root, 'package-lock.json');
+  const manifestFile = path.join(root, 'package.json');
+  const lockFile = path.join(root, 'package-lock.json');
   if (!fs.existsSync(manifestFile) || !fs.existsSync(lockFile)) {
-    throw Error('JavaScript modules require package.json and a committed package-lock.json at the application root. Install esbuild@0.28.2 with npm, then run npm ci before building.');
+    throw Error(`JavaScript modules require package.json and a committed package-lock.json at the application root. Install esbuild@${esbuildVersion} with npm, then run npm ci before building.`);
   }
-  const manifest = read(manifestFile), lock = read(lockFile), modules = read(modulesArg);
+  const manifest = read(manifestFile);
+  const lock = read(lockFile);
+  const modules = read(modulesArg);
   const inputs = new Set([manifestFile, lockFile]);
   if (lock.lockfileVersion !== 3 || !lock.packages?.['']) throw Error('Use a committed npm package-lock.json version 3 and run npm ci before building.');
   for (const kind of ['dependencies', 'devDependencies', 'optionalDependencies']) {
@@ -57,9 +62,9 @@ try {
     inputs.add(toolFile);
     esbuild = require('esbuild');
   } catch (error) {
-    throw Error(`Missing or invalid installed JavaScript tooling: ${error.message}. Pin esbuild@0.28.2 and run npm ci in this application.`);
+    throw Error(`Missing or invalid installed JavaScript tooling: ${error.message}. Pin esbuild@${esbuildVersion} and run npm ci in this application.`);
   }
-  if (esbuild.version !== '0.28.2') throw Error(`This bundler supports esbuild 0.28.2; installed ${esbuild.version}. Pin esbuild@0.28.2 and update the lockfile.`);
+  if (esbuild.version !== esbuildVersion) throw Error(`This bundler supports esbuild ${esbuildVersion}; installed ${esbuild.version}. Pin esbuild@${esbuildVersion} and update the lockfile.`);
   const binaryPackage = `@esbuild/${process.platform}-${process.arch}`;
   try {
     const binary = require.resolve(`${binaryPackage}/package.json`);
@@ -69,7 +74,8 @@ try {
     throw Error(`Missing or invalid esbuild platform package ${binaryPackage}; run npm ci (${error.message})`);
   }
 
-  const byPath = new Map(), ids = new Set();
+  const byPath = new Map();
+  const ids = new Set();
   for (const module of modules) {
     if (!module.id || typeof module.path !== 'string' || typeof module.source !== 'string' || ids.has(module.id)) throw Error('Invalid or duplicate component JavaScript module metadata');
     ids.add(module.id);
@@ -80,8 +86,14 @@ try {
   }
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   function vlq(value) {
-    let number = value < 0 ? (-value * 2) + 1 : value * 2, result = '';
-    do { let digit = number % 32; number = Math.floor(number / 32); if (number) digit += 32; result += alphabet[digit]; } while (number);
+    let number = value < 0 ? (-value * 2) + 1 : value * 2;
+    let result = '';
+    do {
+      let digit = number % 32;
+      number = Math.floor(number / 32);
+      if (number) digit += 32;
+      result += alphabet[digit];
+    } while (number);
     return result;
   }
   function inlineSource(module) {
@@ -90,13 +102,18 @@ try {
     const column = Math.max(0, module.column - 1);
     const first = `AA${vlq(Math.max(0, module.line - 1))}${vlq(column)}`;
     const second = `AAC${vlq(-column)}`;
-    const map = { version: 3, sources: [module.source], sourcesContent: [fs.readFileSync(module.source, 'utf8')], names: [], mappings: [first, ...Array.from({ length: lines - 1 }, (_, index) => index ? 'AACA' : second)].join(';') };
+    const map = {
+      version: 3,
+      sources: [module.source],
+      sourcesContent: [fs.readFileSync(module.source, 'utf8')],
+      names: [],
+      mappings: [first, ...Array.from({ length: lines - 1 }, (_, index) => index ? 'AACA' : second)].join(';'),
+    };
     return `${contents}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(JSON.stringify(map)).toString('base64')}\n`;
   }
-  const q = JSON.stringify;
-  const imports = modules.map((module, index) => `import * as component${index} from ${q(module.path)};`).join('\n');
-  const registry = `globalThis[Symbol.for('fusor.javascript.modules.v1')] = new Map([${modules.map((module, index) => `[${q(module.id)},component${index}]`).join(',')}]);`;
-  const wrapper = `${imports}\n${registry}\nexport * from ${q(entry)};\nexport { default } from ${q(entry)};`;
+  const imports = modules.map((module, index) => `import * as component${index} from ${JSON.stringify(module.path)};`).join('\n');
+  const registry = `globalThis[Symbol.for('fusor.javascript.modules.v1')] = new Map([${modules.map((module, index) => `[${JSON.stringify(module.id)},component${index}]`).join(',')}]);`;
+  const wrapper = `${imports}\n${registry}\nexport * from ${JSON.stringify(entry)};\nexport { default } from ${JSON.stringify(entry)};`;
   let result;
   try {
     result = await esbuild.build({
@@ -141,7 +158,7 @@ try {
     fs.writeFileSync(file.path, file.contents);
     if (file.path.endsWith('.css')) styles.push(path.relative(output, file.path).split(path.sep).join('/'));
   }
-  fs.writeFileSync(path.join(output, 'javascript-bundle.json'), JSON.stringify({ inputs: [...inputs].sort(), styles: styles.sort(), metafile: result.metafile }, null, 2));
+  fs.writeFileSync(path.join(output, 'javascript-bundle.json'), JSON.stringify({ inputs: [...inputs].sort(), styles: styles.sort() }, null, 2));
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;

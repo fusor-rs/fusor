@@ -56,14 +56,14 @@ impl std::fmt::Display for Custom { fn fmt(&self, f: &mut std::fmt::Formatter<'_
 fusor::bindings!(app);
 include!(env!("FUSOR_MODULE"));
 #[cfg(not(target_arch = "wasm32"))]
-pub fn render() -> Result<String, String> {
+pub fn render() -> fusor_server::Result<String> {
     use fusor_server::Render;
     Ok(Fixture::new().render(&mut fusor_server::Context::new())?.into_string())
 }
 #[cfg(target_arch = "wasm32")]
 mod browser {
     use super::*;
-    use fusor::dom::{Component, Scope, delivery, document};
+    use fusor::dom::{Component, MountPoint, Scope, delivery, document};
     use std::cell::RefCell;
     use wasm_bindgen::prelude::*;
     #[wasm_bindgen]
@@ -99,6 +99,13 @@ mod browser {
     pub fn numbers(number: u32, signed: i32) { let state = APP.with(|app| app.borrow().as_ref().unwrap().0.clone()); fusor::batch(|| { state.number.set(number); state.signed.set(signed); }); }
     #[wasm_bindgen]
     pub fn drop_scope() { APP.with(|app| app.borrow_mut().take()); }
+    #[wasm_bindgen]
+    pub fn dispose_anchors() -> Result<(), JsValue> {
+        let host = document()?.get_element_by_id("host").unwrap();
+        let (_, anchors) = MountPoint::append(&host)?;
+        drop(anchors);
+        Ok(())
+    }
 }
 `);
   await writeFile(join(scratch, 'web/index.html'), `<!doctype html><html><head><meta charset="utf-8"></head><body><div id="host"></div>
@@ -286,6 +293,20 @@ mod browser {
       try { app.mount(true); } catch (error) { rejected = String(error).includes('intentional initial attribute failure'); }
       check(rejected, 'initial attribute error was not returned');
       failedButton.click(); check(failedCount.textContent === '0', 'failed initialization retained a listener');
+      reset(true); app.mount(true);
+      const retainedButton = host.querySelector('#action'), retainedCount = host.querySelector('#count');
+      retainedButton.removeEventListener = () => { throw Error('intentional listener removal failure'); };
+      app.drop_scope();
+      retainedButton.click();
+      check(retainedCount.textContent === '0', 'failed native removal retained a Rust handler');
+      reset(false);
+      const nativeRemove = host.removeChild;
+      host.removeChild = function(child) {
+        if (child === host.firstChild) throw Error('intentional anchor removal failure');
+        return nativeRemove.call(this, child);
+      };
+      try { app.dispose_anchors(); } finally { host.removeChild = nativeRemove; }
+      check(host.childNodes.length === 1, 'one failed anchor removal prevented other cleanup');
       reset(false); app.mount(false);
       host.querySelector('#first').setAttribute = () => { throw Error('intentional later attribute failure'); };
       app.change(changed); app.drop_scope(); host.replaceChildren();
@@ -293,7 +314,9 @@ mod browser {
     assert.deepEqual(errors, []);
     const recorded = await page.evaluate(() => globalThis.__fixtureLoggedErrors);
     assert.equal(recorded.filter(message => message.includes('intentional later attribute failure')).length, 1);
-    assert.deepEqual(recorded.filter(message => !message.includes('intentional later attribute failure')), []);
+    assert.equal(recorded.filter(message => message.includes('intentional listener removal failure')).length, 1);
+    assert.equal(recorded.filter(message => message.includes('intentional anchor removal failure')).length, 1);
+    assert.deepEqual(recorded.filter(message => !message.includes('intentional later attribute failure') && !message.includes('intentional listener removal failure') && !message.includes('intentional anchor removal failure')), []);
     console.log(JSON.stringify({ engine, nativeConsoleMessages: logged, recordedErrors: recorded }));
     console.log(`PASS ${engine}: flat bindings, cold/cache/hydration, original targets, live Text repair, native events, late validation, attribute errors and cleanup`);
     await browser.close(); browser = null;

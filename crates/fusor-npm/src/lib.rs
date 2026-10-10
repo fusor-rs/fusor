@@ -12,6 +12,9 @@ pub use error::BundleError;
 type Result<T = ()> = std::result::Result<T, BundleError>;
 const TOOL: &str = include_str!("tool.mjs");
 
+#[doc(hidden)]
+pub const ESBUILD_VERSION: &str = "0.28.2";
+
 /// Bundle compiler-discovered JavaScript modules and a wasm-bindgen entry into
 /// the caller's unpublished generation. No dependencies are installed or fetched.
 /// The returned graph records authored inputs and generated stylesheet paths.
@@ -40,7 +43,8 @@ pub fn bundle(
         .arg(root)
         .arg(entry)
         .arg(&manifest)
-        .arg(public_path);
+        .arg(public_path)
+        .arg(ESBUILD_VERSION);
     if release {
         command.arg("--release");
     }

@@ -1,6 +1,6 @@
 use fusor_build::BuildError;
 use fusor_build::app::{AppConfig, ArtifactManifest, generate};
-use std::fs;
+use std::{error::Error as _, fs};
 
 fn setup() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
@@ -38,17 +38,22 @@ counter = "web/counter.html"
     dir
 }
 
-#[test]
-fn external_registration_tracks_source_and_keeps_native_module_ownership() {
+const EXTERNAL_MODULE: &str =
+    "//! Module documentation\n#![deny(unsafe_code)]\nstruct App;\nfusor::bindings!(app);\n";
+const EXTERNAL_HTML: &str = r#"<script type="text/rust" src="../src/app.rs" rust:module="crate::app"></script><App state="{{ App }}"><main></main></App>"#;
+
+fn external_application() -> tempfile::TempDir {
     let dir = setup();
     fs::create_dir(dir.path().join("src")).unwrap();
+    fs::write(dir.path().join("src/app.rs"), EXTERNAL_MODULE).unwrap();
+    fs::write(dir.path().join("web/index.html"), EXTERNAL_HTML).unwrap();
+    dir
+}
+
+#[test]
+fn external_registration_tracks_source_and_keeps_native_module_ownership() {
+    let dir = external_application();
     let native = dir.path().join("src/app.rs");
-    let rust =
-        "//! Module documentation\n#![deny(unsafe_code)]\nstruct App;\nfusor::bindings!(app);\n";
-    fs::write(&native, rust).unwrap();
-    let path = dir.path().join("web/index.html");
-    let html = r#"<script type="text/rust" src="../src/app.rs" rust:module="crate::app"></script><App state="{{ App }}"><main></main></App>"#;
-    fs::write(&path, html).unwrap();
     let generate_app = || generate(&dir.path().join("Cargo.toml"), &dir.path().join("out"));
     let artifact = generate_app().unwrap();
     let source = &artifact.sources[0];
@@ -57,7 +62,7 @@ fn external_registration_tracks_source_and_keeps_native_module_ownership() {
         native.canonicalize().unwrap()
     );
     assert!(source.registration.is_some());
-    assert_eq!(fs::read_to_string(&native).unwrap(), rust);
+    assert_eq!(fs::read_to_string(&native).unwrap(), EXTERNAL_MODULE);
     assert!(
         !fs::read_to_string(&source.rust)
             .unwrap()
@@ -68,30 +73,60 @@ fn external_registration_tracks_source_and_keeps_native_module_ownership() {
             .unwrap()
             .contains("pub mod app")
     );
-    fs::write(&path, html.replace("../src/app.rs", "../src/missing.rs")).unwrap();
+}
+
+#[test]
+fn external_registration_rejects_missing_escaping_and_duplicate_modules() {
+    let dir = external_application();
+    let path = dir.path().join("web/index.html");
+    let generate_app = || generate(&dir.path().join("Cargo.toml"), &dir.path().join("out"));
+    fs::write(
+        &path,
+        EXTERNAL_HTML.replace("../src/app.rs", "../src/missing.rs"),
+    )
+    .unwrap();
     let error = generate_app().unwrap_err();
     let BuildError::Source(source_error) = &error else {
         panic!("{error}")
     };
     assert_eq!(source_error.path, path.canonicalize().unwrap());
     assert_eq!(source_error.location, Some((1, 1)));
+    let cause = source_error
+        .source()
+        .unwrap()
+        .downcast_ref::<std::io::Error>()
+        .unwrap();
+    assert_eq!(cause.kind(), std::io::ErrorKind::NotFound);
     let missing = error.to_string();
     assert!(
         missing.contains("index.html:1:1: external Rust source "),
         "{missing}"
     );
-    fs::write(&path, html.replace("../src/app.rs", "../Cargo.toml")).unwrap();
-    assert!(generate_app().is_err());
+    fs::write(
+        &path,
+        EXTERNAL_HTML.replace("../src/app.rs", "../Cargo.toml"),
+    )
+    .unwrap();
+    assert!(
+        generate_app()
+            .unwrap_err()
+            .to_string()
+            .contains("external Rust source must be a .rs file")
+    );
     fs::create_dir(dir.path().join("dist")).unwrap();
-    fs::write(dir.path().join("dist/generated.rs"), rust).unwrap();
-    fs::write(&path, html.replace("../src/app.rs", "../dist/generated.rs")).unwrap();
+    fs::write(dir.path().join("dist/generated.rs"), EXTERNAL_MODULE).unwrap();
+    fs::write(
+        &path,
+        EXTERNAL_HTML.replace("../src/app.rs", "../dist/generated.rs"),
+    )
+    .unwrap();
     assert!(
         generate_app()
             .unwrap_err()
             .to_string()
             .contains("outside its output directory")
     );
-    fs::write(&path, html).unwrap();
+    fs::write(&path, EXTERNAL_HTML).unwrap();
     fs::write(dir.path().join("web/counter.html"), r#"<script type="text/rust" src="../src/app.rs" rust:module="crate::app"></script><template rust:component="Counter"><p></p></template>"#).unwrap();
     assert!(
         generate_app()
@@ -223,8 +258,7 @@ fn optional_asset_command_and_refresh_policy_are_explicit_configuration() {
     );
 }
 
-#[test]
-fn native_templates_are_discovered_once_and_mirrored_for_macro_expansion() {
+fn native_template_application() -> (tempfile::TempDir, String) {
     let dir = setup();
     fs::write(dir.path().join("web/index.html"), r#"<!doctype html><html><body><App state="{{ App }}"><main><Counter count="{{ state.count.clone() }}"></Counter></main></App></body></html>"#).unwrap();
     fs::create_dir_all(dir.path().join("web/components/nested")).unwrap();
@@ -244,6 +278,13 @@ fn native_templates_are_discovered_once_and_mirrored_for_macro_expansion() {
         .unwrap()
         .replace("web/counter.html", "web/components/counter.html");
     fs::write(&manifest, &original).unwrap();
+    (dir, original)
+}
+
+#[test]
+fn native_templates_are_discovered_once_and_mirrored_for_macro_expansion() {
+    let (dir, original) = native_template_application();
+    let manifest = dir.path().join("Cargo.toml");
     let out = dir.path().join("out");
     let artifact = generate(&manifest, &out).unwrap();
     assert_eq!(artifact.sources.len(), 3);
@@ -330,16 +371,17 @@ fn template_discovery_checks_configuration_and_new_directory_membership() {
     }
 }
 
-#[test]
-fn native_javascript_metadata_paths_and_editor_types_need_no_node() {
+fn javascript_application() -> tempfile::TempDir {
     let dir = setup();
     fs::create_dir(dir.path().join("src")).unwrap();
     fs::write(
         dir.path().join("src/counter.rs"),
         r#"
+mod nested {
 #[derive(fusor::JsInputs)]
 struct Counter { #[js] count: fusor::Signal<Option<Vec<i32>>>, private: fusor::Signal<String> }
 fusor::template!("web/counter.html");
+}
 "#,
     )
     .unwrap();
@@ -350,6 +392,12 @@ fusor::template!("web/counter.html");
     )
     .unwrap();
     fs::write(dir.path().join("web/index.html"), r#"<script type="text/rust">#[derive(JsInputs)] struct App { #[js] speed: Signal<f64> }</script><App state="{{ crate::app::App::new() }}"><script type="module">import './counter.ts';</script><main></main></App>"#).unwrap();
+    dir
+}
+
+#[test]
+fn native_javascript_metadata_paths_and_editor_types_need_no_node() {
+    let dir = javascript_application();
     let artifact = generate(&dir.path().join("Cargo.toml"), &dir.path().join("out")).unwrap();
     assert_eq!(artifact.javascript.len(), 2);
     let app = &artifact.javascript[0];
@@ -383,10 +431,52 @@ fusor::template!("web/counter.html");
         !dir.path().join(".fusor").exists(),
         "Cargo compiler writes only to OUT_DIR; CLI publishes editor types"
     );
+}
+
+#[test]
+fn javascript_discovery_rejects_unresolved_sources_and_retains_causes() {
+    let dir = javascript_application();
+    let manifest = dir.path().join("Cargo.toml");
+    let output = dir.path().join("out");
+    fs::remove_file(dir.path().join("src/counter.rs")).unwrap();
+    let error = generate(&manifest, &output).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("cannot discover JavaScript inputs for Counter")
+    );
+    fs::write(dir.path().join("src/counter.rs"), "mod broken {").unwrap();
+    let error = generate(&manifest, &output).unwrap_err();
+    let BuildError::Source(error) = error else {
+        panic!("expected a source diagnostic");
+    };
+    assert!(
+        error
+            .source()
+            .unwrap()
+            .downcast_ref::<syn::Error>()
+            .is_some()
+    );
     fs::write(dir.path().join("web/counter.html"), r#"<template rust:component="Counter"><script type="module" src="./missing.ts"></script><article></article></template>"#).unwrap();
-    let error = generate(&dir.path().join("Cargo.toml"), &dir.path().join("out"))
-        .unwrap_err()
-        .to_string();
+    fs::write(
+        dir.path().join("src/counter.rs"),
+        "struct Counter; fusor::template!(\"web/counter.html\");",
+    )
+    .unwrap();
+    let error = generate(&manifest, &output).unwrap_err();
+    let BuildError::Source(error) = error else {
+        panic!("expected a source diagnostic");
+    };
+    assert_eq!(
+        error
+            .source()
+            .unwrap()
+            .downcast_ref::<std::io::Error>()
+            .unwrap()
+            .kind(),
+        std::io::ErrorKind::NotFound
+    );
+    let error = error.to_string();
     assert!(error.contains("counter.html:1:"));
     assert!(error.contains("JavaScript source"));
 }

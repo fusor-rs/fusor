@@ -13,8 +13,22 @@ use std::{
     cell::{Cell, RefCell},
     rc::{Rc, Weak},
 };
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 use web_sys::{Element, Event, EventTarget, History, Url, Window};
+
+const RESTORE_TIMEOUT_MS: i32 = 2000;
+
+struct Recovery {
+    index: i32,
+    window: Window,
+    timeout: i32,
+    _callback: Closure<dyn Fn()>,
+}
+impl Drop for Recovery {
+    fn drop(&mut self) {
+        self.window.clear_timeout_with_handle(self.timeout);
+    }
+}
 
 pub(super) struct Browser {
     owner: Owner,
@@ -25,7 +39,7 @@ pub(super) struct Browser {
     origin: String,
     entries: Entries,
     /// After a failed traversal, the index the router is returning to.
-    recovering: Cell<Option<i32>>,
+    recovering: RefCell<Option<Recovery>>,
     busy: Cell<bool>,
     disposed: Cell<bool>,
     presentation: Element,
@@ -66,7 +80,7 @@ impl Browser {
             base,
             origin: url.origin(),
             entries: Entries::new(),
-            recovering: Cell::new(None),
+            recovering: RefCell::new(None),
             busy: Cell::new(false),
             disposed: Cell::new(false),
             presentation,
@@ -105,8 +119,13 @@ impl Browser {
         })?;
         self.listen(document()?.into(), "click", Self::clicked)?;
         let original = self.history.state()?;
-        self.history
-            .replace_state_with_url(&self.entries.state(&self.history, 0)?, "", None)?;
+        self.history.replace_state_with_url(
+            &self
+                .entries
+                .state(&self.history, 0, self.entries.epoch.get())?,
+            "",
+            None,
+        )?;
         *self.original_state.borrow_mut() = Some(original);
         let weak = Rc::downgrade(self);
         *self.activation.borrow_mut() = Some(self.owner.handle().on_activate(move || {
@@ -121,7 +140,7 @@ impl Browser {
         self: &Rc<Self>,
         target: EventTarget,
         name: &str,
-        handle: fn(&Self, Event) -> Result<(), JsValue>,
+        handle: fn(&Rc<Self>, Event) -> Result<(), JsValue>,
     ) -> Result<(), JsValue> {
         let weak = Rc::downgrade(self);
         let listener = Listener::new(target, name, move |event| {
@@ -149,7 +168,7 @@ impl Browser {
         if self.disposed.get() || !self.owner.handle().is_active() {
             return Err(error(INACTIVE));
         }
-        if self.recovering.get().is_some() {
+        if self.recovering.borrow().is_some() {
             return Err(error(
                 "router is restoring browser history after a failed navigation",
             ));
@@ -185,7 +204,9 @@ impl Browser {
         };
         // Preparation and append may fail. Neither changes history or disposes old state.
         let transaction = self.tree()?.prepare_navigation(&next)?;
-        let state = self.entries.state(&self.history, index)?;
+        let state = self
+            .entries
+            .state(&self.history, index, self.entries.epoch.get())?;
         if options.replace {
             self.history
                 .replace_state_with_url(&state, "", Some(&url.href()))?;
@@ -195,7 +216,7 @@ impl Browser {
         }
         self.entries.index.set(index);
         self.commit(next.clone(), transaction);
-        self.present(&next, options, false);
+        self.present(&next, options);
         Ok(())
     }
     fn commit(&self, next: AppUrl, transaction: Box<dyn PreparedNavigation>) {
@@ -205,20 +226,22 @@ impl Browser {
             transaction.commit();
         });
     }
-    fn present(&self, url: &AppUrl, options: NavigateOptions, traversal: bool) {
+    fn present(&self, url: &AppUrl, options: NavigateOptions) {
         if self.disposed.get() {
             return;
         }
         if !options.keep_focus {
-            present::focus_content(&self.presentation);
+            if let Err(error) = present::focus_content(&self.presentation) {
+                self.report(error);
+            }
         }
         // Back and forward keep the browser's own scroll restoration.
-        if !options.keep_scroll && !traversal {
+        if !options.keep_scroll {
             present::scroll_to(&self.window, url);
         }
     }
     /// Follow back, forward or a fragment change to the browser's current URL.
-    fn pop(&self) -> Result<(), JsValue> {
+    fn pop(self: &Rc<Self>) -> Result<(), JsValue> {
         if self.disposed.get() {
             return Ok(());
         }
@@ -226,10 +249,15 @@ impl Browser {
         let Ok(next) = relative(&self.base, &url) else {
             return self.window.location().reload();
         };
-        let index = self.entries.current(&self.history);
-        if let Some(expected) = self.recovering.get() {
+        let index = self.entries.current(&self.history)?;
+        let expected = self
+            .recovering
+            .borrow()
+            .as_ref()
+            .map(|recovery| recovery.index);
+        if let Some(expected) = expected {
+            self.recovering.take();
             if index == Some(expected) && *self.location.borrow() == next {
-                self.recovering.set(None);
                 return Ok(());
             }
             // A second traversal overtook restoration. Reload the actual URL;
@@ -254,37 +282,107 @@ impl Browser {
         // Native fragment entries need not carry our state or a unique index.
         // Start a new known segment rather than inventing a traversal delta.
         // Traversing beyond it can fall back to a document navigation.
-        self.entries.restart()?;
-        self.history
-            .replace_state_with_url(&self.entries.state(&self.history, 0)?, "", None)?;
-        let transaction = self.tree()?.prepare_navigation(&next)?;
-        self.commit(next, transaction);
-        Ok(())
-    }
-    /// Show the entry at `index`. On failure, return the browser to the
-    /// entry the router still shows, or reload if that is impossible.
-    fn traverse(&self, next: AppUrl, index: i32) -> Result<(), JsValue> {
-        let _busy = self.enter()?;
-        match self.tree()?.prepare_navigation(&next) {
+        match self
+            .tree()?
+            .prepare_navigation(&next)
+            .and_then(|transaction| {
+                self.entries.restart(&self.history)?;
+                Ok(transaction)
+            }) {
             Ok(transaction) => {
-                self.commit(next.clone(), transaction);
-                self.entries.index.set(index);
-                self.present(&next, NavigateOptions::default(), true);
+                self.commit(next, transaction);
                 Ok(())
             }
             Err(failure) => {
-                let shown = self.entries.index.get();
-                if index != shown {
-                    self.recovering.set(Some(shown));
-                    self.history.go_with_delta(shown - index)?;
-                } else {
-                    self.window.location().reload()?;
+                let shown = format!(
+                    "{}{}",
+                    self.base.as_str().trim_end_matches('/'),
+                    self.location.borrow()
+                );
+                let restored = self
+                    .entries
+                    .state(
+                        &self.history,
+                        self.entries.index.get(),
+                        self.entries.epoch.get(),
+                    )
+                    .and_then(|state| {
+                        self.history
+                            .replace_state_with_url(&state, "", Some(&shown))
+                    });
+                if let Err(recovery) = restored {
+                    self.report(recovery);
+                    self.reload_failed_navigation();
                 }
                 Err(failure)
             }
         }
     }
-    fn clicked(&self, event: Event) -> Result<(), JsValue> {
+    /// Show the entry at `index`. On failure, return the browser to the
+    /// entry the router still shows, or reload if that is impossible.
+    fn traverse(self: &Rc<Self>, next: AppUrl, index: i32) -> Result<(), JsValue> {
+        let _busy = self.enter()?;
+        match self.tree()?.prepare_navigation(&next) {
+            Ok(transaction) => {
+                self.commit(next.clone(), transaction);
+                self.entries.index.set(index);
+                self.present(
+                    &next,
+                    NavigateOptions {
+                        keep_scroll: true,
+                        ..NavigateOptions::default()
+                    },
+                );
+                Ok(())
+            }
+            Err(failure) => {
+                let shown = self.entries.index.get();
+                if index == shown {
+                    self.reload_failed_navigation();
+                    return Err(failure);
+                }
+                if let Err(recovery) = self.restore_history(shown, index) {
+                    self.report(recovery);
+                    self.reload_failed_navigation();
+                }
+                Err(failure)
+            }
+        }
+    }
+    fn restore_history(self: &Rc<Self>, shown: i32, index: i32) -> Result<(), JsValue> {
+        let weak = Rc::downgrade(self);
+        let callback = Closure::<dyn Fn()>::new(move || {
+            let Some(browser) = weak.upgrade() else {
+                return;
+            };
+            browser.recovering.take();
+            browser.report(error("browser history restoration timed out"));
+            browser.reload_failed_navigation();
+        });
+        let timeout = self
+            .window
+            .set_timeout_with_callback_and_timeout_and_arguments_0(
+                callback.as_ref().unchecked_ref(),
+                RESTORE_TIMEOUT_MS,
+            )?;
+        *self.recovering.borrow_mut() = Some(Recovery {
+            index: shown,
+            window: self.window.clone(),
+            timeout,
+            _callback: callback,
+        });
+        if let Err(error) = self.history.go_with_delta(shown - index) {
+            self.recovering.take();
+            return Err(error);
+        }
+        Ok(())
+    }
+    fn reload_failed_navigation(&self) {
+        if let Err(error) = self.window.location().reload() {
+            self.report(error);
+        }
+    }
+    fn clicked(self: &Rc<Self>, event: Event) -> Result<(), JsValue> {
         let Some((anchor, url)) = links::router_link(&event, &self.origin)? else {
             return Ok(());
         };
@@ -316,14 +414,20 @@ impl Browser {
         }
         self.owner.dispose();
         drop(self.listeners.take());
-        if let Some(original) = self.original_state.take() {
-            if self.entries.current(&self.history) == Some(0) {
-                if let Err(error) = self.history.replace_state_with_url(&original, "", None) {
-                    web_sys::console::error_1(&error);
-                }
-            }
+        self.recovering.take();
+        if let Err(error) = self.restore_original_state() {
+            web_sys::console::error_1(&error);
         }
         self.lease.release();
+    }
+    fn restore_original_state(&self) -> Result<(), JsValue> {
+        let Some(original) = self.original_state.take() else {
+            return Ok(());
+        };
+        if self.entries.current(&self.history)? == Some(0) {
+            self.history.replace_state_with_url(&original, "", None)?;
+        }
+        Ok(())
     }
 }
 

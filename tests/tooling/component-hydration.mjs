@@ -103,11 +103,59 @@ impl fusor_server::Render for Manual {
         Ok(writer.finish())
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+struct FailureRoot { display: bool }
+#[cfg(not(target_arch = "wasm32"))]
+struct DisplayFailure;
+#[cfg(not(target_arch = "wasm32"))]
+struct FailureInputs;
+#[cfg(not(target_arch = "wasm32"))]
+impl fusor::FromInputs for DisplayFailure {
+    type Inputs = FailureInputs;
+    type Error = &'static str;
+    fn from_inputs(_: Self::Inputs, _: fusor::OwnerHandle) -> Result<Self, Self::Error> {
+        Err("invalid input: 7")
+    }
+}
+#[cfg(not(target_arch = "wasm32"))]
+struct OpaqueFailure;
+#[cfg(not(target_arch = "wasm32"))]
+struct Rejected;
+#[cfg(not(target_arch = "wasm32"))]
+impl fusor::FromInputs for OpaqueFailure {
+    type Inputs = FailureInputs;
+    type Error = Rejected;
+    fn from_inputs(_: Self::Inputs, _: fusor::OwnerHandle) -> Result<Self, Self::Error> {
+        Err(Rejected)
+    }
+}
 fusor::bindings!(app);
 include!(env!("FUSOR_MODULE"));
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use fusor_server::{Context, Error, Render};
+    #[test]
+    fn construction_keeps_display_details_and_accepts_opaque_errors() {
+        for (display, component, error_type, reason) in [
+            (true, "DisplayFailure", "&str", Some("invalid input: 7")),
+            (false, "OpaqueFailure", "component_hydration_consumer::Rejected", None),
+        ] {
+            let error = FailureRoot { display }.render(&mut Context::new()).unwrap_err();
+            let Error::Construction { component: actual, error_type: actual_type, reason: actual_reason } = error else {
+                panic!("expected a component construction error");
+            };
+            assert_eq!(actual, component);
+            assert_eq!(actual_type, error_type);
+            assert_eq!(actual_reason.as_deref(), reason);
+        }
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
-pub fn render() -> Result<String, String> {
+pub fn render() -> fusor_server::Result<String> {
     use fusor_server::Render;
     Ok(Fixture::new().render(&mut fusor_server::Context::new())?.into_string())
 }
@@ -163,11 +211,15 @@ mod browser {
 <template rust:component="Generated" rust:render="shared"><b>generated</b> <!-- between roots --> <input class="draft" bind="state.draft"></template>
 <template rust:component="NamedWrapper" rust:render="shared"><div class="slot-wrapper"><NamedPanel><Children></Children><template slot="footer"><Children name="footer"></Children></template></NamedPanel></div></template>
 <template rust:component="NamedPanel" rust:render="shared"><article><div class="slot-body"><Children></Children></div><footer><Children name="footer"></Children></footer><aside><Children name="omitted"></Children></aside></article></template>
+<template rust:component="FailureRoot" rust:render="server"><main><If condition="{{ state.display }}"><DisplayFailure></DisplayFailure><Else><OpaqueFailure></OpaqueFailure></Else></If></main></template>
+<template rust:component="DisplayFailure" rust:render="server"><p>unreachable</p></template>
+<template rust:component="OpaqueFailure" rust:render="server"><p>unreachable</p></template>
 </body></html>`);
 
   await exec('cargo', ['build', '-p', 'fusor-cli', '--locked', '--offline'], { cwd: root, timeout: 240000, maxBuffer: 8e6 });
   await run('cargo', ['generate-lockfile', '--offline']);
   await run(join(root, 'target/debug', `fusor${suffix}`), ['build', '--locked', '--offline']);
+  await run('cargo', ['test', '--lib', '--locked', '--offline']);
   const { stdout: html } = await run('cargo', ['run', '--quiet', '--bin', 'render', '--locked', '--offline']);
   assert.match(html, /<p data-origin="server">server<\/p>/);
   assert.match(html, /class="slot-input"[^>]*value="footer"/);

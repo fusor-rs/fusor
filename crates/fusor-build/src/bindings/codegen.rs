@@ -322,7 +322,7 @@ fn coherent_renderer(body: TokenStream, ctx: Ctx) -> TokenStream {
     quote! { move |__fusor_frame: &mut #frame<'_>| {
         let __fusor_attempt = __fusor_frame.attempt;
         #body
-        ::std::result::Result::<(), ::std::string::String>::Ok(())
+        ::std::result::Result::<(), ::fusor::coherence::Error>::Ok(())
     }}
 }
 
@@ -690,9 +690,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn delegated_dom_backend_receives_nested_factories_and_preserves_output_and_origins() {
-        let source = r#"<template rust:component="Root"><section>
+    const NESTED_FACTORIES: &str = r#"<template rust:component="Root"><section>
   <input bind="state.query">
   <If condition="{{ state.visible.get() }}">
     <div><ForEach items="{{ state.groups.get() }}" key="{{ |group| group.id }}">
@@ -715,6 +713,10 @@ mod tests {
 </section></template>
 <template rust:component="Frame"><section><Children></Children></section></template>
 <template rust:component="Panel"><section rust:slot="state.body.clone()"></section></template>"#;
+
+    #[test]
+    fn delegated_dom_backend_receives_nested_factories_and_preserves_output_and_origins() {
+        let source = NESTED_FACTORIES;
         let plan = crate::bindings::parse::parse(source, &[], 0).unwrap();
         let mut direct = String::new();
         let direct_origins = generate(source, &plan.components, &mut direct, false);

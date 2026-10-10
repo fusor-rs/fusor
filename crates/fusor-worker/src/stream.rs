@@ -2,7 +2,9 @@ use crate::{
     Bound, CancellationHandle, Job, JobError, Message, NoError, Pool, TaskResult, Unbound,
     WorkerError,
     context::Control,
+    endpoint::Endpoint,
     job::{Completion, Event, State, decode_result},
+    shared::{Codec, Payload},
 };
 use fusor::OwnerHandle;
 use fusor_async::CancellationToken;
@@ -77,7 +79,10 @@ impl<T: Message, E: Message, P: Message, M> ResultStream<T, E, P, M> {
     pub fn max_batch_bytes(self, bytes: usize) -> Self {
         if State::configure(&self.job.state) {
             if bytes == 0 || bytes > crate::message::MESSAGE_LIMIT {
-                self.invalid_configuration("stream batch limit must be between 1 and 16 MiB");
+                self.invalid_configuration(&format!(
+                    "stream batch limit must be between 1 and {} bytes",
+                    crate::message::MESSAGE_LIMIT
+                ));
             } else {
                 self.job.state.borrow_mut().batch_bytes = bytes;
             }
@@ -104,6 +109,30 @@ impl<T: Message, E: Message, P: Message, M> ResultStream<T, E, P, M> {
     }
     fn invalid_configuration(&self, message: &str) {
         State::abort(&self.job.state, crate::error::configuration(message));
+    }
+    fn consume_item(
+        &self,
+        payload: Payload,
+        endpoint: Option<Rc<Endpoint>>,
+        codec: &Codec,
+    ) -> TaskResult<T, E> {
+        let id = self
+            .job
+            .state
+            .borrow()
+            .admission
+            .as_ref()
+            .expect("stream events arrive only after job admission")
+            .id;
+        let result = decode_result(Ok(payload), codec);
+        if let Err(JobError::Worker(error)) = &result {
+            State::abort(&self.job.state, error.clone());
+            self.job.state.borrow_mut().completion = Completion::Consumed;
+        }
+        if let Some(endpoint) = endpoint {
+            endpoint.credit(id);
+        }
+        result
     }
 }
 impl<T: Message, E: Message, P: Message> ResultStream<T, E, P, Unbound> {
@@ -132,22 +161,8 @@ impl<T: Message, E: Message, P: Message, M> Stream for ResultStream<T, E, P, M> 
             .unwrap_or_default();
         match state.events.pop_front() {
             Some(Event::Item(payload)) => {
-                let id = state
-                    .admission
-                    .as_ref()
-                    .expect("stream events arrive only after job admission")
-                    .id;
                 drop(state);
-                let result = decode_result(Ok(payload), &codec);
-                if let Err(JobError::Worker(error)) = &result {
-                    State::abort(raw, error.clone());
-                    let mut state = raw.borrow_mut();
-                    state.completion = Completion::Consumed;
-                }
-                if let Some(endpoint) = endpoint {
-                    endpoint.credit(id);
-                }
-                Poll::Ready(Some(result))
+                Poll::Ready(Some(self.consume_item(payload, endpoint, &codec)))
             }
             Some(Event::End(result)) => {
                 state.completion = Completion::Consumed;

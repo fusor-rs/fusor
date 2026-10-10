@@ -8,12 +8,12 @@ use interaction::BlockingOverlay;
 use super::{JsValue, Listener, MountPoint, Scope, is_html};
 use crate::{
     ContextKey, OwnerHandle,
-    coherence::{AsyncBoundary, Attempt, Publication},
+    coherence::{AsyncBoundary, Attempt, Error, Publication},
 };
 use std::{any::Any, cell::RefCell, collections::BTreeMap, rc::Rc};
 use web_sys::{Element, Event, Node, Text};
 
-type Renderer = dyn Fn(&mut Frame<'_>) -> Result<(), String>;
+type Renderer = dyn Fn(&mut Frame<'_>) -> Result<(), Error>;
 
 /// A coherent binding's stable slot and validated DOM target.
 #[doc(hidden)]
@@ -88,7 +88,7 @@ impl Scope {
     #[doc(hidden)]
     pub fn set_coherent_renderer(
         &mut self,
-        render: impl Fn(&mut Frame<'_>) -> Result<(), String> + 'static,
+        render: impl Fn(&mut Frame<'_>) -> Result<(), Error> + 'static,
     ) {
         *self
             .render_tree
@@ -103,7 +103,7 @@ impl Scope {
         &mut self,
         root: &Element,
         boundary: AsyncBoundary,
-        render: impl Fn(&mut Frame<'_>) -> Result<(), String> + 'static,
+        render: impl Fn(&mut Frame<'_>) -> Result<(), Error> + 'static,
     ) -> Result<(), JsValue> {
         if self.is_coherent() {
             return Err(JsValue::from_str(
@@ -133,7 +133,7 @@ impl Scope {
                 publication.roots.push(captured_root.clone());
                 Ok(Box::new(publication))
             })
-            .map_err(|error| JsValue::from_str(&error))?;
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
         region.retain(mounted);
         overlay.install(&mut region, boundary)?;
         region.retain(overlay);
@@ -145,10 +145,24 @@ impl Scope {
     }
 }
 
-fn error(value: JsValue) -> String {
-    value.as_string().unwrap_or_else(|| format!("{value:?}"))
+fn error(value: JsValue) -> Error {
+    Error::renderer(DomError(value))
 }
-fn allowed(element: &Element) -> Result<(), String> {
+
+/// A native DOM failure retained by a coherent renderer error. Downcast the
+/// coherent error to this type to inspect the browser exception.
+#[derive(Debug)]
+pub struct DomError(pub JsValue);
+impl std::fmt::Display for DomError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0.as_string() {
+            Some(message) => formatter.write_str(&message),
+            None => write!(formatter, "{:?}", self.0),
+        }
+    }
+}
+impl std::error::Error for DomError {}
+fn allowed(element: &Element) -> Result<(), Error> {
     if element.local_name().contains('-') || element.has_attribute("is") || !is_html(element) {
         return Err(
             "custom elements and foreign DOM cannot participate in coherent patches".into(),
@@ -164,7 +178,7 @@ enum Patch {
     Class(Element, String, bool, bool),
 }
 impl Patch {
-    fn apply(&self, reverse: bool) -> Result<(), String> {
+    fn apply(&self, reverse: bool) -> Result<(), Error> {
         fn pick<T>(reverse: bool, next: T, old: T) -> T {
             if reverse { old } else { next }
         }
@@ -191,8 +205,8 @@ impl Patch {
 }
 
 trait Structure {
-    fn validate(&self) -> Result<(), String>;
-    fn apply(&self) -> Result<(), String>;
+    fn validate(&self) -> Result<(), Error>;
+    fn apply(&self) -> Result<(), Error>;
     fn finish(self: Box<Self>);
 }
 #[derive(Default)]
@@ -204,7 +218,7 @@ struct Prepared {
     targets: Vec<(Rc<Tree>, Node)>,
 }
 impl Publication for Prepared {
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self) -> Result<(), Error> {
         for root in &self.roots {
             allowed(root)?;
         }
@@ -221,11 +235,13 @@ impl Publication for Prepared {
         }
         Ok(())
     }
-    fn apply(&mut self) -> Result<(), String> {
+    fn apply(&mut self) -> Result<(), Error> {
         for (index, patch) in self.patches.iter().enumerate() {
             if let Err(error) = patch.apply(false) {
                 for patch in self.patches[..index].iter().rev() {
-                    let _ = patch.apply(true);
+                    if let Err(rollback) = patch.apply(true) {
+                        web_sys::console::error_1(&JsValue::from_str(&rollback.to_string()));
+                    }
                 }
                 return Err(error);
             }
@@ -252,7 +268,7 @@ pub struct Frame<'a> {
     publication: &'a mut Prepared,
     listeners: Vec<Listener>,
 }
-fn visit(tree: &Rc<Tree>, attempt: &Attempt, publication: &mut Prepared) -> Result<(), String> {
+fn visit(tree: &Rc<Tree>, attempt: &Attempt, publication: &mut Prepared) -> Result<(), Error> {
     if tree.owner.is_disposed() {
         return Err("coherent component disposed during preparation".into());
     }
@@ -274,7 +290,7 @@ fn visit(tree: &Rc<Tree>, attempt: &Attempt, publication: &mut Prepared) -> Resu
 }
 
 impl Frame<'_> {
-    pub fn reject(&self, reason: &str) -> Result<(), String> {
+    pub fn reject(&self, reason: &str) -> Result<(), Error> {
         Err(reason.into())
     }
     /// Require `node` to stay inside this component until publication.
@@ -283,7 +299,7 @@ impl Frame<'_> {
             .targets
             .push((self.tree.clone(), node.clone()));
     }
-    pub fn text(&mut self, node: &Text, value: impl ToString) -> Result<(), String> {
+    pub fn text(&mut self, node: &Text, value: impl ToString) -> Result<(), Error> {
         self.target(node);
         let next = value.to_string();
         let old = node.data();
@@ -294,7 +310,7 @@ impl Frame<'_> {
         }
         Ok(())
     }
-    pub fn attr(&mut self, node: &Element, name: &str, next: Option<String>) -> Result<(), String> {
+    pub fn attr(&mut self, node: &Element, name: &str, next: Option<String>) -> Result<(), Error> {
         allowed(node)?;
         self.target(node);
         if name == "inert" && self.tree.context.overlay.owns_root(node) {
@@ -317,7 +333,7 @@ impl Frame<'_> {
         }
         Ok(())
     }
-    pub fn class(&mut self, node: &Element, name: &str, next: bool) -> Result<(), String> {
+    pub fn class(&mut self, node: &Element, name: &str, next: bool) -> Result<(), Error> {
         allowed(node)?;
         if name.is_empty() || name.chars().any(char::is_whitespace) {
             return Err("invalid coherent class name".into());
@@ -336,7 +352,7 @@ impl Frame<'_> {
         node: &Element,
         event: &str,
         handler: impl FnMut(Event) + 'static,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         allowed(node)?;
         let owner = self.tree.owner.clone();
         let boundary = self.tree.context.boundary.clone();

@@ -1,5 +1,5 @@
 use derive_where::derive_where;
-use fusor_async::Data;
+use fusor_async::ResourceData;
 use std::{num::NonZeroUsize, rc::Rc, time::Duration};
 
 #[derive(Clone, Copy, Debug)]
@@ -38,13 +38,13 @@ pub enum QueryState<K, T, E> {
     Idle,
     Loading {
         key: K,
-        previous: Option<Data<K, T>>,
+        previous: Option<ResourceData<K, T>>,
     },
-    Ready(Data<K, T>),
+    Ready(ResourceData<K, T>),
     Error {
         key: K,
         error: Rc<E>,
-        previous: Option<Data<K, T>>,
+        previous: Option<ResourceData<K, T>>,
     },
     /// All cache slots are held by active subscriptions. No request was started.
     Capacity {
@@ -53,7 +53,7 @@ pub enum QueryState<K, T, E> {
     Disposed,
 }
 impl<K, T, E> QueryState<K, T, E> {
-    pub fn data(&self) -> Option<&Data<K, T>> {
+    pub fn data(&self) -> Option<&ResourceData<K, T>> {
         match self {
             Self::Ready(data) => Some(data),
             Self::Loading { previous, .. } | Self::Error { previous, .. } => previous.as_ref(),

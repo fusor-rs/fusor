@@ -112,6 +112,10 @@ framework.
 The site registers `Cart` with a `CartView` factory and renders using a manifest plus that
 registry. cart-web exports the corresponding browser factory below.
 
+Native rendering returns `fusor_server::Result<T>` with a typed `Error`. Serialization and
+delivery failures retain their error sources. A failed or panicking island render releases
+its instance ID and restores the context, so the caller can reuse it after handling failure.
+
 The delivery metadata maps the unit name cart to that Cargo package. This is extra package
 setup, not an attribute that automatically splits an ordinary app.
 
@@ -141,6 +145,9 @@ The handle uses the same loader as HTML policies.
 Lookup/status do not download code. A dropped waiter or disposed caller cancels its wait; it
 does not dispose an already active target.
 
+Load and binding failures retain the registry message and original JavaScript `Error.cause`
+in `RegistryError`. A failed preview commit reports a failed fallback restoration too.
+
 ```rust title=Rust · inside an active caller’s async task
 let cart = fusor_islands::browser::get::<Cart>(&owner, "cart-42")?;
 cart.prefetch().await?;
@@ -154,6 +161,10 @@ cart.activate().await?;
 `fusor_islands::browser::emit::<Descriptor, Payload>` sends an explicitly named message with
 a serializable payload. `browser::listen::<Descriptor, Payload>` registers an owner-scoped
 listener that decodes it.
+
+The callback receives `Result<Payload, fusor_islands::Error>`: `MessagePayload` rejects
+non-text payloads, and `Decode` retains the JSON decoding cause. Delivery manifest errors
+also identify the invalid metadata or unregistered descriptor and unit.
 
 The receiver decides how to update its own signals.
 

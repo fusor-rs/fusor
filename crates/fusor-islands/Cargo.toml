@@ -14,7 +14,7 @@ default = []
 browser = ["fusor-core/islands", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:js-sys", "dep:web-sys"]
 
 [dependencies]
-fusor-core.workspace = true
+fusor-core = { workspace = true, optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 wasm-bindgen = { workspace = true, optional = true }

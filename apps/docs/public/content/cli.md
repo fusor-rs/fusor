@@ -90,6 +90,9 @@ place.
 
 Both need an existing `Cargo.lock` and never change it.
 
+Browser builds with JavaScript modules, workers or islands need Node.js 22 or newer
+for bundling or registration inspection. Native Cargo checks do not need Node.
+
 ```sh title=Terminal
 fusor check
 fusor build
@@ -104,6 +107,10 @@ rebuilds when you save. Your `dist/` directory is not touched.
 An HTML or CSS change that leaves the generated Rust the same is patched into the open page,
 which keeps its state. Any other change rebuilds and reloads the page. A failed build keeps
 the last working one served and prints the error in the terminal.
+
+Refresh polling aborts requests after five seconds and retries on the next poll.
+Source watchers stop and join when the dev server returns. An active build finishes
+before a watcher exits.
 
 A literal `include_str!` or `include_bytes!` can keep live refresh enabled when it reads a
 watched file outside the app's HTML templates and public assets. Editing that file rebuilds
@@ -173,6 +180,9 @@ in scope, the command lists them and stops.
 
 Progress goes to stderr and results go to stdout, so `fusor preview | head -1` prints only
 the URL.
+
+A failed stdout write, including a closed pipe, fails the command with exit code 3.
+Progress output is best effort.
 
 ```text title=Text
 --manifest-path PATH   Cargo.toml of the application or its workspace

@@ -177,7 +177,7 @@ pub fn start_exact_router() -> Result<(), JsValue> {
             let mut scope = Scope::new(root);
             scope.prepare_owner(Some(&context.parent));
             let mode = url.query_first("mode").unwrap_or_default();
-            if mode == "fail" {
+            if mode == "fail" || url.fragment() == "fail" {
                 scope.before_commit(|| Err(JsValue::from_str("exact preparation failed")))?;
             } else if mode == "reenter" {
                 scope.retain(scope.owner().on_activate(move || {
@@ -214,4 +214,15 @@ pub fn exact_navigate(url: &str, keep: bool) -> Result<(), JsValue> {
 pub fn exact_dispose() {
     let router = EXACT.with(|slot| slot.borrow().clone()).unwrap();
     router.dispose();
+}
+
+#[wasm_bindgen]
+pub fn exact_last_error() -> Option<String> {
+    EXACT.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .expect("the exact router has been mounted")
+            .last_error()
+            .map(|error| format!("{error:?}"))
+    })
 }

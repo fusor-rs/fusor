@@ -185,7 +185,8 @@ In a component constructor, `owner` is the `OwnerHandle` supplied by `FromInputs
 
 `Navigation::from_owner` finds the routing context provided before that page is constructed.
 `location()` is a reactive `Derived<AppUrl>`; read it in a binding or resource key to react
-to query changes.
+to query changes. Construct an `AppUrl` with `AppUrl::parse`; its encoded components are
+read-only. `path()` includes the leading slash; `query()` and `fragment()` omit `?` and `#`.
 
 A newly prepared page sees the destination URL immediately. The lookup is explicit, so
 components outside a router can handle its absence.
@@ -223,6 +224,13 @@ navigation.navigate_url("/articles/42", NavigateOptions::default())?;
 > Preparation errors retain the old view and URL. `last_error()` exposes listener-driven
 > failures. Constructors should avoid unrelated side effects; arbitrary application side
 > effects cannot be rolled back.
+
+Native fragment changes prepare their destination before updating router history metadata.
+If preparation fails, the router retains the view and restores its URL. A failed back or
+forward navigation returns to the shown entry; if restoration does not complete within
+two seconds, or dispatching or restoring history fails, the router reloads the browser's
+current URL. History access and focus failures
+are reported through `last_error()`. Focus failures leave the committed navigation visible.
 
 ## Load data in the page that needs it {#data}
 

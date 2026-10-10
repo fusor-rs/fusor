@@ -50,7 +50,7 @@ try {
   });
   const manifestPath = join(scratch, "Cargo.toml");
   const manifest = await readFile(manifestPath, "utf8");
-  await writeFile(manifestPath, manifest.replace(/"\.\.\/\.\.\/\.\.\/crates\/([^"]+)"/g,
+  await writeFile(manifestPath, manifest.replace('features = ["dom"]', 'features = ["dom", "javascript"]').replace(/"\.\.\/\.\.\/\.\.\/crates\/([^"]+)"/g,
     (_, crate) => JSON.stringify(join(root, "crates", crate))));
   const htmlPath = join(scratch, "web/index.html");
   const good = await readFile(htmlPath, "utf8");
@@ -114,6 +114,24 @@ try {
   assert.ok(result.errors.some((error) => error.code?.code === "E0277" && error.message.includes("InputTarget")),
     JSON.stringify(result.errors));
   console.log("PASS: a generic Element cannot satisfy the native InputTarget contract");
+  await writeFile(htmlPath, good);
+  const rustSource = await readFile(sourcePath, 'utf8');
+  const exposed = '\n#[derive(fusor::JsInputs)]\n#[js_inputs(crate = ::fusor)]\nstruct Exposed { #[js] value: fusor::Signal<f64> }\n';
+  await writeFile(sourcePath, rustSource + exposed);
+  const derived = await compile();
+  assert.equal(derived.success, true, derived.stderr + JSON.stringify(derived.errors));
+  for (const [before, after, message] of [
+    ['#[js_inputs(crate = ::fusor)]', '#[js_inputs()]', 'expected #[js_inputs'],
+    ['#[js_inputs(crate = ::fusor)]', '#[js_inputs(crate = ::fusor, crate = ::fusor)]', 'duplicate crate path'],
+    ['#[js_inputs(crate = ::fusor)]', '#[js_inputs(crate = ::fusor)] #[js_inputs(crate = ::fusor)]', 'duplicate #[js_inputs]'],
+    ['#[js] value:', '#[js_inputs(crate = ::fusor)] #[js] value:', 'belongs on the struct'],
+  ]) {
+    await writeFile(sourcePath, rustSource + exposed.replace(before, after));
+    const rejected = await compile();
+    assert.equal(rejected.success, false, after);
+    assert.ok(rejected.errors.some(error => error.message.includes(message)), rejected.stderr + JSON.stringify(rejected.errors));
+  }
+  console.log('PASS: JsInputs overrides compile with one crate path and reject empty, duplicate, and misplaced attributes.');
 } finally {
   await rm(scratch, { recursive: true, force: true });
 }

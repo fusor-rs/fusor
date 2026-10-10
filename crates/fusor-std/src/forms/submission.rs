@@ -23,7 +23,11 @@ impl<C> std::fmt::Display for SubmitError<C> {
         self.reason.fmt(f)
     }
 }
-impl<C> std::error::Error for SubmitError<C> {}
+impl<C> std::error::Error for SubmitError<C> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.reason)
+    }
+}
 
 type Commit = Box<dyn FnOnce(&mut Retired)>;
 /// Staged acknowledgment, valid only for the supplied submission. Methods latch
@@ -52,15 +56,9 @@ impl Acknowledgment {
     pub fn reject(&mut self, message: impl Into<String>) {
         self.error = Some(FormError::Mapping(message.into()));
     }
-    fn stamp<T: 'static>(&mut self, field: &TextField<T>) -> Option<FieldStamp> {
+    fn stamp<T: 'static>(&mut self, field: &TextField<T>) -> Option<&FieldStamp> {
         let id = field.stamp().id;
-        let Some(stamp) = self
-            .snapshot
-            .fields
-            .iter()
-            .find(|stamp| stamp.id == id)
-            .cloned()
-        else {
+        let Some(stamp) = self.snapshot.fields.iter().find(|stamp| stamp.id == id) else {
             self.error = Some(FormError::UnknownField);
             return None;
         };
@@ -74,18 +72,10 @@ impl Acknowledgment {
         let Some(stamp) = self.stamp(field) else {
             return;
         };
+        let submitted_revision = stamp.revision;
         let raw = field.formatted(&value);
         let core = field.core();
-        let check = stamp.clone();
-        self.checks.push(Box::new(move || {
-            if check.baseline_current() {
-                Ok(())
-            } else {
-                Err(FormError::StaleBaseline)
-            }
-        }));
-        let submitted = self.snapshot.fields.clone();
-        let submission = self.snapshot.id;
+        let snapshot = self.snapshot.clone();
         self.writes.push(Box::new(move |_| {
             core.state.update(|state| {
                 state.baseline = raw.clone();
@@ -93,7 +83,7 @@ impl Acknowledgment {
                     .baseline_revision
                     .checked_add(1)
                     .expect("baseline revision overflow");
-                if state.revision == stamp.revision && state.raw != raw {
+                if state.revision == submitted_revision && state.raw != raw {
                     state.raw = raw;
                     // Normalization changes the value that validation observed,
                     // even though it is not a new user keystroke.
@@ -105,7 +95,7 @@ impl Acknowledgment {
                 if state
                     .server
                     .as_ref()
-                    .is_some_and(|issue| issue.superseded_by(&submitted, submission))
+                    .is_some_and(|issue| issue.superseded_by(&snapshot.fields, snapshot.id))
                 {
                     state.server = None;
                 }
@@ -178,6 +168,32 @@ impl Rejection {
             mapped: BTreeSet::new(),
         }
     }
+    fn publish(self, info: &SnapshotInfo) -> Option<Rc<Issue>> {
+        for (core, message) in self.fields {
+            let issue = Rc::new(Issue {
+                message,
+                dependencies: info.fields.clone(),
+                origin: info.id,
+            });
+            core.state.update(|state| {
+                if state
+                    .server
+                    .as_ref()
+                    .is_none_or(|old| old.superseded_by(&info.fields, info.id))
+                {
+                    state.server = Some(issue);
+                }
+            });
+        }
+        self.message.map(|message| {
+            Rc::new(Issue {
+                message,
+                dependencies: info.fields.clone(),
+                origin: info.id,
+            })
+        })
+    }
+
     pub fn field<T: 'static>(&mut self, field: &TextField<T>, message: impl Into<String>) {
         let id = field.stamp().id;
         if !self.snapshot.fields.iter().any(|stamp| stamp.id == id) {
@@ -250,13 +266,12 @@ impl MappedSubmission {
         }
     }
 
-    fn validate(&mut self) -> Option<String> {
+    fn validate(&mut self) -> Option<FormError> {
         let failure = if self.status == SubmissionStatus::Accepted {
             self.ack.validate().err()
         } else {
             self.errors.error.clone()
         };
-        let failure = failure.map(|error| error.to_string());
         if failure.is_some() {
             self.status = SubmissionStatus::PublicationFailed;
             self.ack.writes.clear();
@@ -271,7 +286,7 @@ impl MappedSubmission {
         self,
         form: Form<F, C>,
         info: Rc<SnapshotInfo>,
-        failure: Option<String>,
+        failure: Option<FormError>,
     ) -> Publication {
         let Self {
             ack,
@@ -286,22 +301,7 @@ impl MappedSubmission {
                 for write in ack.writes {
                     write(retired);
                 }
-                for (core, message) in errors.fields {
-                    let issue = Rc::new(Issue {
-                        message,
-                        dependencies: info.fields.clone(),
-                        origin: info.id,
-                    });
-                    core.state.update(|state| {
-                        if state
-                            .server
-                            .as_ref()
-                            .is_none_or(|old| old.superseded_by(&info.fields, info.id))
-                        {
-                            state.server = Some(issue);
-                        }
-                    });
-                }
+                let validation = errors.publish(&info);
                 form.0.pending.set(None);
                 form.0.state.update(|state| {
                     state.status = status;
@@ -310,16 +310,9 @@ impl MappedSubmission {
                         .validation
                         .as_ref()
                         .is_none_or(|issue| issue.superseded_by(&info.fields, info.id));
-                    if superseded {
-                        if let Some(message) = errors.message {
-                            state.validation = Some(Rc::new(Issue {
-                                message,
-                                dependencies: info.fields.clone(),
-                                origin: info.id,
-                            }));
-                        } else if status == SubmissionStatus::Accepted {
-                            state.validation = None;
-                        }
+                    if superseded && (validation.is_some() || status == SubmissionStatus::Accepted)
+                    {
+                        state.validation = validation;
                     }
                 });
             }),
@@ -329,7 +322,7 @@ impl MappedSubmission {
 
 impl<F: Fields, C: 'static> Form<F, C> {
     fn check_snapshot(&self, snapshot: &Snapshot<C>) -> Result<(), FormError> {
-        if snapshot.info.form != self.0.id || snapshot.info.entity != self.0.entity {
+        if snapshot.info.form != self.0.id {
             return Err(FormError::WrongForm);
         }
         if self.0.owner.is_disposed() {
@@ -360,9 +353,9 @@ impl<F: Fields, C: 'static> Form<F, C> {
         Ok(())
     }
 
-    fn check_pending(&self, id: u64) -> Result<(), String> {
+    fn check_pending(&self, id: u64) -> Result<(), FormError> {
         if !self.0.owner.is_active() || self.0.pending.get() != Some(id) {
-            return Err(FormError::Disposed.to_string());
+            return Err(FormError::Disposed);
         }
         Ok(())
     }
@@ -375,7 +368,7 @@ impl<F: Fields, C: 'static> Form<F, C> {
             impl FnOnce(&mut Acknowledgment, &T),
             impl FnOnce(&mut Rejection, &E),
         >,
-    ) -> Result<Publication, String> {
+    ) -> Result<Publication, FormError> {
         self.check_pending(info.id)?;
         let mut mapped = MappedSubmission::new(&info, outcome, handlers);
         self.check_pending(info.id)?;

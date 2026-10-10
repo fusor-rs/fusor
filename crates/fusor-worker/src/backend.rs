@@ -139,12 +139,7 @@ pub async fn __fusor_worker_call(
     match crate::message::encode_json(&result, crate::message::MESSAGE_LIMIT) {
         Ok(encoded) => encoded,
         Err(error) => {
-            CODEC.with(|codec| match result {
-                Ok(payload) | Err(crate::JobError::Application(payload)) => {
-                    codec.borrow().discard(payload)
-                }
-                _ => {}
-            });
+            CODEC.with(|codec| discard_result(result, &codec.borrow()));
             serde_json::to_string(&TaskResult::<Payload, Payload>::Err(error.into()))
                 .expect("worker error")
         }
@@ -198,15 +193,16 @@ async fn invoke(
     });
     let failure = result_control.take_failure();
     if let Some(error) = failure {
-        match result {
-            Ok(payload) | Err(crate::JobError::Application(payload)) => {
-                result_control.codec.discard(payload)
-            }
-            _ => {}
-        }
+        discard_result(result, &result_control.codec);
         Err(error.into())
     } else {
         result
+    }
+}
+fn discard_result(result: TaskResult<Payload, Payload>, codec: &Codec) {
+    match result {
+        Ok(payload) | Err(crate::JobError::Application(payload)) => codec.discard(payload),
+        Err(crate::JobError::Worker(_)) => {}
     }
 }
 #[wasm_bindgen]

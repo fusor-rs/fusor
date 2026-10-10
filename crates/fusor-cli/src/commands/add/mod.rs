@@ -68,17 +68,17 @@ pub(crate) fn run(cx: &Context, capability: Capability, dry_run: bool) -> Result
             } else {
                 ""
             }
-        ));
+        ))?;
     }
     if capability.is_javascript() {
         cx.reporter.result(format!(
             "{}: esbuild {}; resolve package-lock.json and install npm dependencies",
             project.root.join("package.json").display(),
             layout::ESBUILD_VERSION
-        ));
+        ))?;
     }
     if dry_run {
-        cx.reporter.result("Dry run: no files changed.");
+        cx.reporter.result("Dry run: no files changed.")?;
         return Ok(());
     }
     if cx.locked {
@@ -100,7 +100,7 @@ pub(crate) fn run(cx: &Context, capability: Capability, dry_run: bool) -> Result
         return Err(error.remedy("the files this operation wrote were restored; retry `fusor add` once the problem is resolved"));
     }
     cx.reporter
-        .result("Capability added; the Cargo dependency graph was validated.");
+        .result("Capability added; the Cargo dependency graph was validated.")?;
     Ok(())
 }
 

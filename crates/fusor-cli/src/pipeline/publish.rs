@@ -17,15 +17,18 @@ use std::{
 pub(crate) static OUTPUT_ACCESS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Unique across builds, and URL- and filename-safe.
-pub(crate) fn generation() -> String {
-    format!(
+pub(crate) fn generation() -> Result<String> {
+    Ok(format!(
         "g-{}-{}",
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system clock is before the Unix epoch")
+            .map_err(
+                |error| Error::project(format!("cannot name a build generation: {error}"))
+                    .remedy("set the system clock to a date after the Unix epoch")
+            )?
             .as_nanos(),
         std::process::id()
-    )
+    ))
 }
 
 pub(crate) fn copy_assets(project: &Project, staging: &Path) -> Result {
@@ -136,9 +139,54 @@ mod tests {
     }
 
     #[test]
+    fn corrupt_output_metadata_fails_retention_and_source_watching() {
+        let cx = Context::default();
+        let root = std::env::temp_dir().join(format!("fusor-corrupt-{}", generation().unwrap()));
+        let _cleanup = crate::transaction::Staging(root.clone());
+        let project = project(root);
+        let site = project.output(&cx);
+        fs::create_dir_all(&site).unwrap();
+        fs::write(site.join(layout::OUTPUT_MANIFEST), "{broken").unwrap();
+        fs::write(site.join("index.html"), "previous").unwrap();
+        let publication = crate::pipeline::Publication::begin(&cx, &project, None).unwrap();
+        assert!(
+            publication
+                .retain_previous()
+                .unwrap_err()
+                .to_string()
+                .contains(".fusor-output.json")
+        );
+        assert!(
+            crate::dev::sources::snapshot(&cx, &project)
+                .unwrap_err()
+                .to_string()
+                .contains(".fusor-output.json")
+        );
+        assert_eq!(
+            fs::read_to_string(site.join("index.html")).unwrap(),
+            "previous"
+        );
+    }
+
+    #[test]
+    fn dropping_a_source_watcher_joins_it_and_releases_its_project() {
+        let cx = Context::default();
+        let root = std::env::temp_dir().join(format!("fusor-watcher-{}", generation().unwrap()));
+        fs::create_dir(&root).unwrap();
+        let _cleanup = crate::transaction::Staging(root.clone());
+        let project = project(root);
+        let current = std::sync::Arc::new(std::sync::RwLock::new(project.clone()));
+        let released = std::sync::Arc::downgrade(&current);
+        let watcher = crate::dev::watch::start(&cx, project, current).unwrap();
+        assert!(released.upgrade().is_some());
+        drop(watcher);
+        assert!(released.upgrade().is_none());
+    }
+
+    #[test]
     fn a_failed_swap_restores_the_previous_output_and_allows_a_retry() {
         let cx = Context::default();
-        let root = std::env::temp_dir().join(format!("fusor-publish-{}", generation()));
+        let root = std::env::temp_dir().join(format!("fusor-publish-{}", generation().unwrap()));
         fs::create_dir(&root).unwrap();
         let _cleanup = crate::transaction::Staging(root.clone());
         let project = project(root);
@@ -168,7 +216,7 @@ mod tests {
 
     #[test]
     fn a_missing_assets_directory_is_named_with_its_remedy() {
-        let root = std::env::temp_dir().join(format!("fusor-assets-{}", generation()));
+        let root = std::env::temp_dir().join(format!("fusor-assets-{}", generation().unwrap()));
         let mut project = project(root.clone());
         project.config.assets = Some("public".into());
         let error = copy_assets(&project, &root.join("stage")).unwrap_err();

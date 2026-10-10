@@ -78,7 +78,7 @@ impl<'a> Publication<'a> {
         project: &'a Project,
         watched: Option<&mut Snapshot>,
     ) -> Result<Self> {
-        let publication = Self::stage(cx, project, publish::generation(), watched)?;
+        let publication = Self::stage(cx, project, publish::generation()?, watched)?;
         std::fs::create_dir(publication.staging.join(layout::GENERATED))?;
         std::fs::create_dir(&publication.generated)?;
         Ok(publication)
@@ -121,7 +121,11 @@ impl<'a> Publication<'a> {
             .ok_or_else(|| Error::project("the output directory has no parent"))?;
         std::fs::create_dir_all(parent)?;
         // Named apart from the generation, which a revision reuses.
-        let staging = parent.join(format!("{}{}", layout::STAGE_PREFIX, publish::generation()));
+        let staging = parent.join(format!(
+            "{}{}",
+            layout::STAGE_PREFIX,
+            publish::generation()?
+        ));
         std::fs::create_dir(&staging)?;
         let guard = Staging(staging.clone());
         publish::copy_assets(project, &staging)?;
@@ -144,7 +148,7 @@ impl<'a> Publication<'a> {
     /// A page loaded a moment ago still references the previous generation's
     /// URLs. Only one predecessor is kept.
     pub fn retain_previous(&self) -> Result {
-        let Ok(previous) = OutputManifest::read(&self.site) else {
+        let Some(previous) = OutputManifest::read_optional(&self.site)? else {
             return Ok(());
         };
         let old = layout::generated(&self.site, &previous.generation);

@@ -1,5 +1,5 @@
 use std::time::Instant;
-fn main() -> Result<(), String> {
+fn main() -> fusor_server::Result<()> {
     let args: Vec<_> = std::env::args().collect();
     let count = args.get(1).and_then(|n| n.parse().ok()).unwrap_or(1000);
     if args.get(2).is_some_and(|arg| arg == "html") {

@@ -1,18 +1,16 @@
 //! Structural list syntax and item-only forwarding-row analysis.
 use super::{ir::*, tag_input::TagInput, tags::BuiltIn, tokens::Rust};
 use crate::{ExtractError, error};
-use html5gum::{DefaultEmitter, Token, Tokenizer};
+use html5gum::Token;
 use std::collections::BTreeSet;
 
 /// A ForEach owns its native parent's children, without adding a wrapper node.
 /// Validate this before lowering so static siblings cannot silently disappear.
 pub(super) fn hosts(source: &str) -> Result<BTreeSet<usize>, ExtractError> {
-    let mut emitter = DefaultEmitter::<usize>::new_with_span();
-    emitter.naively_switch_states(true);
     let mut stack: Vec<Frame> = Vec::new();
     let mut hosts = BTreeSet::new();
-    for token in Tokenizer::new_with_emitter(source, emitter) {
-        match token.expect("in-memory HTML") {
+    for token in crate::html::tokens(source) {
+        match token {
             Token::StartTag(tag) => {
                 let name = String::from_utf8_lossy(&tag.name).into_owned();
                 let list = super::tags::name(source, tag.span.start) == BuiltIn::ForEach.spelling();
@@ -105,28 +103,21 @@ pub(super) fn mark_item_only_rows(components: &mut [Component]) {
 }
 
 fn forwards_item_only(component: &Component, components: &[Component]) -> bool {
-    if !component.inline()
-        || component.capture().is_some()
+    if component.capture().is_some()
         || component.row_locals.len() != 1
         || !component.async_locals.is_empty()
         || !component.route_locals.is_empty()
-        || !component.elements.is_empty()
-        || !component.texts.is_empty()
-        || !component.text_elements.is_empty()
     {
         return false;
     }
-    let [
-        binding @ Binding::Invocation {
-            inputs,
-            children,
-            condition: None,
-            key: None,
-            ..
-        },
-    ] = component.bindings.as_slice()
-    else {
+    let Some(binding) = component.forwarded_child() else {
         return false;
+    };
+    let Binding::Invocation {
+        inputs, children, ..
+    } = binding
+    else {
+        unreachable!("forwarding selection returns an invocation");
     };
     // The parser retains an empty Children fragment for explicit closing tags.
     // children_factory discards it. No descendant code is evaluated or captured.
@@ -144,27 +135,28 @@ fn forwards_item_only(component: &Component, components: &[Component]) -> bool {
     }
     let index = component.row_locals[0].1.tokens.to_string();
     let index = index.strip_prefix("r#").unwrap_or(&index);
-    fn independent(tokens: proc_macro2::TokenStream, index: &str) -> bool {
-        tokens.into_iter().all(|token| match token {
-            proc_macro2::TokenTree::Group(group) => independent(group.stream(), index),
-            proc_macro2::TokenTree::Ident(ident) => {
-                let name = ident.to_string();
-                let name = name.strip_prefix("r#").unwrap_or(&name);
-                // Raw names compare like ordinary identifiers. Conservatively
-                // avoid Unicode normalization and compiler-context escapes.
-                name.is_ascii() && name != index && !name.starts_with("__fusor")
-            }
-            // Opaque macros/attributes may introduce a use absent from tokens.
-            // Rejecting unary ! and != too is an intentional false positive.
-            proc_macro2::TokenTree::Punct(punct) => !matches!(punct.as_char(), '!' | '#'),
-            proc_macro2::TokenTree::Literal(_) => true,
-        })
-    }
     index.is_ascii()
         && binding
             .fragments()
             .iter()
-            .all(|fragment| independent(fragment.tokens.clone(), index))
+            .all(|fragment| independent_of_index(fragment.tokens.clone(), index))
+}
+
+fn independent_of_index(tokens: proc_macro2::TokenStream, index: &str) -> bool {
+    tokens.into_iter().all(|token| match token {
+        proc_macro2::TokenTree::Group(group) => independent_of_index(group.stream(), index),
+        proc_macro2::TokenTree::Ident(ident) => {
+            let name = ident.to_string();
+            let name = name.strip_prefix("r#").unwrap_or(&name);
+            // Raw names compare like ordinary identifiers. Conservatively
+            // avoid Unicode normalization and compiler-context escapes.
+            name.is_ascii() && name != index && !name.starts_with("__fusor")
+        }
+        // Opaque macros/attributes may introduce a use absent from tokens.
+        // Rejecting unary ! and != too is an intentional false positive.
+        proc_macro2::TokenTree::Punct(punct) => !matches!(punct.as_char(), '!' | '#'),
+        proc_macro2::TokenTree::Literal(_) => true,
+    })
 }
 
 struct Frame {

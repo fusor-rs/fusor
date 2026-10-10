@@ -41,28 +41,28 @@ fn shares_requests_and_one_view_leaving_does_not_cancel_another() {
     let clock = TestClock::default();
     let load = Loader::new();
     let client = client(&app, &pool, &clock, &load, 3);
-    let a = active(&app);
-    let b = active(&app);
-    let qa = client.observe(&a.handle(), || Some(1));
-    let qb = client.observe(&b.handle(), || Some(1));
+    let departing_view = active(&app);
+    let surviving_view = active(&app);
+    let departing_query = client.observe(&departing_view.handle(), || Some(1));
+    let surviving_query = client.observe(&surviving_view.handle(), || Some(1));
     pool.run_until_stalled();
     assert_eq!(load.counts().started, 1);
     assert_eq!(client.info().observers, 2);
-    a.dispose();
+    departing_view.dispose();
     assert_eq!(load.counts().cancelled, 0);
-    assert!(matches!(qa.get(), QueryState::Disposed));
+    assert!(matches!(departing_query.get(), QueryState::Disposed));
     load.next_request()
         .unwrap()
         .complete(Ok("shared".into()))
         .unwrap();
     pool.run_until_stalled();
-    assert_eq!(&*qb.get().data().unwrap().value, "shared");
-    b.dispose();
-    let c = active(&app);
-    let qc = client.observe(&c.handle(), || Some(1));
+    assert_eq!(&*surviving_query.get().data().unwrap().value, "shared");
+    surviving_view.dispose();
+    let returning_view = active(&app);
+    let returning_query = client.observe(&returning_view.handle(), || Some(1));
     pool.run_until_stalled();
     assert_eq!(load.counts().started, 1);
-    assert_eq!(&*qc.get().data().unwrap().value, "shared");
+    assert_eq!(&*returning_query.get().data().unwrap().value, "shared");
 }
 
 #[test]
@@ -118,7 +118,8 @@ fn invalidation_supersedes_pending_work_and_revalidation_keeps_cached_data() {
     pool.run_until_stalled();
     let new = load.next_request().unwrap();
     assert!(old.is_cancelled());
-    let _ = old.complete(Ok("stale".into()));
+    assert_eq!(old.complete(Ok("stale".into())), Err(Ok("stale".into())));
+    pool.run_until_stalled();
     assert_eq!(&*query.get().data().unwrap().value, "first");
     new.complete(Ok("new".into())).unwrap();
     pool.run_until_stalled();
@@ -130,7 +131,10 @@ fn invalidation_supersedes_pending_work_and_revalidation_keeps_cached_data() {
         .complete(Err("offline"))
         .unwrap();
     pool.run_until_stalled();
-    assert!(matches!(query.get(), QueryState::Error { .. }));
+    assert!(matches!(
+        query.get(),
+        QueryState::Error { key: 1, error, .. } if *error == "offline"
+    ));
     assert_eq!(&*query.get().data().unwrap().value, "new");
 }
 
@@ -196,23 +200,26 @@ fn capacity_is_bounded_even_for_active_keys_and_clients_have_distinct_identities
     let load = Loader::new();
     let one = client(&app, &pool, &clock, &load, 1);
     let other = client(&app, &pool, &clock, &load, 1);
-    let a = active(&app);
-    let b = active(&app);
-    let qa = one.observe(&a.handle(), || Some(1));
-    let qb = one.observe(&b.handle(), || Some(2));
-    let independent = other.observe(&b.handle(), || Some(1));
+    let departing_view = active(&app);
+    let surviving_view = active(&app);
+    let departing_query = one.observe(&departing_view.handle(), || Some(1));
+    let surviving_query = one.observe(&surviving_view.handle(), || Some(2));
+    let independent = other.observe(&surviving_view.handle(), || Some(1));
     pool.run_until_stalled();
     assert_eq!(load.counts().started, 2);
-    assert!(matches!(qb.get(), QueryState::Capacity { key: 2 }));
+    assert!(matches!(
+        surviving_query.get(),
+        QueryState::Capacity { key: 2 }
+    ));
     assert_eq!(one.info().entries, 1);
-    qa.dispose();
-    qb.refresh();
+    departing_query.dispose();
+    surviving_query.refresh();
     pool.run_until_stalled();
     assert_eq!(load.counts().started, 3);
     assert_eq!(one.info().entries, 1);
     assert!(independent.get().is_loading());
     one.dispose();
-    assert!(matches!(qb.get(), QueryState::Disposed));
+    assert!(matches!(surviving_query.get(), QueryState::Disposed));
     assert!(independent.get().is_loading());
     app.dispose();
     pool.run_until_stalled();

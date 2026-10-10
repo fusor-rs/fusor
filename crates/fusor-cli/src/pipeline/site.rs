@@ -115,7 +115,11 @@ pub(crate) fn publish(cx: &Context, site: &Path, mut mounts: Vec<Mount>) -> Resu
         .parent()
         .ok_or_else(|| Error::project("the site output has no parent directory"))?;
     fs::create_dir_all(parent)?;
-    let staging = parent.join(format!("{}{}", layout::STAGE_PREFIX, publish::generation()));
+    let staging = parent.join(format!(
+        "{}{}",
+        layout::STAGE_PREFIX,
+        publish::generation()?
+    ));
     fs::create_dir(&staging)?;
     let _guard = Staging(staging.clone());
 
@@ -340,8 +344,10 @@ mod tests {
     fn scratch() -> (PathBuf, Staging) {
         static NEXT: AtomicU32 = AtomicU32::new(0);
         let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
-        let root =
-            std::env::temp_dir().join(format!("fusor-site-{}-{sequence}", publish::generation()));
+        let root = std::env::temp_dir().join(format!(
+            "fusor-site-{}-{sequence}",
+            publish::generation().unwrap()
+        ));
         fs::create_dir(&root).unwrap();
         (root.clone(), Staging(root))
     }

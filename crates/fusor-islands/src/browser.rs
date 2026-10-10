@@ -169,15 +169,21 @@ macro_rules! export {
         #[::wasm_bindgen::prelude::wasm_bindgen(start)]
         pub fn __fusor_delivery_start_guard() {}
         ::std::thread_local! { static __FUSOR_UNIT: ::std::cell::OnceCell<$crate::browser::Unit> = const { ::std::cell::OnceCell::new() }; }
-        fn __fusor_unit<R>(read: impl FnOnce(&$crate::browser::Unit) -> R) -> R { __FUSOR_UNIT.with(|unit| read(unit.get_or_init(|| $unit))) }
+        fn __fusor_unit<R>(read: impl FnOnce(&$crate::browser::Unit) -> R) -> R {
+            __FUSOR_UNIT.with(|unit| read(unit.get_or_init(|| $unit)))
+        }
         #[::wasm_bindgen::prelude::wasm_bindgen]
-        pub fn __fusor_manifest() -> ::std::string::String { __fusor_unit(|unit| unit.manifest()) }
+        pub fn __fusor_manifest() -> ::std::string::String {
+            __fusor_unit(|unit| unit.manifest())
+        }
         #[::wasm_bindgen::prelude::wasm_bindgen]
         pub fn __fusor_activate(descriptor: &str, host: &$crate::browser::IslandElement, props: &str, token: &str) -> ::std::result::Result<$crate::browser::IslandActivation, ::wasm_bindgen::JsValue> {
             __fusor_unit(|unit| unit.activate(descriptor, host, props, token))
         }
         #[::wasm_bindgen::prelude::wasm_bindgen]
-        pub fn __fusor_dispose(token: &str) { __fusor_unit(|unit| unit.dispose(token)); }
+        pub fn __fusor_dispose(token: &str) {
+            __fusor_unit(|unit| unit.dispose(token));
+        }
     };
 }
 #[doc(hidden)]
@@ -195,7 +201,7 @@ pub enum IslandStatus {
     Failed,
     Disposed,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum IslandError {
     Unavailable,
     UnknownInstance,
@@ -205,9 +211,26 @@ pub enum IslandError {
     StaleInstance,
     Cancelled,
     /// The unit failed to load, or the registry failed in another way.
-    LoadFailed(String),
-    BindingFailed(String),
+    LoadFailed(RegistryError),
+    BindingFailed(RegistryError),
 }
+
+/// Registry diagnostics retain the original JavaScript `Error.cause` value.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RegistryError {
+    pub message: String,
+    pub cause: JsValue,
+}
+impl std::fmt::Display for RegistryError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)?;
+        if !self.cause.is_undefined() {
+            write!(formatter, ": {:?}", self.cause)?;
+        }
+        Ok(())
+    }
+}
+impl std::error::Error for RegistryError {}
 impl std::fmt::Display for IslandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
@@ -223,7 +246,14 @@ impl std::fmt::Display for IslandError {
         })
     }
 }
-impl std::error::Error for IslandError {}
+impl std::error::Error for IslandError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::LoadFailed(error) | Self::BindingFailed(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 /// A typed property of a JavaScript object.
 fn property<T: JsCast>(target: &JsValue, name: &str) -> Option<T> {
@@ -246,13 +276,17 @@ fn call(name: &str, args: &[JsValue]) -> Result<JsValue, IslandError> {
 }
 fn decode_error(value: JsValue) -> IslandError {
     let message = text_property(&value, "message").unwrap_or_else(|| format!("{value:?}"));
+    let error = RegistryError {
+        message,
+        cause: js_sys::Reflect::get(&value, &"cause".into()).unwrap_or_else(|error| error),
+    };
     match text_property(&value, "code").as_deref() {
         Some("unknown-instance") => IslandError::UnknownInstance,
         Some("descriptor-mismatch") => IslandError::DescriptorMismatch,
         Some("stale-instance") => IslandError::StaleInstance,
         Some("cancelled") => IslandError::Cancelled,
-        Some("binding-failed") => IslandError::BindingFailed(message),
-        _ => IslandError::LoadFailed(message),
+        Some("binding-failed") => IslandError::BindingFailed(error),
+        _ => IslandError::LoadFailed(error),
     }
 }
 
@@ -373,15 +407,15 @@ pub fn listen<D: Island, T: serde::de::DeserializeOwned + 'static>(
     scope: &mut Scope,
     target: &Element,
     event: &str,
-    mut receive: impl FnMut(Result<T, String>) + 'static,
+    mut receive: impl FnMut(Result<T, crate::Error>) + 'static,
 ) -> Result<(), JsValue> {
     scope.on(target, &event_name::<D>(event), move |event| {
         let value = event
             .dyn_into::<web_sys::CustomEvent>()
             .ok()
             .and_then(|event| event.detail().as_string())
-            .ok_or_else(|| "island event requires opaque JSON text".to_owned())
-            .and_then(|text| crate::decode(&text).map_err(|error| error.to_string()));
+            .ok_or(crate::Error::MessagePayload)
+            .and_then(|text| crate::decode(&text).map_err(crate::Error::Decode));
         receive(value);
     })
 }

@@ -12,7 +12,7 @@ use support::{Fixture, failure, success};
 fn sample(capability: &str) -> &'static str {
     match capability {
         "router" => {
-            "pub fn route() -> String { let url = fusor_router::AppUrl::parse(\"/issues/42\").unwrap(); let _options = fusor_router::browser::NavigateOptions::default(); url.path }"
+            "pub fn route() -> String { let url = fusor_router::AppUrl::parse(\"/issues/42\").unwrap(); let _options = fusor_router::browser::NavigateOptions::default(); url.path().to_owned() }"
         }
         "async" => {
             "pub fn read(owner: &fusor::OwnerHandle) { let _ = fusor_async::browser::read(owner, || 1_u32, |key, _| async move { Ok::<_, String>(key) }); }"
@@ -24,7 +24,7 @@ fn sample(capability: &str) -> &'static str {
             "pub fn field() -> fusor_std::forms::TextField<String> { fusor_std::forms::TextField::new(String::from(\"draft\")) }"
         }
         "actions" => {
-            "pub fn action(owner: &fusor::OwnerHandle) { let _ = fusor_std::actions::browser::action(owner, fusor_std::actions::SavePolicy::RejectWhilePending, |_: std::rc::Rc<String>, _| async { fusor_std::actions::Outcome::<(), String>::Accepted(()) }); }"
+            "pub fn action(owner: &fusor::OwnerHandle) { let _ = fusor_std::actions::browser::action(owner, |_: std::rc::Rc<String>, _| async { fusor_std::actions::Outcome::<(), String>::Accepted(()) }); }"
         }
         other => panic!("no sample for {other}"),
     }

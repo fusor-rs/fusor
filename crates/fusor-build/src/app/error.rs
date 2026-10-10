@@ -11,6 +11,7 @@ pub struct SourceError {
     /// One-based HTML line and character column, when available.
     pub location: Option<(usize, usize)>,
     pub message: String,
+    cause: Option<Box<dyn std::error::Error>>,
 }
 
 impl SourceError {
@@ -19,6 +20,7 @@ impl SourceError {
             path: path.to_owned(),
             location: None,
             message: message.to_string(),
+            cause: None,
         }
     }
 
@@ -40,7 +42,12 @@ impl SourceError {
     }
 
     pub(crate) fn extracted(path: &Path, error: ExtractError) -> Self {
-        Self::at(path, error.line, error.column, error.message)
+        Self::at(path, error.line, error.column, &error.message).with_cause(error)
+    }
+
+    pub(crate) fn with_cause(mut self, cause: impl std::error::Error + 'static) -> Self {
+        self.cause = Some(Box::new(cause));
+        self
     }
 }
 
@@ -61,4 +68,8 @@ impl fmt::Debug for SourceError {
     }
 }
 
-impl std::error::Error for SourceError {}
+impl std::error::Error for SourceError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.cause.as_deref()
+    }
+}

@@ -1,7 +1,7 @@
 //! Public integration contracts, exercised without a browser or private imports.
 use fusor::{
     Effect, Owner, batch,
-    coherence::{AsyncBoundary, BoundaryStatus, Publication, ReadLease, prepare_state},
+    coherence::{AsyncBoundary, BoundaryStatus, Error, Publication, ReadLease, prepare_state},
     effect, memo,
     render::{Children, construct},
     signal,
@@ -275,14 +275,14 @@ fn candidate_invalidation_can_dispose_the_boundary_before_reevaluation() {
 }
 
 impl Publication for Candidate {
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self) -> Result<(), Error> {
         self.trace.borrow_mut().push("validate");
         self.valid
             .then_some(())
             .ok_or_else(|| "invalid target".into())
     }
 
-    fn apply(&mut self) -> Result<(), String> {
+    fn apply(&mut self) -> Result<(), Error> {
         self.trace.borrow_mut().push("apply");
         if !self.apply_ok {
             return Err("renderer fault".into());

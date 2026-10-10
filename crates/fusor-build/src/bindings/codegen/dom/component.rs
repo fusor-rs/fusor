@@ -30,25 +30,14 @@ pub(super) fn emit(component: &Component, ctx: Ctx<'_>) -> TokenStream {
 
 /// A row containing only a component tag mounts that component directly.
 fn forwarding_row(component: &Component, ctx: Ctx) -> Option<TokenStream> {
-    if !component.inline()
-        || !component.elements.is_empty()
-        || !component.texts.is_empty()
-        || !component.text_elements.is_empty()
-    {
-        return None;
-    }
-    let [
-        Binding::Invocation {
-            ty,
-            inputs,
-            children,
-            condition: None,
-            key: None,
-            ..
-        },
-    ] = component.bindings.as_slice()
+    let Binding::Invocation {
+        ty,
+        inputs,
+        children,
+        ..
+    } = component.forwarded_child()?
     else {
-        return None;
+        unreachable!("forwarding selection returns an invocation");
     };
     let local_clones = clone_locals(&component.async_locals);
     let construct = codegen::construct_inputs(Span::call_site(), ty, inputs, ctx);

@@ -12,8 +12,16 @@ use std::{
 /// 1980-01-01 00:00, the earliest MS-DOS time.
 const DOS_EPOCH_TIME: u16 = 0;
 const DOS_EPOCH_DATE: u16 = 0x0021;
+const LOCAL_SIGNATURE: u32 = 0x0403_4b50;
+const CENTRAL_SIGNATURE: u32 = 0x0201_4b50;
+const END_SIGNATURE: u32 = 0x0605_4b50;
+const ZIP_VERSION: u16 = 20;
+const DEFLATE: u16 = 8;
+const LOCAL_HEADER_LENGTH: usize = 30;
+const CENTRAL_HEADER_LENGTH: usize = 46;
+const END_HEADER_LENGTH: usize = 22;
 
-pub fn tar_gz(directory: &Path, name: &str, archive: &Path) -> Result<()> {
+pub(super) fn tar_gz(directory: &Path, name: &str, archive: &Path) -> Result<()> {
     let file = File::create(archive)?;
     let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
     let mut builder = tar::Builder::new(encoder);
@@ -25,7 +33,7 @@ pub fn tar_gz(directory: &Path, name: &str, archive: &Path) -> Result<()> {
 
 /// Unix modes are recorded, so an executable stays executable when unpacked
 /// on a Unix host.
-pub fn zip(directory: &Path, name: &str, archive: &Path) -> Result<()> {
+pub(super) fn zip(directory: &Path, name: &str, archive: &Path) -> Result<()> {
     let mut output = Vec::new();
     let mut central = Vec::new();
     let mut entries = 0u16;
@@ -58,40 +66,60 @@ pub fn zip(directory: &Path, name: &str, archive: &Path) -> Result<()> {
 }
 
 /// Inflates every entry and checks its CRC and length.
-pub fn verify_zip(archive: &Path, expected_entries: usize) -> Result<()> {
+pub(super) fn verify_zip(archive: &Path, expected_entries: usize) -> Result<()> {
     let bytes = fs::read(archive)?;
     let end = bytes
         .len()
-        .checked_sub(22)
-        .filter(|start| bytes[*start..*start + 4] == [0x50, 0x4b, 0x05, 0x06])
-        .ok_or("no end-of-central-directory record; the archive has a trailing comment or is truncated")?;
-    let entries = u16::from_le_bytes([bytes[end + 10], bytes[end + 11]]) as usize;
+        .checked_sub(END_HEADER_LENGTH)
+        .ok_or("truncated archive")?;
+    if read_u32(&bytes, end)? != END_SIGNATURE {
+        return Err("no end-of-central-directory record; the archive has a trailing comment or is truncated".into());
+    }
+    let entries = read_u16(&bytes[end..], 10)? as usize;
     if entries != expected_entries {
         return Err(format!("archive holds {entries} entries, expected {expected_entries}").into());
     }
-    let mut offset = read_u32(&bytes, end + 16)? as usize;
+    let mut offset = read_u32(&bytes[end..], 16)? as usize;
     for _ in 0..entries {
-        if bytes.get(offset..offset + 4) != Some(&[0x50, 0x4b, 0x01, 0x02]) {
+        let header = read_field::<CENTRAL_HEADER_LENGTH>(&bytes, offset)?;
+        if read_u32(&header, 0)? != CENTRAL_SIGNATURE {
             return Err("corrupt central directory".into());
         }
-        let crc = read_u32(&bytes, offset + 16)?;
-        let compressed = read_u32(&bytes, offset + 20)? as usize;
-        let uncompressed = read_u32(&bytes, offset + 24)? as usize;
-        let name_length = u16::from_le_bytes([bytes[offset + 28], bytes[offset + 29]]) as usize;
-        let local = read_u32(&bytes, offset + 42)? as usize;
+        verify_entry(&bytes, &header)?;
+        let variable_length = [28, 30, 32]
+            .into_iter()
+            .try_fold(0, |length, at| -> Result<usize> {
+                Ok(length + read_u16(&header, at)? as usize)
+            })?;
+        offset = offset
+            .checked_add(CENTRAL_HEADER_LENGTH + variable_length)
+            .filter(|offset| *offset <= bytes.len())
+            .ok_or("truncated central directory")?;
+    }
+    Ok(())
+}
 
-        // The local header repeats the name; the data follows its extra field.
-        let local_name = u16::from_le_bytes([bytes[local + 26], bytes[local + 27]]) as usize;
-        let local_extra = u16::from_le_bytes([bytes[local + 28], bytes[local + 29]]) as usize;
-        let start = local + 30 + local_name + local_extra;
-        let data = bytes
-            .get(start..start + compressed)
-            .ok_or("entry data runs past the end of the archive")?;
-        let inflated = inflate(data)?;
-        if inflated.len() != uncompressed || crc32fast::hash(&inflated) != crc {
-            return Err("an archive entry does not match its recorded checksum".into());
-        }
-        offset += 46 + name_length;
+fn verify_entry(bytes: &[u8], header: &[u8]) -> Result {
+    let crc = read_u32(header, 16)?;
+    let compressed = read_u32(header, 20)? as usize;
+    let uncompressed = read_u32(header, 24)? as usize;
+    let local = read_u32(header, 42)? as usize;
+    let local_header = read_field::<LOCAL_HEADER_LENGTH>(bytes, local)?;
+    if read_u32(&local_header, 0)? != LOCAL_SIGNATURE {
+        return Err("corrupt local header".into());
+    }
+    let name = read_u16(&local_header, 26)? as usize;
+    let extra = read_u16(&local_header, 28)? as usize;
+    let start = local
+        .checked_add(LOCAL_HEADER_LENGTH + name + extra)
+        .ok_or("invalid local offset")?;
+    let contents = bytes
+        .get(start..)
+        .and_then(|bytes| bytes.get(..compressed))
+        .ok_or("entry data runs past the end of the archive")?;
+    let inflated = inflate(contents)?;
+    if inflated.len() != uncompressed || crc32fast::hash(&inflated) != crc {
+        return Err("an archive entry does not match its recorded checksum".into());
     }
     Ok(())
 }
@@ -128,9 +156,22 @@ fn inflate(contents: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+fn read_field<const SIZE: usize>(bytes: &[u8], at: usize) -> Result<[u8; SIZE]> {
+    let field = bytes
+        .get(at..)
+        .and_then(|bytes| bytes.get(..SIZE))
+        .ok_or("truncated archive")?;
+    Ok(field
+        .try_into()
+        .expect("the checked archive field has exactly SIZE bytes"))
+}
+
+fn read_u16(bytes: &[u8], at: usize) -> Result<u16> {
+    Ok(u16::from_le_bytes(read_field(bytes, at)?))
+}
+
 fn read_u32(bytes: &[u8], at: usize) -> Result<u32> {
-    let slice = bytes.get(at..at + 4).ok_or("truncated archive")?;
-    Ok(u32::from_le_bytes(slice.try_into().expect("four bytes")))
+    Ok(u32::from_le_bytes(read_field(bytes, at)?))
 }
 
 struct Entry<'a> {
@@ -150,10 +191,10 @@ fn write_local_header(output: &mut Vec<u8>, entry: &Entry<'_>) -> Result<()> {
         uncompressed,
         ..
     } = *entry;
-    output.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
-    output.extend_from_slice(&20u16.to_le_bytes()); // version needed
+    output.extend_from_slice(&LOCAL_SIGNATURE.to_le_bytes());
+    output.extend_from_slice(&ZIP_VERSION.to_le_bytes()); // version needed
     output.extend_from_slice(&0u16.to_le_bytes()); // flags
-    output.extend_from_slice(&8u16.to_le_bytes()); // deflate
+    output.extend_from_slice(&DEFLATE.to_le_bytes()); // deflate
     output.extend_from_slice(&DOS_EPOCH_TIME.to_le_bytes());
     output.extend_from_slice(&DOS_EPOCH_DATE.to_le_bytes());
     output.extend_from_slice(&crc.to_le_bytes());
@@ -176,11 +217,11 @@ fn write_central_entry(central: &mut Vec<u8>, entry: &Entry<'_>) -> Result<()> {
     } = *entry;
     // Unix permissions live in the high 16 bits of the external attributes.
     let mode: u32 = if executable { 0o100755 } else { 0o100644 };
-    central.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+    central.extend_from_slice(&CENTRAL_SIGNATURE.to_le_bytes());
     central.extend_from_slice(&0x031Eu16.to_le_bytes()); // made by Unix, 3.0
-    central.extend_from_slice(&20u16.to_le_bytes()); // version needed
+    central.extend_from_slice(&ZIP_VERSION.to_le_bytes()); // version needed
     central.extend_from_slice(&0u16.to_le_bytes()); // flags
-    central.extend_from_slice(&8u16.to_le_bytes()); // deflate
+    central.extend_from_slice(&DEFLATE.to_le_bytes()); // deflate
     central.extend_from_slice(&DOS_EPOCH_TIME.to_le_bytes());
     central.extend_from_slice(&DOS_EPOCH_DATE.to_le_bytes());
     central.extend_from_slice(&crc.to_le_bytes());
@@ -203,7 +244,7 @@ fn write_end_of_central_directory(
     size: u32,
     offset: u32,
 ) -> Result<()> {
-    output.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
+    output.extend_from_slice(&END_SIGNATURE.to_le_bytes());
     output.extend_from_slice(&0u16.to_le_bytes()); // this disk
     output.extend_from_slice(&0u16.to_le_bytes()); // disk with central directory
     output.extend_from_slice(&entries.to_le_bytes());
@@ -225,6 +266,25 @@ fn length(name: &str) -> Result<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invalid_local_offsets_return_errors_without_panicking() {
+        let file =
+            std::env::temp_dir().join(format!("fusor-invalid-archive-{}.zip", std::process::id()));
+        let mut bytes = vec![0; 68];
+        bytes[..4].copy_from_slice(&[0x50, 0x4b, 0x01, 0x02]);
+        bytes[46..50].copy_from_slice(&[0x50, 0x4b, 0x05, 0x06]);
+        bytes[56..58].copy_from_slice(&1u16.to_le_bytes());
+        for offset in [60u32, u32::MAX] {
+            bytes[42..46].copy_from_slice(&offset.to_le_bytes());
+            fs::write(&file, &bytes).unwrap();
+            assert_eq!(
+                verify_zip(&file, 1).unwrap_err().to_string(),
+                "truncated archive"
+            );
+        }
+        fs::remove_file(file).unwrap();
+    }
 
     #[test]
     fn a_written_zip_round_trips_and_is_reproducible() {

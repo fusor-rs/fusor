@@ -7,9 +7,12 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{RequestInit, Response};
 
-#[wasm_bindgen::prelude::wasm_bindgen(
-    inline_js = "export async function fusorFetch(url, options) { const base = globalThis.__fusor_worker_base_url; return globalThis.fetch(base ? new URL(url, base).href : url, options); }"
-)]
+#[wasm_bindgen::prelude::wasm_bindgen(inline_js = r#"
+export async function fusorFetch(url, options) {
+    const base = globalThis.__fusor_worker_base_url;
+    return globalThis.fetch(base ? new URL(url, base).href : url, options);
+}
+"#)]
 extern "C" {
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = fusorFetch)]
     fn fetch(url: &str, options: &RequestInit) -> js_sys::Promise;

@@ -18,28 +18,12 @@ impl Scope {
         self.bind(move || {
             let (case, data) = read();
             untrack(|| {
-                if let Some((shown, value)) = current.key() {
-                    if *shown == case {
-                        value.set(data);
-                        return Ok(());
-                    }
+                if let Some((_, value)) = current.key().filter(|(shown, _)| *shown == case) {
+                    value.set(data);
+                    return Ok(());
                 }
-                // The server marks the case it rendered just after `start`;
-                // the branch's own range runs from there to `end`.
                 let server = if std::mem::take(&mut hydrating) {
-                    let marker = target
-                        .start
-                        .next_sibling()
-                        .ok_or_else(|| JsValue::from_str("missing server branch marker"))?;
-                    if marker.node_value().as_deref() != Some(&format!("fusor:branch:{case}")) {
-                        return Err(JsValue::from_str(
-                            "server branch differs from browser branch",
-                        ));
-                    }
-                    Some(MountPoint {
-                        start: marker,
-                        end: target.end.clone(),
-                    })
+                    Some(server_branch(&target, case)?)
                 } else {
                     None
                 };
@@ -66,4 +50,20 @@ impl Scope {
             })
         })
     }
+}
+
+fn server_branch(target: &MountPoint, case: usize) -> Result<MountPoint, JsValue> {
+    let marker = target
+        .start
+        .next_sibling()
+        .ok_or_else(|| JsValue::from_str("missing server branch marker"))?;
+    if marker.node_value().as_deref() != Some(&format!("fusor:branch:{case}")) {
+        return Err(JsValue::from_str(
+            "server branch differs from browser branch",
+        ));
+    }
+    Ok(MountPoint {
+        start: marker,
+        end: target.end.clone(),
+    })
 }

@@ -5,7 +5,7 @@ import { cp, mkdir, mkdtemp, readFile, realpath, writeFile, rm, readdir } from '
 import { join, resolve, extname, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
-import { chromium } from '@playwright/test';
+import { chromium, firefox, webkit } from '@playwright/test';
 
 const exec = promisify(execFile), repository = process.cwd();
 const scratch = await realpath(await mkdtemp(join(tmpdir(), 'fusor-native-modules-')));
@@ -63,7 +63,7 @@ export function onMount({ root }: { root: HTMLElement }) {
   const bindgen = 'export default async function init() { globalThis.wasmUrl = new URL("app_bg.wasm", import.meta.url).pathname; }';
   const bundle = async () => {
     await writeFile(entry, bindgen);
-    return exec(process.execPath, [tool, scratch, entry, moduleFile, '/docs/__fusor/g-test/pkg'], { maxBuffer: 8 * 1024 * 1024 });
+    return exec(process.execPath, [tool, scratch, entry, moduleFile, '/docs/__fusor/g-test/pkg', pkg.devDependencies.esbuild], { maxBuffer: 8 * 1024 * 1024 });
   };
   await bundle();
   const graph = JSON.parse(await readFile(join(output, 'javascript-bundle.json'), 'utf8'));
@@ -92,22 +92,28 @@ for (const module of globalThis[Symbol.for('fusor.javascript.modules.v1')].value
     } catch { response.writeHead(404).end(); }
   });
   await new Promise(done => server.listen(0, '127.0.0.1', done));
-  browser = await chromium.launch(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {});
-  const page = await browser.newPage(), errors = [], requests = [];
-  page.on('pageerror', error => errors.push(error.message));
-  page.on('request', request => requests.push(request.url()));
-  await page.goto(`http://127.0.0.1:${server.address().port}/docs/`);
-  await page.waitForFunction(() => document.querySelector('main').dataset.inline === '42').catch(error => { throw Error(`${error.message}\n${errors.join('\n')}`); });
-  assert.deepEqual(await page.locator('main').evaluate(root => ({ ...root.dataset })), { inline: '42', utility: 'true', platform: 'browser', transpiled: '9' }, 'native imports and TS transpilation preserve module behavior');
-  assert.equal(await page.locator('main').evaluate(root => getComputedStyle(root).color), 'rgb(12, 34, 56)');
-  await page.waitForFunction(() => document.querySelector('img').naturalWidth === 10);
-  assert.equal(await page.evaluate(() => globalThis.wasmUrl), '/docs/__fusor/g-test/pkg/app_bg.wasm', 'bundled bindgen keeps its generation-relative Wasm URL');
-  assert(!requests.some(url => /\/lazy-.*\.js$/.test(url)), 'dynamic module is not loaded at startup');
-  await page.locator('button').click();
-  await page.waitForFunction(() => document.querySelector('main').dataset.lazy === 'loaded once');
-  await page.locator('button').click();
-  assert.equal(await page.evaluate(() => globalThis.lazyExecutions), 1, 'dynamic imports use the ES module cache');
-  assert.equal(errors.length, 0, errors.join('\n'));
+  for (const engine of (process.env.PLAYWRIGHT_BROWSERS || 'chromium').split(',')) {
+    browser = await { chromium, firefox, webkit }[engine].launch(
+      engine === 'chromium' && process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {});
+    const page = await browser.newPage(), errors = [], requests = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('request', request => requests.push(request.url()));
+    await page.goto(`http://127.0.0.1:${server.address().port}/docs/`);
+    await page.waitForFunction(() => document.querySelector('main').dataset.inline === '42').catch(error => { throw Error(`${error.message}\n${errors.join('\n')}`); });
+    assert.deepEqual(await page.locator('main').evaluate(root => ({ ...root.dataset })), { inline: '42', utility: 'true', platform: 'browser', transpiled: '9' }, 'native imports and TS transpilation preserve module behavior');
+    assert.equal(await page.locator('main').evaluate(root => getComputedStyle(root).color), 'rgb(12, 34, 56)');
+    await page.waitForFunction(() => document.querySelector('img').naturalWidth === 10);
+    assert.equal(await page.evaluate(() => globalThis.wasmUrl), '/docs/__fusor/g-test/pkg/app_bg.wasm', 'bundled bindgen keeps its generation-relative Wasm URL');
+    assert(!requests.some(url => /\/lazy-.*\.js$/.test(url)), 'dynamic module is not loaded at startup');
+    await page.locator('button').click();
+    await page.waitForFunction(() => document.querySelector('main').dataset.lazy === 'loaded once');
+    await page.locator('button').click();
+    assert.equal(await page.evaluate(() => globalThis.lazyExecutions), 1, 'dynamic imports use the ES module cache');
+    assert.equal(errors.length, 0, errors.join('\n'));
+    await browser.close();
+    browser = undefined;
+    console.log(`Native module browser checks passed: ${engine}`);
+  }
 
   // Lock and installed-version failures happen before publishing any outputs.
   const installed = join(conditional, 'package.json'), original = await readFile(installed, 'utf8');

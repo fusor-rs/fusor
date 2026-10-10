@@ -212,16 +212,7 @@ fn lower_attribute(
             return Ok(());
         }
         Directive::Property(property) => Some(property_binding(native, property, value, offset)?),
-        Directive::Event(event) => {
-            if event.is_empty() || value.trim().is_empty() {
-                return Err(error(source, offset, "on:event requires a Rust handler"));
-            }
-            Some(Binding::Event {
-                node: native.context.node,
-                name: event.to_owned(),
-                handler: Rust::parse(source, value, offset)?,
-            })
-        }
+        Directive::Event(event) => Some(event_binding(native, event, value, offset)?),
         Directive::Bind => Some(bind::parse(
             source,
             bind::ControlElement {
@@ -248,6 +239,26 @@ fn lower_attribute(
         opening.bound = true;
     }
     Ok(())
+}
+
+fn event_binding(
+    native: &Native,
+    event: &str,
+    value: &str,
+    offset: usize,
+) -> Result<Binding, ExtractError> {
+    if event.is_empty() || value.trim().is_empty() {
+        return Err(error(
+            native.source,
+            offset,
+            "on:event requires a Rust handler",
+        ));
+    }
+    Ok(Binding::Event {
+        node: native.context.node,
+        name: event.to_owned(),
+        handler: Rust::parse(native.source, value, offset)?,
+    })
 }
 
 fn render_target(

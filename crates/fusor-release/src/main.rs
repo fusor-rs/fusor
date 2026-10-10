@@ -10,7 +10,7 @@ use std::{
     process::ExitCode,
 };
 
-pub type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
+type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Parser)]
 #[command(
@@ -62,18 +62,29 @@ fn main() -> ExitCode {
 }
 
 /// From the crate's location, so the commands run from any directory.
-pub fn workspace_root() -> &'static Path {
+fn workspace_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
         .expect("the crate lives two levels below the workspace root")
 }
 
-pub fn workspace_version() -> Result<String> {
+fn workspace_version() -> Result<String> {
     let manifest: toml::Value =
         std::fs::read_to_string(workspace_root().join("Cargo.toml"))?.parse()?;
-    Ok(manifest["workspace"]["package"]["version"]
-        .as_str()
+    Ok(manifest
+        .get("workspace")
+        .and_then(|workspace| workspace.get("package"))
+        .and_then(|package| package.get("version"))
+        .and_then(toml::Value::as_str)
         .ok_or("the workspace declares no package version")?
         .to_owned())
+}
+
+fn remove_directory(path: &Path) -> Result {
+    match std::fs::remove_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("removing {}: {error}", path.display()).into()),
+    }
 }

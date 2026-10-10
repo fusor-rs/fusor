@@ -52,7 +52,7 @@ struct PreviewState {
 #[derive(Clone)]
 pub struct PreviewReadiness(std::rc::Rc<PreviewState>);
 impl PreviewReadiness {
-    pub fn poll(&self) -> Result<bool, String> {
+    pub fn poll(&self) -> Result<bool, crate::coherence::Error> {
         self.0.revision.get();
         let boundaries = self.0.boundaries.borrow().clone();
         let mut ready = true;

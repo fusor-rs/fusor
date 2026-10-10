@@ -133,6 +133,41 @@ fn location(source: &str, needle: &str) -> (usize, usize) {
     )
 }
 
+fn static_element(nodes: &[backend::Node], tag: &str, parent: Option<usize>) -> usize {
+    nodes
+        .iter()
+        .position(|node| {
+            node.parent == parent
+                && matches!(&node.kind,
+                    NodeKind::Element { tag: name, anchor: None, .. } if name == tag
+                )
+        })
+        .expect("the static element is retained")
+}
+
+fn assert_retained_anchors(nodes: &[backend::Node], operations: &[Operation]) {
+    for operation in operations {
+        let present = nodes
+            .iter()
+            .any(|node| match (&node.kind, operation.anchor) {
+                (
+                    NodeKind::Element {
+                        anchor: Some(id), ..
+                    },
+                    Anchor::Element(anchor),
+                )
+                | (
+                    NodeKind::Text {
+                        anchor: Some(id), ..
+                    },
+                    Anchor::Text(anchor),
+                ) => *id == anchor,
+                _ => false,
+            });
+        assert!(present, "binding anchor exists in the complete static tree");
+    }
+}
+
 #[test]
 fn full_static_tree_preserves_nesting_entities_comments_and_binding_anchors() {
     let source = r#"<template rust:component="Panel">
@@ -158,28 +193,13 @@ fn full_static_tree_preserves_nesting_entities_comments_and_binding_anchors() {
             assert!(parent < index, "parents precede their children");
         }
     }
-    let section = nodes
-        .iter()
-        .position(|node| {
-            matches!(&node.kind, NodeKind::Element { tag, attributes, anchor: None }
-            if tag == "section" && attributes.iter().any(|attribute|
-                attribute.name == "title" && attribute.value == "A & B"))
-        })
-        .expect("unbound section and decoded attribute are retained");
-    let paragraph = nodes
-        .iter()
-        .position(|node| {
-            node.parent == Some(section)
-                && matches!(&node.kind, NodeKind::Element { tag, anchor: None, .. } if tag == "p")
-        })
-        .unwrap();
-    let strong = nodes
-        .iter()
-        .position(|node| {
-            node.parent == Some(paragraph)
-                && matches!(&node.kind, NodeKind::Element { tag, .. } if tag == "strong")
-        })
-        .unwrap();
+    let section = static_element(nodes, "section", None);
+    assert!(
+        matches!(&nodes[section].kind, NodeKind::Element { attributes, .. }
+        if attributes.iter().any(|attribute| attribute.name == "title" && attribute.value == "A & B"))
+    );
+    let paragraph = static_element(nodes, "p", Some(section));
+    let strong = static_element(nodes, "strong", Some(paragraph));
     let static_text: Vec<_> = nodes
         .iter()
         .filter_map(|node| {
@@ -202,26 +222,7 @@ fn full_static_tree_preserves_nesting_entities_comments_and_binding_anchors() {
             .iter()
             .any(|node| matches!(&node.kind, NodeKind::Comment(value) if value == " retained "))
     );
-    for operation in backend.operations.borrow().iter() {
-        let present = nodes
-            .iter()
-            .any(|node| match (&node.kind, operation.anchor) {
-                (
-                    NodeKind::Element {
-                        anchor: Some(id), ..
-                    },
-                    Anchor::Element(anchor),
-                )
-                | (
-                    NodeKind::Text {
-                        anchor: Some(id), ..
-                    },
-                    Anchor::Text(anchor),
-                ) => *id == anchor,
-                _ => false,
-            });
-        assert!(present, "binding anchor exists in the complete static tree");
-    }
+    assert_retained_anchors(nodes, &backend.operations.borrow());
     assert_eq!(backend.operations.borrow().len(), 2);
 }
 

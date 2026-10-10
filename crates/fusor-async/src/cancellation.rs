@@ -127,7 +127,10 @@ impl CancellationToken {
             controller.abort();
         }
         let signal = controller.signal();
-        let _ = self.0.controller.set(controller);
+        self.0
+            .controller
+            .set(controller)
+            .expect("abort_signal initializes the controller once without application callbacks");
         Ok(signal)
     }
     pub(crate) fn cancel(&self) {

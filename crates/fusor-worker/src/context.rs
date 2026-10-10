@@ -68,6 +68,29 @@ impl Drop for Control {
 }
 
 impl Control {
+    fn report<P: Message>(&self, update: P) {
+        if self.check_cancelled().is_err() {
+            return;
+        }
+        match update.encode(crate::message::MESSAGE_LIMIT, &self.codec) {
+            Ok(payload) => {
+                let old = self.progress().replace(payload);
+                if let Some(old) = old {
+                    self.codec.discard(old);
+                }
+            }
+            Err(error) => self.fail(error),
+        }
+    }
+
+    fn check_cancelled(&self) -> Result<(), WorkerError> {
+        if self.cancelled.load(Ordering::Acquire) {
+            Err(WorkerError::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+
     pub(crate) fn progress(&self) -> MutexGuard<'_, Option<Payload>> {
         self.progress.lock().unwrap_or_else(|error| {
             self.fail(WorkerError::Crashed {
@@ -114,27 +137,10 @@ impl<P: Message> Clone for ComputeContext<P> {
 }
 impl<P: Message> ComputeContext<P> {
     pub fn report(&self, update: P) {
-        if self.check_cancelled().is_err() {
-            return;
-        }
-        match update.encode(crate::message::MESSAGE_LIMIT, &self.control.codec) {
-            Ok(payload) => {
-                let old = self.control.progress().replace(payload);
-                if let Some(old) = old {
-                    self.control.codec.discard(old);
-                }
-            }
-            Err(error) => {
-                self.control.fail(error);
-            }
-        }
+        self.control.report(update);
     }
     pub fn check_cancelled(&self) -> Result<(), WorkerError> {
-        if self.control.cancelled.load(Ordering::Acquire) {
-            Err(WorkerError::Cancelled)
-        } else {
-            Ok(())
-        }
+        self.control.check_cancelled()
     }
     pub fn share<T: Send + Sync + 'static>(&self, value: T) -> Result<Shared<T>, WorkerError> {
         self.control.codec.share(value)
@@ -154,22 +160,22 @@ impl<P: Message> TaskContext<P> {
         }
     }
     pub fn report(&self, update: P) {
-        self.cpu().report(update);
+        self.control.report(update);
     }
     pub fn check_cancelled(&self) -> Result<(), WorkerError> {
-        self.cpu().check_cancelled()
+        self.control.check_cancelled()
     }
     pub fn cancellation_token(&self) -> CancellationToken {
         self.source.token()
     }
     pub fn share<T: Send + Sync + 'static>(&self, value: T) -> Result<Shared<T>, WorkerError> {
-        self.cpu().share(value)
+        self.control.codec.share(value)
     }
     pub fn resolve<T: Send + Sync + 'static>(
         &self,
         value: &Shared<T>,
     ) -> Result<Arc<T>, WorkerError> {
-        self.cpu().resolve(value)
+        self.control.codec.resolve(value)
     }
     pub async fn compute<R, F>(&self, work: F) -> Result<R, WorkerError>
     where

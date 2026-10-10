@@ -30,12 +30,8 @@ fn a_corrupt_base_path_is_rejected_before_the_server_starts() {
 fn an_occupied_port_fails_with_the_flag_that_changes_it() {
     let fixture = Fixture::new();
     write_manifest(&fixture.root.join("dist"), "/");
-    let listener = match std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)) {
-        Ok(listener) => listener,
-        // Some sandboxes forbid loopback binding entirely.
-        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
-        Err(error) => panic!("{error}"),
-    };
+    let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .expect("supported test hosts permit loopback listening");
     let port = listener.local_addr().unwrap().port().to_string();
     let error = failure(
         fixture
@@ -101,11 +97,8 @@ fn connection_bursts_do_not_wait_for_other_keep_alive_sockets_to_close() {
     let directory = fixture.root.join("dist");
     write_manifest(&directory, "/");
     fs::write(directory.join("index.html"), "ready").unwrap();
-    let listener = match TcpListener::bind((Ipv4Addr::LOCALHOST, 0)) {
-        Ok(listener) => listener,
-        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
-        Err(error) => panic!("{error}"),
-    };
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+        .expect("supported test hosts permit loopback listening");
     let address = listener.local_addr().unwrap();
     drop(listener);
 

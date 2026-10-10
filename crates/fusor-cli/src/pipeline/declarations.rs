@@ -87,7 +87,7 @@ mod tests {
     fn declaration_cleanup_preserves_ownership_until_it_succeeds() {
         let root = std::env::temp_dir().join(format!(
             "fusor-declarations-{}",
-            crate::pipeline::publish::generation()
+            crate::pipeline::publish::generation().unwrap()
         ));
         let _cleanup = crate::transaction::Staging(root.clone());
         let directory = root.join(".fusor/types");

@@ -1,9 +1,13 @@
 //! Explicit writes. Admission, server outcome and local publication are distinct.
 //! Disposing an action suppresses local publication, never promises server rollback.
+#[cfg(feature = "forms")]
+use crate::forms::FormError as PublicationError;
 use fusor::{OwnerHandle, Registration, Signal, batch, signal, untrack};
 pub use fusor_async::CancellationToken;
 use fusor_async::{CancellationSource, Loader, Spawner, boxed_loader};
 use futures_util::future::{AbortHandle, Abortable, LocalBoxFuture};
+#[cfg(not(feature = "forms"))]
+use std::convert::Infallible as PublicationError;
 use std::{
     any::Any,
     cell::{Cell, RefCell},
@@ -13,11 +17,6 @@ use std::{
 
 #[cfg(feature = "browser")]
 pub mod browser;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SavePolicy {
-    RejectWhilePending,
-}
 
 /// The transport classifies outcomes according to its server protocol. A failed
 /// connection normally cannot establish rejection; use `Unknown` in that case.
@@ -72,7 +71,7 @@ pub struct ActionState<C, T, E> {
     pub submission: Option<Submission<C>>,
     pub value: Option<Rc<T>>,
     pub error: Option<Rc<E>>,
-    pub publication_error: Option<String>,
+    pub publication_error: Option<PublicationError>,
 }
 impl<C, T, E> Clone for ActionState<C, T, E> {
     fn clone(&self) -> Self {
@@ -81,7 +80,10 @@ impl<C, T, E> Clone for ActionState<C, T, E> {
             submission: self.submission.clone(),
             value: self.value.clone(),
             error: self.error.clone(),
+            #[cfg(feature = "forms")]
             publication_error: self.publication_error.clone(),
+            #[cfg(not(feature = "forms"))]
+            publication_error: self.publication_error,
         }
     }
 }
@@ -148,7 +150,11 @@ impl<C> std::fmt::Display for DispatchError<C> {
         self.reason.fmt(f)
     }
 }
-impl<C: std::fmt::Debug> std::error::Error for DispatchError<C> {}
+impl<C: std::fmt::Debug> std::error::Error for DispatchError<C> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.reason)
+    }
+}
 
 struct Request {
     abort: AbortHandle,
@@ -202,7 +208,7 @@ pub(crate) type Retired = Vec<Box<dyn Any>>;
 pub(crate) struct Publication {
     pub commit: Box<dyn FnOnce(&mut Retired)>,
     pub after: Vec<Box<dyn FnOnce()>>,
-    pub failure: Option<String>,
+    pub failure: Option<PublicationError>,
 }
 impl Default for Publication {
     fn default() -> Self {
@@ -217,7 +223,6 @@ impl Default for Publication {
 impl<C: 'static, T: 'static, E: 'static> Action<C, T, E> {
     pub fn new<F: Future<Output = Outcome<T, E>> + 'static>(
         owner: &OwnerHandle,
-        _policy: SavePolicy,
         load: impl Fn(Rc<C>, CancellationToken) -> F + 'static,
         spawn: impl Fn(LocalBoxFuture<'static, ()>) + 'static,
     ) -> Self {
@@ -300,7 +305,7 @@ impl<C: 'static, T: 'static, E: 'static> Action<C, T, E> {
     pub(crate) fn dispatch_with(
         &self,
         command: Rc<C>,
-        publish: impl FnOnce(&ActionState<C, T, E>) -> Result<Publication, String> + 'static,
+        publish: impl FnOnce(&ActionState<C, T, E>) -> Result<Publication, PublicationError> + 'static,
         on_dispose: impl FnOnce() + 'static,
     ) -> Result<u64, AdmissionError> {
         self.available(false)?;
@@ -310,7 +315,7 @@ impl<C: 'static, T: 'static, E: 'static> Action<C, T, E> {
     fn start(
         &self,
         command: Rc<C>,
-        publish: impl FnOnce(&ActionState<C, T, E>) -> Result<Publication, String> + 'static,
+        publish: impl FnOnce(&ActionState<C, T, E>) -> Result<Publication, PublicationError> + 'static,
         on_dispose: impl FnOnce() + 'static,
     ) -> u64 {
         let submission = Submission {
@@ -365,7 +370,7 @@ impl<C: 'static, T: 'static, E: 'static> Action<C, T, E> {
 fn commit<C: 'static, T: 'static, E: 'static>(
     inner: &Inner<C, T, E>,
     mut next: ActionState<C, T, E>,
-    publication: Result<Publication, String>,
+    publication: Result<Publication, PublicationError>,
 ) {
     let publication = match publication {
         Ok(publication) => publication,
@@ -375,9 +380,9 @@ fn commit<C: 'static, T: 'static, E: 'static>(
             Publication::default()
         }
     };
-    if let Some(error) = &publication.failure {
+    if publication.failure.is_some() {
         next.status = Status::PublicationFailed;
-        next.publication_error = Some(error.clone());
+        next.publication_error = publication.failure;
     }
     let request = inner.request.take();
     let mut retired: Retired = Vec::new();

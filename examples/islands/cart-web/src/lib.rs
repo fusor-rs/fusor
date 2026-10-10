@@ -95,3 +95,63 @@ pub fn exercise_messages() -> Result<(), wasm_bindgen::JsValue> {
         ))),
     }
 }
+
+#[cfg(target_arch = "wasm32")]
+struct DisposingPreview;
+#[cfg(target_arch = "wasm32")]
+impl fusor::dom::Component for DisposingPreview {
+    const TEMPLATE_HASH: &'static str = "disposing-preview";
+    fn mount(self) -> Result<fusor::dom::Scope, wasm_bindgen::JsValue> {
+        Ok(fusor::dom::Scope::new(
+            fusor::dom::document()?.create_element("p")?,
+        ))
+    }
+    fn prepare_component(
+        parent: Option<&fusor::OwnerHandle>,
+        make: fusor::dom::ComponentFactory<'_, Self>,
+    ) -> Result<fusor::dom::Scope, wasm_bindgen::JsValue> {
+        let owner = std::rc::Rc::new(parent.map(fusor::Owner::child).unwrap_or_default());
+        let mut scope = make(owner.handle())?.mount()?;
+        scope.prepare_owner(Some(&owner.handle()));
+        let element = scope.root()?.clone();
+        let dispose = owner.clone();
+        let activation = scope.owner().on_activate(move || {
+            element.remove();
+            dispose.dispose();
+        });
+        scope.retain_state(activation);
+        owner.commit();
+        Ok(scope)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub async fn exercise_preview_restoration(
+    host: fusor_islands::browser::IslandElement,
+) -> Result<(), wasm_bindgen::JsValue> {
+    use catalog_types::{Designer, DesignerProps};
+    use fusor::dom::Component;
+    use fusor_islands::{Island, attributes};
+    let document = fusor::dom::document()?;
+    let props = fusor_islands::encode(&DesignerProps {
+        product_id: 1,
+        title: "preview".into(),
+    })
+    .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))?;
+    host.set_attribute(attributes::SCHEMA, Designer::SCHEMA)?;
+    host.set_attribute(attributes::HASH, DisposingPreview::TEMPLATE_HASH)?;
+    let initial = document.create_element("p")?;
+    host.append_child(&initial)?;
+    let payload = document.create_element("script")?;
+    payload.set_attribute("type", "application/json")?;
+    payload.set_attribute(attributes::PROPS, "")?;
+    payload.set_text_content(Some(&props));
+    host.append_child(&payload)?;
+    let unit = fusor_islands::browser::Unit::new()
+        .entry::<Designer, DisposingPreview>(|_, _| DisposingPreview);
+    let activation = unit.activate(Designer::NAME, &host, &props, "restoration")?;
+    wasm_bindgen_futures::JsFuture::from(activation)
+        .await
+        .map(|_| ())
+}

@@ -1310,65 +1310,67 @@ fn hydration_tags_use_typed_props_and_existing_native_delivery() {
     assert!(page.locations.iter().any(|location| location.line == 3));
 }
 
+const INVALID_HYDRATION: &[(&str, &str)] = &[
+    (r#"<Cart hydrate="hover"></Cart>"#, "hydrate must be"),
+    (
+        r#"<Cart hydrate="{{ state.policy }}"></Cart>"#,
+        "hydrate must be",
+    ),
+    (
+        r#"<Cart hydrate="load" hydrate:prefetch="interaction"></Cart>"#,
+        "hydrate:prefetch must be",
+    ),
+    (
+        r#"<Cart hydrate="interaction"></Cart>"#,
+        "requires hydrate:id",
+    ),
+    (
+        r#"<Cart hydrate="load" hydrate:id=""></Cart>"#,
+        "nonempty static",
+    ),
+    (
+        r#"<Cart hydrate="load" hydrate:id="{{ state.id }}"></Cart>"#,
+        "nonempty static",
+    ),
+    (r#"<Cart hydrate="load"/>"#, "explicit closing tag"),
+    (r#"<Cart hydrate="load"></cart>"#, "close Cart with </Cart>"),
+    (r#"<Cart hydrate="load">lost</Cart>"#, "must be empty"),
+    (
+        r#"<Cart hydrate="load"><p>lost</p></Cart>"#,
+        "must be empty",
+    ),
+    (
+        r#"<Cart hydrate="load" rust:if="state.show"></Cart>"#,
+        "cannot use rust:if",
+    ),
+    (
+        r#"<Cart hydrate="load" hydrate:prefech="idle"></Cart>"#,
+        "unknown attribute hydrate:prefech; component tags accept hydrate, hydrate:id, hydrate:prefetch",
+    ),
+    (
+        r#"<Cart hydrate:id="cart"></Cart>"#,
+        "hydrate:id requires hydrate on the same component tag",
+    ),
+    (
+        r#"<Cart hydrate="load" hydrate:target="cart"></Cart>"#,
+        "hydrate:target belongs on the native button that activates an island",
+    ),
+    (r#"<div hydrate="load"></div>"#, "Rust component tag"),
+    (r#"<div hydrate:prefetch="idle"></div>"#, "hydrate belongs"),
+    (
+        r#"<table><Cart hydrate="load"></Cart></table>"#,
+        "div boundary",
+    ),
+    (
+        r#"<button hydrate:target="cart">Open</button>"#,
+        "type=button",
+    ),
+    (r#"<a hydrate:target="cart">Open</a>"#, "native type=button"),
+];
+
 #[test]
 fn hydration_rejects_ambiguous_policies_placement_and_owned_contents() {
-    for (markup, message) in [
-        (r#"<Cart hydrate="hover"></Cart>"#, "hydrate must be"),
-        (
-            r#"<Cart hydrate="{{ state.policy }}"></Cart>"#,
-            "hydrate must be",
-        ),
-        (
-            r#"<Cart hydrate="load" hydrate:prefetch="interaction"></Cart>"#,
-            "hydrate:prefetch must be",
-        ),
-        (
-            r#"<Cart hydrate="interaction"></Cart>"#,
-            "requires hydrate:id",
-        ),
-        (
-            r#"<Cart hydrate="load" hydrate:id=""></Cart>"#,
-            "nonempty static",
-        ),
-        (
-            r#"<Cart hydrate="load" hydrate:id="{{ state.id }}"></Cart>"#,
-            "nonempty static",
-        ),
-        (r#"<Cart hydrate="load"/>"#, "explicit closing tag"),
-        (r#"<Cart hydrate="load"></cart>"#, "close Cart with </Cart>"),
-        (r#"<Cart hydrate="load">lost</Cart>"#, "must be empty"),
-        (
-            r#"<Cart hydrate="load"><p>lost</p></Cart>"#,
-            "must be empty",
-        ),
-        (
-            r#"<Cart hydrate="load" rust:if="state.show"></Cart>"#,
-            "cannot use rust:if",
-        ),
-        (
-            r#"<Cart hydrate="load" hydrate:prefech="idle"></Cart>"#,
-            "unknown attribute hydrate:prefech; component tags accept hydrate, hydrate:id, hydrate:prefetch",
-        ),
-        (
-            r#"<Cart hydrate:id="cart"></Cart>"#,
-            "hydrate:id requires hydrate on the same component tag",
-        ),
-        (
-            r#"<Cart hydrate="load" hydrate:target="cart"></Cart>"#,
-            "hydrate:target belongs on the native button that activates an island",
-        ),
-        (r#"<div hydrate="load"></div>"#, "Rust component tag"),
-        (r#"<div hydrate:prefetch="idle"></div>"#, "hydrate belongs"),
-        (
-            r#"<table><Cart hydrate="load"></Cart></table>"#,
-            "div boundary",
-        ),
-        (
-            r#"<button hydrate:target="cart">Open</button>"#,
-            "type=button",
-        ),
-        (r#"<a hydrate:target="cart">Open</a>"#, "native type=button"),
-    ] {
+    for &(markup, message) in INVALID_HYDRATION {
         let source = format!(
             r#"{STATE}<main rust:component="Counter" rust:render="server">{markup}</main>"#
         );

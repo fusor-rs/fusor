@@ -23,7 +23,7 @@ fn starts_only_after_ancestors_commit_and_deduplicates_equal_keys() {
     let child = Owner::child(&parent.handle());
     let key = signal(1);
     let calls = Rc::new(Cell::new(0));
-    let r = Resource::new(
+    let resource = Resource::new(
         &child.handle(),
         {
             let key = key.clone();
@@ -45,11 +45,11 @@ fn starts_only_after_ancestors_commit_and_deduplicates_equal_keys() {
     parent.commit();
     pool.run_until_stalled();
     assert_eq!(calls.get(), 1);
-    assert_eq!(*r.get().data().unwrap().value, 4);
+    assert_eq!(*resource.get().data().unwrap().value, 4);
     key.update(|_| {});
     pool.run_until_stalled();
     assert_eq!(calls.get(), 1);
-    r.refresh();
+    resource.refresh();
     pool.run_until_stalled();
     assert_eq!(calls.get(), 2);
 }
@@ -62,7 +62,7 @@ fn changed_keys_abort_old_reads_and_previous_data_keeps_its_original_key() {
     let key = signal(Some(1));
     let pending = Rc::new(RefCell::new(Vec::new()));
     let cancelled = Rc::new(Cell::new(0));
-    let r = Resource::new(
+    let resource = Resource::new(
         &owner.handle(),
         {
             let key = key.clone();
@@ -72,13 +72,13 @@ fn changed_keys_abort_old_reads_and_previous_data_keeps_its_original_key() {
             let pending = pending.clone();
             let cancelled = cancelled.clone();
             move |key, context| {
-                let (tx, rx) = oneshot::channel::<Result<i32, &'static str>>();
-                pending.borrow_mut().push((key, tx));
+                let (sender, receiver) = oneshot::channel::<Result<i32, &'static str>>();
+                pending.borrow_mut().push((key, sender));
                 let cancelled = cancelled.clone();
                 let guard = context.on_cancel(move || cancelled.set(cancelled.get() + 1));
                 async move {
                     let _guard = guard;
-                    rx.await.unwrap()
+                    receiver.await.unwrap()
                 }
             }
         },
@@ -91,7 +91,7 @@ fn changed_keys_abort_old_reads_and_previous_data_keeps_its_original_key() {
     pool.run_until_stalled();
     let old = pending.borrow_mut().remove(0).1;
     assert!(
-        matches!(r.get(), ResourceState::Loading { key: 2, previous: Some(data) } if data.key == 1)
+        matches!(resource.get(), ResourceState::Loading { key: 2, previous: Some(data) } if data.key == 1)
     );
     key.set(Some(3));
     assert_eq!(cancelled.get(), 1); // transport cancellation is synchronous
@@ -105,11 +105,12 @@ fn changed_keys_abort_old_reads_and_previous_data_keeps_its_original_key() {
         .unwrap();
     pool.run_until_stalled();
     assert!(
-        matches!(r.get(), ResourceState::Error { key: 3, previous: Some(data), .. } if data.key == 1)
+        matches!(resource.get(), ResourceState::Error { key: 3, error, previous: Some(data) }
+            if *error == "offline" && data.key == 1 && *data.value == 10)
     );
     key.set(None);
     pool.run_until_stalled();
-    assert!(matches!(r.get(), ResourceState::Idle));
+    assert!(matches!(resource.get(), ResourceState::Idle));
 }
 
 #[test]
@@ -118,7 +119,7 @@ fn future_that_changes_its_key_during_final_poll_cannot_publish_stale_output() {
     let owner = Owner::new();
     owner.commit();
     let key = signal(1);
-    let r = Resource::new(
+    let resource = Resource::new(
         &owner.handle(),
         {
             let key = key.clone();
@@ -140,10 +141,10 @@ fn future_that_changes_its_key_during_final_poll_cannot_publish_stale_output() {
     );
     let observed = Rc::new(RefCell::new(Vec::new()));
     let _watch = effect({
-        let r = r.clone();
+        let resource = resource.clone();
         let observed = observed.clone();
         move || {
-            if let ResourceState::Ready(data) = r.get() {
+            if let ResourceState::Ready(data) = resource.get() {
                 observed.borrow_mut().push(*data.value);
             }
         }
@@ -171,7 +172,7 @@ fn disposal_is_terminal_and_releases_future_captures_on_next_poll() {
     let owner = Owner::new();
     owner.commit();
     let drops = Rc::new(Cell::new(0));
-    let r = Resource::new(
+    let resource = Resource::new(
         &owner.handle(),
         || Some(()),
         {
@@ -182,8 +183,8 @@ fn disposal_is_terminal_and_releases_future_captures_on_next_poll() {
     );
     pool.run_until_stalled();
     drop(owner);
-    assert!(matches!(r.get(), ResourceState::Disposed));
-    r.refresh();
+    assert!(matches!(resource.get(), ResourceState::Disposed));
+    resource.refresh();
     assert_eq!(drops.get(), 0);
     pool.run_until_stalled();
     assert_eq!(drops.get(), 1);
@@ -194,7 +195,7 @@ fn last_handle_drop_cancels_even_when_owner_survives_and_failed_mount_never_call
     let mut pool = LocalPool::new();
     let owner = Owner::new();
     let calls = Rc::new(Cell::new(0));
-    let r = Resource::new(
+    let resource = Resource::new(
         &owner.handle(),
         || Some(()),
         {
@@ -209,11 +210,11 @@ fn last_handle_drop_cancels_even_when_owner_survives_and_failed_mount_never_call
     drop(owner);
     pool.run_until_stalled();
     assert_eq!(calls.get(), 0);
-    assert!(matches!(r.get(), ResourceState::Disposed));
+    assert!(matches!(resource.get(), ResourceState::Disposed));
     let owner = Owner::new();
     owner.commit();
     let drops = Rc::new(Cell::new(0));
-    let r = Resource::new(
+    let resource = Resource::new(
         &owner.handle(),
         || Some(()),
         {
@@ -223,7 +224,7 @@ fn last_handle_drop_cancels_even_when_owner_survives_and_failed_mount_never_call
         spawner(&pool),
     );
     pool.run_until_stalled();
-    drop(r);
+    drop(resource);
     pool.run_until_stalled();
     assert_eq!(drops.get(), 1);
 }
@@ -237,7 +238,7 @@ fn loaders_are_untracked_and_data_errors_need_not_be_clone() {
     owner.commit();
     let unrelated = signal(0);
     let calls = Rc::new(Cell::new(0));
-    let r = Resource::new(
+    let resource = Resource::new(
         &owner.handle(),
         || Some(()),
         {
@@ -255,7 +256,7 @@ fn loaders_are_untracked_and_data_errors_need_not_be_clone() {
     unrelated.set(1);
     pool.run_until_stalled();
     assert_eq!(calls.get(), 1);
-    let _snapshot = r.get();
+    let _snapshot = resource.get();
 }
 
 #[test]
@@ -263,9 +264,9 @@ fn cancellation_callback_can_dispose_resource_without_reentrant_borrows() {
     let mut pool = LocalPool::new();
     let owner = Owner::new();
     owner.commit();
-    let resource = Rc::new(RefCell::new(None::<Resource<u32, (), ()>>));
-    let weak = Rc::downgrade(&resource);
-    let r = Resource::new(
+    let slot = Rc::new(RefCell::new(None::<Resource<u32, (), ()>>));
+    let weak = Rc::downgrade(&slot);
+    let resource = Resource::new(
         &owner.handle(),
         || Some(1),
         move |_, context| {
@@ -282,50 +283,57 @@ fn cancellation_callback_can_dispose_resource_without_reentrant_borrows() {
         },
         spawner(&pool),
     );
-    *resource.borrow_mut() = Some(r.clone());
+    *slot.borrow_mut() = Some(resource.clone());
     pool.run_until_stalled();
-    r.refresh();
+    resource.refresh();
     pool.run_until_stalled();
-    assert!(matches!(r.get(), ResourceState::Disposed));
+    assert!(matches!(resource.get(), ResourceState::Disposed));
+}
+
+struct TransitionPayload(&'static str, Box<dyn Fn(&'static str)>);
+type TransitionResource = Resource<i32, TransitionPayload, TransitionPayload>;
+impl Drop for TransitionPayload {
+    fn drop(&mut self) {
+        (self.1)(self.0);
+    }
+}
+fn transition_payload(
+    name: &'static str,
+    slot: &Rc<RefCell<Option<TransitionResource>>>,
+    log: &Rc<RefCell<Vec<(&'static str, &'static str)>>>,
+) -> TransitionPayload {
+    let slot = Rc::downgrade(slot);
+    let log = log.clone();
+    TransitionPayload(
+        name,
+        Box::new(move |name| {
+            let Some(slot) = slot.upgrade() else {
+                return;
+            };
+            slot.borrow().as_ref().unwrap().with(|state| {
+                let phase = match state {
+                    ResourceState::Idle => "idle",
+                    ResourceState::Loading { .. } => "loading",
+                    ResourceState::Ready(_) => "ready",
+                    ResourceState::Error { .. } => "error",
+                    ResourceState::Disposed => "disposed",
+                };
+                log.borrow_mut().push((name, phase));
+            });
+        }),
+    )
 }
 
 #[test]
 fn retired_resource_payloads_observe_complete_transitions() {
-    struct Payload(&'static str, Box<dyn Fn(&'static str)>);
-    impl Drop for Payload {
-        fn drop(&mut self) {
-            (self.1)(self.0);
-        }
-    }
     let mut pool = LocalPool::new();
     let owner = Owner::new();
     owner.commit();
     let key = signal(Some(1));
-    let slot = Rc::new(RefCell::new(None::<Resource<i32, Payload, Payload>>));
+    let slot = Rc::new(RefCell::new(None::<TransitionResource>));
     let log = Rc::new(RefCell::new(Vec::new()));
-    let payload = |name| {
-        let slot = Rc::downgrade(&slot);
-        let log = log.clone();
-        Payload(
-            name,
-            Box::new(move |name| {
-                if let Some(slot) = slot.upgrade() {
-                    slot.borrow().as_ref().unwrap().with(|state| {
-                        let phase = match state {
-                            ResourceState::Idle => "idle",
-                            ResourceState::Loading { .. } => "loading",
-                            ResourceState::Ready(_) => "ready",
-                            ResourceState::Error { .. } => "error",
-                            ResourceState::Disposed => "disposed",
-                        };
-                        log.borrow_mut().push((name, phase));
-                    });
-                }
-            }),
-        )
-    };
     let requests = Rc::new(RefCell::new(Vec::new()));
-    let r = Resource::new(
+    let resource = Resource::new(
         &owner.handle(),
         {
             let key = key.clone();
@@ -334,31 +342,31 @@ fn retired_resource_payloads_observe_complete_transitions() {
         {
             let requests = requests.clone();
             move |_, _| {
-                let (tx, rx) = oneshot::channel();
-                requests.borrow_mut().push(tx);
-                async move { rx.await.unwrap() }
+                let (sender, receiver) = oneshot::channel();
+                requests.borrow_mut().push(sender);
+                async move { receiver.await.unwrap() }
             }
         },
         spawner(&pool),
     );
-    *slot.borrow_mut() = Some(r.clone());
+    *slot.borrow_mut() = Some(resource.clone());
     let mut complete = |result| {
         pool.run_until_stalled();
         assert!(requests.borrow_mut().remove(0).send(result).is_ok());
         pool.run_until_stalled();
     };
-    complete(Ok(payload("first")));
+    complete(Ok(transition_payload("first", &slot, &log)));
     key.set(Some(2));
-    complete(Err(payload("failure")));
-    r.refresh();
+    complete(Err(transition_payload("failure", &slot, &log)));
+    resource.refresh();
     assert_eq!(*log.borrow(), [("failure", "loading")]);
-    complete(Ok(payload("second")));
+    complete(Ok(transition_payload("second", &slot, &log)));
     assert_eq!(log.borrow().last(), Some(&("first", "ready")));
     key.set(None);
     assert_eq!(log.borrow().last(), Some(&("second", "idle")));
     key.set(Some(3));
-    complete(Ok(payload("third")));
-    r.dispose();
+    complete(Ok(transition_payload("third", &slot, &log)));
+    resource.dispose();
     assert_eq!(log.borrow().last(), Some(&("third", "disposed")));
 }
 
@@ -421,7 +429,7 @@ fn completed_reads_never_cancel_their_token() {
     let cancelled = Rc::new(Cell::new(0));
     // Keep every registration alive so a late cancellation would be observed.
     let registrations = Rc::new(RefCell::new(Vec::new()));
-    let r = Resource::new(
+    let resource = Resource::new(
         &owner.handle(),
         {
             let key = key.clone();
@@ -445,20 +453,20 @@ fn completed_reads_never_cancel_their_token() {
         spawner(&pool),
     );
     pool.run_until_stalled();
-    assert_eq!(*r.get().data().unwrap().value, 1);
-    r.refresh();
+    assert_eq!(*resource.get().data().unwrap().value, 1);
+    resource.refresh();
     pool.run_until_stalled();
     key.set(2);
     pool.run_until_stalled();
-    assert_eq!(*r.get().data().unwrap().value, 2);
+    assert_eq!(*resource.get().data().unwrap().value, 2);
     assert_eq!(cancelled.get(), 0);
     // A pending read is still cancelled, so the counter does observe cancellation.
     key.set(3);
     pool.run_until_stalled();
-    r.refresh();
+    resource.refresh();
     assert_eq!(cancelled.get(), 1);
     pool.run_until_stalled();
-    r.dispose();
+    resource.dispose();
     assert_eq!(cancelled.get(), 2);
     assert_eq!(registrations.borrow().len(), 5);
 }

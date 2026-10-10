@@ -50,6 +50,19 @@ export async function previewRaces(browser, origin) {
       body: "initial read deliberately failed",
     });
     assert.equal(await page.evaluate(() => activation), "binding-failed");
+    const causal = await page.evaluate(async () => {
+      await __fusor_islands.activate('cart-one').promise;
+      const script = performance.getEntriesByType('resource').find(item => /\/cart\/unit.js$/.test(item.name));
+      const controller = await import(script.name);
+      try {
+        await controller.exercise_control('activate');
+        return '';
+      } catch (error) {
+        return String(error);
+      }
+    });
+    assert.match(causal, /initial coherent view failed:/);
+    assert.match(causal, /503/);
     assert(
       await page.evaluate(
         () => document.querySelector("#designer .preview") === preview,

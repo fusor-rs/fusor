@@ -32,8 +32,8 @@ impl Source {
             );
         }
         Ok(Self {
-            checkout: path_of(&runtime, root)?,
-            registry: registry_of(&runtime),
+            checkout: path_of(runtime, root)?,
+            registry: registry_of(runtime),
         })
     }
 
@@ -76,8 +76,8 @@ impl Source {
             .as_ref()
             .map(|checkout| -> Result<PathBuf> { Ok(sibling(checkout, name)?.canonicalize()?) })
             .transpose()?;
-        if path_of(&existing, root)? != expected
-            || registry_of(&existing).as_deref() != self.registry()
+        if path_of(existing, root)? != expected
+            || registry_of(existing).as_deref() != self.registry()
         {
             return Err(Error::project(format!(
                 "{name} comes from a different source than fusor-core"
@@ -93,10 +93,10 @@ impl Source {
 /// Follows workspace inheritance. Returns the directory `path` is relative to.
 fn declared<'a>(
     project: &'a Project,
-    document: &DocumentMut,
-    workspace: &DocumentMut,
+    document: &'a DocumentMut,
+    workspace: &'a DocumentMut,
     name: &str,
-) -> Result<Option<(Item, &'a Path)>> {
+) -> Result<Option<(&'a Item, &'a Path)>> {
     let Some(member) = document
         .get("dependencies")
         .and_then(|dependencies| dependencies.get(name))
@@ -104,7 +104,7 @@ fn declared<'a>(
         return Ok(None);
     };
     if !inherited(document, name) {
-        return Ok(Some((member.clone(), project.root.as_path())));
+        return Ok(Some((member, project.root.as_path())));
     }
     let shared = workspace
         .get("workspace")
@@ -115,7 +115,7 @@ fn declared<'a>(
                 "{name} is inherited but absent from workspace.dependencies"
             ))
         })?;
-    Ok(Some((shared.clone(), project.workspace.as_path())))
+    Ok(Some((shared, project.workspace.as_path())))
 }
 
 pub(crate) fn inherited(document: &DocumentMut, name: &str) -> bool {

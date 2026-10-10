@@ -108,8 +108,11 @@ fn provider_destructors_run_outside_borrows_after_child_cleanup() {
     let _cleanup = child.handle().on_cleanup(move || captured.set(true));
     let owner = root.handle();
     let descendant = child.handle();
+    let drops = Rc::new(Cell::new(0));
+    let captured = drops.clone();
     root.handle()
         .provide::<Key>(Probe(Box::new(move || {
+            captured.set(captured.get() + 1);
             assert!(cleaned.get());
             assert!(descendant.is_disposed());
             assert!(owner.context::<Key>().is_none());
@@ -120,11 +123,15 @@ fn provider_destructors_run_outside_borrows_after_child_cleanup() {
         })))
         .unwrap();
     let owner = root.handle();
+    let captured = drops.clone();
     assert_eq!(
         root.handle().provide::<Key>(Probe(Box::new(move || {
+            captured.set(captured.get() + 1);
             assert!(owner.context::<Key>().is_some());
         }))),
         Err(ContextError::AlreadyProvided)
     );
+    assert_eq!(drops.get(), 1);
     root.dispose();
+    assert_eq!(drops.get(), 2);
 }

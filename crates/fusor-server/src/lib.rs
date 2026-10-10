@@ -1,6 +1,8 @@
 //! Synchronous native HTML rendering. Applications resolve their own data and
 //! return the resulting string through any HTTP framework or build-time tool.
+mod error;
 mod html;
+pub use error::{Error, InputError, InputErrorDiagnostic};
 
 pub use html::{Html, Writer};
 
@@ -10,7 +12,7 @@ use fusor_islands::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-pub type Result<T> = std::result::Result<T, String>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Implemented by `rust:render="server"` / `rust:render="shared"` HTML.
 pub trait Render {
@@ -48,8 +50,7 @@ pub type Children<'a> = dyn Fn(&mut Context<'_>, Option<&str>) -> Result<Html> +
 
 pub struct Context<'a> {
     owner: Owner,
-    delivery: Option<&'a DeliveryManifest>,
-    registry: Option<&'a Registry>,
+    islands: Option<Islands<'a>>,
     instances: BTreeSet<String>,
     next: u64,
     island_depth: usize,
@@ -63,8 +64,7 @@ impl<'a> Context<'a> {
     pub fn new() -> Self {
         Self {
             owner: Owner::new(),
-            delivery: None,
-            registry: None,
+            islands: None,
             instances: BTreeSet::new(),
             next: 0,
             island_depth: 0,
@@ -74,8 +74,7 @@ impl<'a> Context<'a> {
         delivery.validate()?;
         registry.validate(delivery)?;
         Ok(Self {
-            delivery: Some(delivery),
-            registry: Some(registry),
+            islands: Some(Islands { delivery, registry }),
             ..Self::new()
         })
     }
@@ -164,33 +163,34 @@ impl<'a> Context<'a> {
         if self.island_depth != 0 {
             return Err("nested independent islands are unsupported".into());
         }
-        let delivery = self.delivery.ok_or("islands require a delivery manifest")?;
+        let islands = self
+            .islands
+            .as_ref()
+            .ok_or("islands require a delivery manifest and server registrations")?;
+        let delivery = islands.delivery;
         let entry = delivery.entry::<D>()?;
-        let registry = self
-            .registry
-            .ok_or("islands require server registrations")?;
+        let registry = islands.registry;
         let registration = registry
             .entries
             .get(D::NAME)
             .ok_or("missing native island renderer")?;
-        self.next = self
+        let next = self
             .next
             .checked_add(1)
             .ok_or("island instance counter overflow")?;
         let id = id
             .map(str::to_owned)
-            .unwrap_or_else(|| format!("fusor-island-{}", self.next));
-        if id.is_empty() || !self.instances.insert(id.clone()) {
+            .unwrap_or_else(|| format!("fusor-island-{next}"));
+        if id.is_empty() || self.instances.contains(&id) {
             return Err("island instance IDs must be nonempty and unique".into());
         }
-        let props = fusor_islands::encode(props).map_err(|error| error.to_string())?;
-        self.island_depth += 1;
-        let initial = (registration.render)(&props, self);
-        self.island_depth -= 1;
-        let initial = initial?;
+        let props = fusor_islands::encode(props)?;
+        let initial = self.render_island(&registration.render, &props)?;
         if D::MODE == RenderMode::Preview && initial.is_editable() {
             return Err("replaceable island previews cannot contain editable controls".into());
         }
+        self.next = next;
+        self.instances.insert(id.clone());
         Ok(PreparedIsland {
             id,
             descriptor: D::NAME,
@@ -204,6 +204,22 @@ impl<'a> Context<'a> {
             props,
         })
     }
+    fn render_island(&mut self, render: &ServerFactory, props: &str) -> Result<Html> {
+        struct Rendering<'a, 'b>(&'a mut Context<'b>);
+        impl Drop for Rendering<'_, '_> {
+            fn drop(&mut self) {
+                self.0.island_depth = 0;
+            }
+        }
+        self.island_depth = 1;
+        let guard = Rendering(self);
+        render(props, guard.0)
+    }
+}
+
+struct Islands<'a> {
+    delivery: &'a DeliveryManifest,
+    registry: &'a Registry,
 }
 
 #[doc(hidden)]
@@ -267,14 +283,14 @@ impl Registry {
             return Err("island entries require one native root element; wrap the fragment in a single-root component".into());
         }
         if self.entries.contains_key(D::NAME) {
-            return Err(format!("duplicate island {}", D::NAME));
+            return Err(format!("duplicate island {}", D::NAME).into());
         }
         self.entries.insert(
             D::NAME.into(),
             Registration {
                 entry: Entry::new::<D>(C::TEMPLATE_HASH),
                 render: Box::new(move |props, context| {
-                    let props = fusor_islands::decode(props).map_err(|error| error.to_string())?;
+                    let props = fusor_islands::decode(props)?;
                     fusor::coherence::prepare_state(context.owner(), |_| make(props))
                         .render(context)
                 }),
@@ -296,10 +312,9 @@ impl Registry {
         let mut seen = BTreeSet::new();
         for (unit_name, unit) in &manifest.units {
             for entry in &unit.entries {
-                let registration = self
-                    .entries
-                    .get(&entry.descriptor)
-                    .ok_or_else(|| format!("no native registration for {}", entry.descriptor))?;
+                let registration = self.entries.get(&entry.descriptor).ok_or_else(|| {
+                    Error::from(format!("no native registration for {}", entry.descriptor))
+                })?;
                 if &registration.entry.unit != unit_name
                     || registration.entry.props_schema != entry.props_schema
                     || registration.entry.mode != entry.mode
@@ -309,7 +324,8 @@ impl Registry {
                     return Err(format!(
                         "native/browser registration mismatch: {}",
                         entry.descriptor
-                    ));
+                    )
+                    .into());
                 }
                 seen.insert(&entry.descriptor);
             }

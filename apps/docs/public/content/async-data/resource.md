@@ -78,6 +78,7 @@ HTML binding, it subscribes that binding to changes.
 
 `ResourceState::data()` returns available successful data, including the previous result
 during Loading or Error; always use `data.key` to label that result.
+The returned `ResourceData<K, T>` retains the request key and a shared `Rc<T>` payload.
 
 ```rust title=Rust · read the resource from a binding method
 let text = data.with(|state| {

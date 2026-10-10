@@ -3,9 +3,13 @@ const errorEvent = error => ({Result: {Err: {Worker: error}}});
 const failure = (name, message) => ({[name]: {message: String(message)}});
 const config = () => globalThis.__fusor_worker_artifact;
 const runtimes = new Set();
+const STARTUP_TIMEOUT_MS = 10000;
 if (typeof document !== 'undefined') {
-  globalThis.addEventListener('pagehide', () => { for (const runtime of runtimes) shutdown(runtime, '"Terminated"'); });
-  document.addEventListener('fusor:reload', () => { for (const runtime of runtimes) shutdown(runtime, '"Terminated"'); });
+  const stopRuntimes = () => {
+    for (const runtime of runtimes) shutdown(runtime, '"Terminated"');
+  };
+  globalThis.addEventListener('pagehide', stopRuntimes);
+  document.addEventListener('fusor:reload', stopRuntimes);
 }
 export const hardware_parallelism = () => globalThis.navigator?.hardwareConcurrency || 1;
 export const dedicated_workers = () => typeof Worker === 'function';
@@ -21,39 +25,71 @@ export function open_runtime(pool, threads, active, capacity, callback) {
   const worker = new Worker(pool ? artifact.threaded : artifact.ordinary, {type: 'module'});
   const runtime = {worker, callback, pool: pool ? crypto.randomUUID() : '', generation: artifact.generation, progress: new Map(), computes: [], timers: new Set(), queued: [], loaded: false, error: null, closes: new Map(), capacity, active};
   runtimes.add(runtime);
-  runtime.ready = new Promise((resolve, reject) => { runtime.resolve = resolve; runtime.reject = reject; });
+  runtime.ready = new Promise((resolve, reject) => {
+    runtime.resolve = resolve;
+    runtime.reject = reject;
+  });
+  // Callers may observe job failures without awaiting the initialization promise.
   runtime.ready.catch(() => {});
-  worker.onmessage = ({data}) => {
-    if (data.spawnCompute) { spawnCompute(runtime, data.spawnCompute); return; }
-    if (data.initializationError) { shutdown(runtime, JSON.stringify(data.initializationError)); return; }
-    if (data.ready === 1) {
-      runtime.loaded = true;
-      runtime.resolve();
-      for (const frame of runtime.queued.splice(0)) worker.postMessage(frame);
-    } else if (data.closed !== undefined) {
-      const closing = runtime.closes.get(data.closed);
-      runtime.closes.delete(data.closed);
-      if (closing) { clearTimeout(closing.timer); data.error ? closing.reject(JSON.stringify(data.error)) : closing.resolve(); }
-      if (!data.closed || !runtime.pool) shutdown(runtime, JSON.stringify(data.error || 'Closed'));
-    } else if (data.id !== undefined) {
-      if (data.event.Progress) {
-        const old = runtime.progress.get(data.id);
-        if (old?.event.Progress.Shared) send(runtime, {type: 'Lease', retain: false, shared: old.event.Progress.Shared});
-        runtime.progress.set(data.id, data);
-        if (!runtime.progressTimer) runtime.progressTimer = setTimeout(() => {
-          runtime.progressTimer = null;
-          for (const id of runtime.progress.keys()) deliverProgress(runtime, id);
-        }, 16);
-      } else {
-        deliverProgress(runtime, data.id);
-        if (!runtime.error) runtime.callback(JSON.stringify(data));
-      }
-    }
+  runtime.startup = setTimeout(() => {
+    shutdown(runtime, JSON.stringify(failure('Load', 'Worker startup timed out')));
+  }, STARTUP_TIMEOUT_MS);
+  runtime.timers.add(runtime.startup);
+  worker.onmessage = ({data}) => receiveRuntime(runtime, data);
+  worker.onerror = event => {
+    event.preventDefault();
+    shutdown(runtime, JSON.stringify(failure(runtime.loaded ? 'Crashed' : 'Load', event.message)));
   };
-  worker.onerror = event => { event.preventDefault(); shutdown(runtime, JSON.stringify(failure(runtime.loaded ? 'Crashed' : 'Load', event.message))); };
   worker.onmessageerror = () => shutdown(runtime, JSON.stringify(failure('Decode', 'worker message could not be decoded')));
-  worker.postMessage({initialize: {version: 1, pool: runtime.pool, generation: runtime.generation, base: artifact.base, threads, active, capacity}});
+  try {
+    worker.postMessage({initialize: {version: 1, pool: runtime.pool, generation: runtime.generation, base: artifact.base, threads, active, capacity}});
+  } catch (error) {
+    shutdown(runtime, JSON.stringify(failure('Load', error)));
+    throw error;
+  }
   return runtime;
+}
+function receiveRuntime(runtime, data) {
+  if (data.spawnCompute) {
+    spawnCompute(runtime, data.spawnCompute);
+    return;
+  }
+  if (data.initializationError) {
+    shutdown(runtime, JSON.stringify(data.initializationError));
+    return;
+  }
+  if (data.ready === 1) {
+    clearTimeout(runtime.startup);
+    runtime.timers.delete(runtime.startup);
+    runtime.loaded = true;
+    try {
+      for (const frame of runtime.queued.splice(0)) runtime.worker.postMessage(frame);
+      runtime.resolve();
+    } catch (error) {
+      shutdown(runtime, JSON.stringify(failure('Load', error)));
+    }
+  } else if (data.closed !== undefined) {
+    const closing = runtime.closes.get(data.closed);
+    runtime.closes.delete(data.closed);
+    if (closing) {
+      clearTimeout(closing.timer);
+      data.error ? closing.reject(JSON.stringify(data.error)) : closing.resolve();
+    }
+    if (!data.closed || !runtime.pool) shutdown(runtime, JSON.stringify(data.error || 'Closed'));
+  } else if (data.id !== undefined) {
+    if (data.event.Progress) {
+      const old = runtime.progress.get(data.id);
+      if (old?.event.Progress.Shared) send(runtime, {type: 'Lease', retain: false, shared: old.event.Progress.Shared});
+      runtime.progress.set(data.id, data);
+      if (!runtime.progressTimer) runtime.progressTimer = setTimeout(() => {
+        runtime.progressTimer = null;
+        for (const id of runtime.progress.keys()) deliverProgress(runtime, id);
+      }, 16);
+    } else {
+      deliverProgress(runtime, data.id);
+      if (!runtime.error) runtime.callback(JSON.stringify(data));
+    }
+  }
 }
 function deliverProgress(runtime, id) {
   const update = runtime.progress.get(id);
@@ -69,7 +105,10 @@ export function lease(pool, retain, shared) {
 export const command = (runtime, encoded) => send(runtime, JSON.parse(encoded));
 function send(runtime, frame) {
   if (runtime.error) throw Error(JSON.stringify(runtime.error));
-  if (frame.type === 'Cancel' && frame.id === 0) { shutdown(runtime, '"Cancelled"'); return; }
+  if (frame.type === 'Cancel' && frame.id === 0) {
+    shutdown(runtime, '"Cancelled"');
+    return;
+  }
   if (frame.type === 'Cancel' && !runtime.loaded) {
     const index = runtime.queued.findIndex(queued => queued.type === 'Call' && queued.id === frame.id);
     if (index >= 0) {
@@ -103,7 +142,10 @@ export function shutdown(runtime, encoded) {
   for (const timer of runtime.timers) clearTimeout(timer);
   runtime.timers.clear();
   runtime.reject(encoded);
-  for (const closing of runtime.closes.values()) { clearTimeout(closing.timer); closing.reject(encoded); }
+  for (const closing of runtime.closes.values()) {
+    clearTimeout(closing.timer);
+    closing.reject(encoded);
+  }
   runtime.closes.clear();
   runtime.queued.length = 0;
   runtime.progress.clear();
@@ -113,7 +155,11 @@ export function close_runtime(runtime, service, timeout) {
   if (runtime.closes.has(service)) return runtime.closes.get(service).promise;
   if (runtime.error) return runtime.error === 'Closed' ? Promise.resolve() : Promise.reject(JSON.stringify(runtime.error));
   const closing = {};
-  closing.promise = new Promise((resolve, reject) => { closing.resolve = resolve; closing.reject = reject; });
+  closing.promise = new Promise((resolve, reject) => {
+    closing.resolve = resolve;
+    closing.reject = reject;
+  });
+  // A close deadline may expire before its Rust future is polled again.
   closing.promise.catch(() => {});
   closing.timer = setTimeout(() => {
     runtime.closes.delete(service);
@@ -132,7 +178,10 @@ export function emit(id, event) {
   const operation = host.running.get(id);
   if (!operation) return;
   const value = JSON.parse(event);
-  if (operation.cancelled) { discardEvent(value); return; }
+  if (operation.cancelled) {
+    discardEvent(value);
+    return;
+  }
   if (value.Item) operation.reservation = null;
   postMessage({id, event: value});
 }
@@ -141,8 +190,14 @@ export function reserve(id) {
   if (!operation || operation.cancelled) return Promise.reject('Cancelled');
   // StreamSender is exclusive: at most one send can wait for this operation.
   const reservation = operation.reservation = {granted: false};
-  const promise = new Promise((resolve, reject) => { reservation.resolve = resolve; reservation.reject = reject; });
-  if (operation.credits > 0) { operation.credits--; credit(Number(id)); }
+  const promise = new Promise((resolve, reject) => {
+    reservation.resolve = resolve;
+    reservation.reject = reject;
+  });
+  if (operation.credits > 0) {
+    operation.credits--;
+    credit(Number(id));
+  }
   return promise;
 }
 export function return_credit(id) {
@@ -151,20 +206,27 @@ export function return_credit(id) {
   const reservation = operation?.reservation;
   if (!reservation) return;
   operation.reservation = null;
-  if (reservation.granted) credit(id); else reservation.reject('Cancelled');
+  if (reservation.granted) credit(id);
+  else reservation.reject('Cancelled');
 }
 function credit(id) {
   const operation = host.running.get(id);
   if (!operation) return;
   const reservation = operation.reservation;
-  if (reservation && !reservation.granted) { reservation.granted = true; reservation.resolve(); }
+  if (reservation && !reservation.granted) {
+    reservation.granted = true;
+    reservation.resolve();
+  }
   else operation.credits++;
 }
 function release(payload) {
   if (payload?.Instance) host.app.__fusor_worker_drop_service(BigInt(payload.Instance));
   if (payload?.Shared) host.app.__fusor_worker_lease(false, JSON.stringify(payload.Shared));
 }
-function discardResult(result) { if (result.Ok) release(result.Ok); else if (result.Err?.Application) release(result.Err.Application); }
+function discardResult(result) {
+  if (result.Ok) release(result.Ok);
+  else if (result.Err?.Application) release(result.Err.Application);
+}
 function discardEvent(event) {
   if (event.Item) release(event.Item);
   if (event.Progress) release(event.Progress);
@@ -194,22 +256,40 @@ export function start_worker(app, encoded) {
 }
 function receive(frame) {
   switch (frame.type) {
-    case 'Call': admit(frame); break;
+    case 'Call':
+      admit(frame);
+      break;
     case 'Cancel': {
       const queued = host.waiting.findIndex(op => op.id === frame.id);
       if (queued >= 0) {
         const [operation] = host.waiting.splice(queued, 1);
         operation.arguments.forEach(release);
         postMessage({id: frame.id, event: errorEvent('Cancelled')});
-      } else { const operation = host.running.get(frame.id); if (operation) cancel(operation); }
-      drain(); break;
+      } else {
+        const operation = host.running.get(frame.id);
+        if (operation) cancel(operation);
+      }
+      drain();
+      break;
     }
-    case 'Credit': credit(frame.id); break;
-    case 'Dispose': stopService(frame.instance, 'OwnerDisposed'); break;
-    case 'Lease': host.app.__fusor_worker_lease(frame.retain, JSON.stringify(frame.shared)); break;
-    case 'Close': host.services.delete(frame.instance); host.closing.add(frame.instance); if (!frame.instance) host.allClosed = true; finishCloses(); break;
-    case 'CloseTimeout': { stopService(frame.instance, 'CloseTimedOut'); break;
-    }
+    case 'Credit':
+      credit(frame.id);
+      break;
+    case 'Dispose':
+      stopService(frame.instance, 'OwnerDisposed');
+      break;
+    case 'Lease':
+      host.app.__fusor_worker_lease(frame.retain, JSON.stringify(frame.shared));
+      break;
+    case 'Close':
+      host.services.delete(frame.instance);
+      host.closing.add(frame.instance);
+      if (!frame.instance) host.allClosed = true;
+      finishCloses();
+      break;
+    case 'CloseTimeout':
+      stopService(frame.instance, 'CloseTimedOut');
+      break;
   }
 }
 function reject(operation, error) {
@@ -218,9 +298,18 @@ function reject(operation, error) {
 }
 function admit(operation) {
   const registration = host.registry.get(operation.entry);
-  if (!registration) { reject(operation, 'IncompatibleArtifact'); return; }
-  if (host.allClosed || (operation.instance && !host.services.has(operation.instance))) { reject(operation, 'Closed'); return; }
-  if (registration.pool && !host.configuration.pool) { reject(operation, 'PoolRequired'); return; }
+  if (!registration) {
+    reject(operation, 'IncompatibleArtifact');
+    return;
+  }
+  if (host.allClosed || (operation.instance && !host.services.has(operation.instance))) {
+    reject(operation, 'Closed');
+    return;
+  }
+  if (registration.pool && !host.configuration.pool) {
+    reject(operation, 'PoolRequired');
+    return;
+  }
   operation.cpu = !!host.configuration.pool && registration.kind === 'sync';
   if (canRun(operation)) run(operation);
   else if (host.waiting.length >= host.configuration.capacity) reject(operation, {QueueFull: {capacity: host.configuration.capacity}});
@@ -234,20 +323,28 @@ function canRun(operation) {
 function drain() {
   for (let index = 0; index < host.waiting.length;) {
     const operation = host.waiting[index];
-    if (!canRun(operation)) { index++; continue; }
-    host.waiting.splice(index, 1); run(operation);
+    if (!canRun(operation)) {
+      index++;
+      continue;
+    }
+    host.waiting.splice(index, 1);
+    run(operation);
   }
   finishCloses();
 }
 async function run(operation) {
-  operation.cancelled = false; operation.credits = operation.capacity;
+  operation.cancelled = false;
+  operation.credits = operation.capacity;
   if (!host.tick) host.tick = setInterval(() => host.app.__fusor_worker_tick(), 16);
   host.running.set(operation.id, operation);
   if (operation.instance) host.busy.add(operation.instance);
   operation.cpu ? host.cpu++ : host.async++;
   try {
     let result = JSON.parse(await host.app.__fusor_worker_call(BigInt(operation.id), operation.entry, JSON.stringify(operation.arguments), BigInt(operation.instance), operation.batch_bytes));
-    if (operation.cancelled) { discardResult(result); result = {Err: {Worker: 'Cancelled'}}; }
+    if (operation.cancelled) {
+      discardResult(result);
+      result = {Err: {Worker: 'Cancelled'}};
+    }
     if (operation.stream) {
       if (result.Ok) release(result.Ok);
       postMessage({id: operation.id, event: {End: result.Err ? {Err: result.Err} : {Ok: null}}});
@@ -257,13 +354,18 @@ async function run(operation) {
     }
   } catch (error) {
     // A Wasm trap invalidates the complete runtime. Propagate to its Worker error handler.
-    setTimeout(() => { throw error; });
+    setTimeout(() => {
+      throw error;
+    });
   } finally {
     host.running.delete(operation.id);
     if (operation.instance) host.busy.delete(operation.instance);
     operation.cpu ? host.cpu-- : host.async--;
     drain();
-    if (!host.running.size) { clearInterval(host.tick); host.tick = null; }
+    if (!host.running.size) {
+      clearInterval(host.tick);
+      host.tick = null;
+    }
   }
 }
 function finishCloses() {
@@ -273,7 +375,10 @@ function finishCloses() {
     host.closing.delete(service);
     if (service) host.app.__fusor_worker_drop_service(BigInt(service));
     postMessage({closed: service});
-    if (!service) { clearInterval(host.tick); self.close(); }
+    if (!service) {
+      clearInterval(host.tick);
+      self.close();
+    }
   }
 }
 
@@ -282,10 +387,17 @@ function stopService(instance, error) {
   host.waiting = host.waiting.filter(op => {
     if (op.instance !== instance) return true;
     op.arguments.forEach(release);
-    postMessage({id: op.id, event: errorEvent(error)}); return false;
+    postMessage({id: op.id, event: errorEvent(error)});
+    return false;
   });
-  for (const operation of host.running.values()) if (operation.instance === instance) { cancel(operation); postMessage({id: operation.id, event: errorEvent(error)}); }
-  host.closing.add(instance); finishCloses();
+  for (const operation of host.running.values()) {
+    if (operation.instance === instance) {
+      cancel(operation);
+      postMessage({id: operation.id, event: errorEvent(error)});
+    }
+  }
+  host.closing.add(instance);
+  finishCloses();
 }
 
 async function spawnCompute(runtime, request) {
@@ -293,16 +405,23 @@ async function spawnCompute(runtime, request) {
     await Promise.all(Array.from({length: request.count}, () => new Promise((resolve, reject) => {
       const worker = new Worker(request.url, {type: 'module', name: 'fusor-compute'});
       runtime.computes.push(worker);
-      const timer = setTimeout(() => reject(Error('Compute worker startup timed out')), 10000);
+      const timer = setTimeout(() => reject(Error('Compute worker startup timed out')), STARTUP_TIMEOUT_MS);
       runtime.timers.add(timer);
       worker.onerror = event => {
-        event.preventDefault(); clearTimeout(timer);
+        event.preventDefault();
+        clearTimeout(timer);
         reject(Error(event.message));
         shutdown(runtime, JSON.stringify(failure(runtime.loaded ? 'Crashed' : 'Load', event.message)));
       };
-      worker.onmessageerror = () => { clearTimeout(timer); reject(Error('Compute initialization could not be decoded')); };
+      worker.onmessageerror = () => {
+        clearTimeout(timer);
+        reject(Error('Compute initialization could not be decoded'));
+      };
       worker.onmessage = ({data}) => {
-        if (data?.type === 'fusor-rayon-ready') { clearTimeout(timer); resolve(); }
+        if (data?.type === 'fusor-rayon-ready') {
+          clearTimeout(timer);
+          resolve();
+        }
         if (data?.type === 'fusor-rayon-error') {
           clearTimeout(timer);
           reject(Error(data.message));
@@ -315,5 +434,7 @@ async function spawnCompute(runtime, request) {
   } catch (error) {
     request.port.postMessage({error: String(error)});
     shutdown(runtime, JSON.stringify(failure('Load', error)));
-  } finally { request.port.close(); }
+  } finally {
+    request.port.close();
+  }
 }

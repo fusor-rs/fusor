@@ -37,54 +37,64 @@ impl BlockingOverlay {
         boundary: AsyncBoundary,
     ) -> Result<(), JsValue> {
         self.capture_focus_intent(region)?;
-        let root = &self.root;
-        let overlay = &self.state;
-        let root = root.clone();
-        let captured = overlay.clone();
+        let captured = self.clone();
         let status = effect(move || {
             let blocked = !matches!(
                 boundary.status(),
                 BoundaryStatus::Ready | BoundaryStatus::Disposed
             );
-            let mut overlay = captured.borrow_mut();
-            let mut restore = None;
-            if blocked && !overlay.applied {
-                overlay.authored = root.has_attribute("inert");
-                overlay.focus = document()
-                    .ok()
-                    .and_then(|doc| doc.active_element())
-                    .filter(|node| root.contains(Some(node)))
-                    .and_then(|node| node.dyn_into::<HtmlElement>().ok());
-                overlay.user_moved = false;
-                overlay.applied = true;
-                let _ = root.set_attribute("inert", "");
-                let _ = root.set_attribute("aria-busy", "true");
-            } else if !blocked && overlay.applied {
-                if !overlay.authored {
-                    let _ = root.remove_attribute("inert");
-                }
-                let _ = root.remove_attribute("aria-busy");
-                let focus = overlay.focus.take();
-                if !overlay.user_moved && !overlay.authored {
-                    restore = focus;
-                }
-                overlay.applied = false;
-            }
-            // focus() dispatches application events synchronously.
-            drop(overlay);
-            if let Some(focus) = restore.filter(|node| node.is_connected()) {
-                if document()
-                    .ok()
-                    .and_then(|doc| doc.active_element())
-                    .is_none_or(|node| {
-                        node.local_name() == "body" || node.is_same_node(Some(&focus))
-                    })
-                {
-                    let _ = focus.focus();
-                }
+            if let Err(error) = captured.update(blocked) {
+                web_sys::console::error_1(&error);
             }
         });
         region.effects.push(status);
+        Ok(())
+    }
+
+    fn update(&self, blocked: bool) -> Result<(), JsValue> {
+        let mut overlay = self.state.borrow_mut();
+        if blocked {
+            let authored = self.root.has_attribute("inert");
+            let focus = if overlay.applied {
+                None
+            } else {
+                document()?
+                    .active_element()
+                    .filter(|node| self.root.contains(Some(node)))
+                    .and_then(|node| node.dyn_ref::<HtmlElement>().cloned())
+            };
+            self.root.set_attribute("inert", "")?;
+            if !overlay.applied {
+                overlay.authored = authored;
+                overlay.focus = focus;
+                overlay.user_moved = false;
+                overlay.applied = true;
+            }
+            self.root.set_attribute("aria-busy", "true")?;
+            return Ok(());
+        }
+        if !overlay.applied {
+            return Ok(());
+        }
+        if !overlay.authored {
+            self.root.remove_attribute("inert")?;
+        }
+        self.root.remove_attribute("aria-busy")?;
+        let restore = overlay
+            .focus
+            .take()
+            .filter(|_| !overlay.user_moved && !overlay.authored);
+        overlay.applied = false;
+        // focus() dispatches application events synchronously.
+        drop(overlay);
+        if let Some(focus) = restore.filter(|node| node.is_connected()) {
+            if document()?
+                .active_element()
+                .is_none_or(|node| node.local_name() == "body" || node.is_same_node(Some(&focus)))
+            {
+                focus.focus()?;
+            }
+        }
         Ok(())
     }
 
@@ -117,11 +127,12 @@ impl BlockingOverlay {
 
     pub(super) fn set_authored_inert(&self, authored: bool) -> Result<(), JsValue> {
         let mut overlay = self.state.borrow_mut();
-        overlay.authored = authored;
-        if overlay.authored || overlay.applied {
-            self.root.set_attribute("inert", "")
+        if authored || overlay.applied {
+            self.root.set_attribute("inert", "")?;
         } else {
-            self.root.remove_attribute("inert")
+            self.root.remove_attribute("inert")?;
         }
+        overlay.authored = authored;
+        Ok(())
     }
 }

@@ -16,14 +16,14 @@ impl Backend for Memory {
     fn file(&self) -> TokenStream {
         quote! {
             use ::memory_renderer::Component as __MemoryComponent;
-            const _: () = assert!(::memory_renderer::VERSION == 1);
+            const _: () = assert!(::memory_renderer::VERSION == 2);
             const _: () = assert!(::fusor::render::VERSION == 2);
-            const _: () = assert!(::fusor::coherence::VERSION == 2);
+            const _: () = assert!(::fusor::coherence::VERSION == 3);
             const _: () = assert!(::fusor_components::BACKEND_VERSION == 1);
         }
     }
     fn version(&self) -> u32 {
-        4
+        5
     }
     fn name(&self) -> &str {
         "memory fixture"

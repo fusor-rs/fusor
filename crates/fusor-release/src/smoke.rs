@@ -1,7 +1,7 @@
 //! Exercises a built CLI against a fresh application. Preview runs with an
 //! empty `PATH` to prove serving needs neither Cargo nor Rust. This uses
 //! `--framework-path`, so it does not test a registry installation.
-use crate::{Result, workspace_root};
+use crate::{Result, remove_directory, workspace_root};
 use std::{
     fs,
     net::{Ipv4Addr, TcpListener},
@@ -15,12 +15,11 @@ const STARTER_TEXT: &str = "Rust, inside HTML.";
 
 const READY_TIMEOUT: Duration = Duration::from_secs(15);
 
-pub fn run(binary: &Path) -> Result {
+pub(super) fn run(binary: &Path) -> Result {
     let binary = binary.canonicalize()?;
     let root = scratch_directory()?;
     let result = exercise(&binary, &root);
-    let _ = fs::remove_dir_all(&root);
-    result?;
+    finish_cleanup(result, remove_directory(&root))?;
     println!("new, frozen check, frozen build and artifact-only preview all passed");
     Ok(())
 }
@@ -54,6 +53,15 @@ fn exercise(binary: &Path, root: &Path) -> Result {
     cli(&application, &["check", "--frozen"])?;
     cli(&application, &["build", "--frozen"])?;
 
+    preview(binary, root, &application, &environment)
+}
+
+fn preview(
+    binary: &Path,
+    root: &Path,
+    application: &Path,
+    environment: &[(&str, PathBuf)],
+) -> Result {
     let port = free_port()?;
     let mut preview = Command::new(binary);
     preview
@@ -71,9 +79,21 @@ fn exercise(binary: &Path, root: &Path) -> Result {
     }
     let mut preview = preview.spawn()?;
     let served = wait_for_page(&mut preview, port);
-    let _ = preview.kill();
-    let _ = preview.wait();
-    served
+    let stopped = match preview.try_wait() {
+        Ok(Some(_)) => Ok(()),
+        Ok(None) => preview.kill().map_err(Into::into),
+        Err(error) => finish_cleanup(Err(error.into()), preview.kill().map_err(Into::into)),
+    };
+    let waited = preview.wait().map(|_| ()).map_err(Into::into);
+    finish_cleanup(served, finish_cleanup(stopped, waited))
+}
+
+fn finish_cleanup(result: Result, cleanup: Result) -> Result {
+    match (result, cleanup) {
+        (result, Ok(())) => result,
+        (Ok(()), Err(error)) => Err(error),
+        (Err(error), Err(cleanup)) => Err(format!("{error}; cleanup failed: {cleanup}").into()),
+    }
 }
 
 fn wait_for_page(preview: &mut Child, port: u16) -> Result {
@@ -106,7 +126,7 @@ fn free_port() -> Result<u16> {
 
 fn scratch_directory() -> Result<PathBuf> {
     let root = std::env::temp_dir().join(format!("fusor-release-smoke-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    remove_directory(&root)?;
     fs::create_dir_all(&root)?;
     Ok(root)
 }

@@ -98,6 +98,11 @@ already lives there.
 
 ## Diagnose a failed startup {#troubleshooting}
 
+Ordinary workers and pool coordinators must become ready within ten seconds. Each compute
+worker has the same startup deadline. A stalled startup fails with `Load`, terminates the
+runtime's workers, and completes its pending jobs with the failure. Unexpected transport
+failures while cancelling, disposing, or returning stream credit also terminate the runtime.
+
 `PoolRequired` means an operation needs a pool: add `.on(&pool)` to it, or use an ordinary
 task that doesn’t need pool capabilities. For `Unsupported`, check the capabilities, that
 the page is served over HTTPS, and that the document has the isolation headers. If the build

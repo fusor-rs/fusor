@@ -22,8 +22,11 @@ impl fmt::Display for BundleError {
                 "JavaScript modules need Node.js 22 or newer: {error}"
             ),
             Self::Json(error) => error.fmt(formatter),
-            Self::Failed { message, .. } => {
-                write!(formatter, "Fusor JavaScript bundling failed:\n{message}")
+            Self::Failed { status, message } => {
+                write!(
+                    formatter,
+                    "Fusor JavaScript bundling failed ({status}):\n{message}"
+                )
             }
         }
     }
@@ -48,5 +51,23 @@ impl From<io::Error> for BundleError {
 impl From<serde_json::Error> for BundleError {
     fn from(error: serde_json::Error) -> Self {
         Self::Json(error)
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::process::ExitStatusExt;
+
+    #[test]
+    fn bundle_failures_display_exit_status_and_diagnostics() {
+        let error = BundleError::Failed {
+            status: ExitStatus::from_raw(7 << 8),
+            message: "missing import".into(),
+        };
+        assert_eq!(
+            error.to_string(),
+            "Fusor JavaScript bundling failed (exit status: 7):\nmissing import"
+        );
     }
 }

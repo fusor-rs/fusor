@@ -1,7 +1,7 @@
 use crate::signature::{self, Flags};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{FnArg, ItemFn, Type, spanned::Spanned};
+use syn::{ItemFn, Type, spanned::Spanned};
 
 pub fn expand(attributes: TokenStream, item: TokenStream) -> syn::Result<TokenStream> {
     let flags = Flags::parse(attributes, true)?;
@@ -54,18 +54,8 @@ impl Task {
                 "stream producers must be async and return TaskResult<(), E>",
             ));
         }
-        let mut inputs = function
-            .sig
-            .inputs
-            .iter()
-            .map(|argument| match argument {
-                FnArg::Typed(argument) => Ok((*argument.ty).clone()),
-                FnArg::Receiver(receiver) => Err(syn::Error::new(
-                    receiver.span(),
-                    "task requires a free function",
-                )),
-            })
-            .collect::<syn::Result<Vec<_>>>()?;
+        let mut inputs =
+            signature::inputs(function.sig.inputs.iter(), "task requires a free function")?;
         let batch = flags
             .stream
             .then(|| take_sender(&mut inputs, function))
@@ -177,6 +167,6 @@ fn take_sender(inputs: &mut Vec<Type>, function: &ItemFn) -> syn::Result<Type> {
     let args = signature::arguments(&ty, "StreamSender")
         .filter(|args| args.len() == 1)
         .ok_or_else(|| missing(ty.span()))?;
-    signature::owned(&args[0])?;
+    signature::owned(args[0])?;
     Ok(args[0].clone())
 }

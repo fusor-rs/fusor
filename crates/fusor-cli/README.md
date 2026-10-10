@@ -35,7 +35,9 @@ fusor doctor      # report problems without changing anything
 ```
 
 Applications build on Rust 1.85 or later; new projects pin the tested 1.95.0
-toolchain and the Wasm target. Rust-only applications never need Node.
+toolchain and the Wasm target. Browser builds with JavaScript modules, workers,
+or islands need Node.js 22 or newer to bundle modules or inspect registrations.
+Native Cargo checks and artifact-only preview do not need Node.
 
 ## Reference
 

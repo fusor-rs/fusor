@@ -14,6 +14,10 @@ for (const packageName of ['esbuild','@esbuild']) {
 }
 env.CARGO_TARGET_DIR = resolve('target');
 await command('cargo',['run','-p','fusor-cli','--bin','fusor','--locked','--offline','--','build','--manifest-path',resolve(fixture,'Cargo.toml'),'--offline']);
+const declaration = await readFile(resolve(fixture, '.fusor/types/web-index-html-Probe.d.ts'), 'utf8');
+assert.match(declaration, /readonly value: ReadonlyInput<number>/);
+const empty = await readFile(resolve(fixture, '.fusor/types/web-index-html-NoInputs.d.ts'), 'utf8');
+assert.match(empty, /export type Inputs = Record<string, never>/);
 const root = resolve(fixture,'dist');
 const server = createServer(async (req,res) => {
   const url = new URL(req.url, 'http://localhost');

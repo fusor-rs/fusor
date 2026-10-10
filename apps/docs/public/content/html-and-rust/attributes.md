@@ -112,6 +112,10 @@ the native and browser delivery paths. Omit this attribute for a browser-only co
 This requires the server or islands build setup. Adding the attribute alone does not deploy
 a server or create a browser bundle.
 
+Native methods return `fusor_server::Result<T>`. Construction errors identify the component
+and input error type, preserving its `Display` message when available without requiring a
+bound on `FromInputs::Error`. Serialization and island delivery errors retain their sources.
+
 ```html title=HTML
 <template rust:component="CartView" rust:render="shared">
   <section>…</section>

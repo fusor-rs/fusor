@@ -26,7 +26,8 @@ impl<K> Retained<K> {
     /// in the document, then its fallible setup runs; if either fails, `child`
     /// is dropped with its DOM and the current view stays. Otherwise the
     /// current view is dropped before `child` activates, so a setup error
-    /// during activation, which is logged, leaves the slot empty.
+    /// during activation, which is logged, leaves the disposed replacement in
+    /// the slot until its next replacement or disposal.
     pub(super) fn replace(
         &mut self,
         key: K,

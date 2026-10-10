@@ -115,12 +115,28 @@ fn javascript_inputs_are_explicit_and_bounded() {
             "{source}: {error}"
         );
     }
-    for source in [
-        "struct Bad(#[js] Signal<f64>);",
-        "enum Bad { A }",
-        "struct Bad<T> { #[js] field: Signal<T> }",
-        "struct Bad { #[js(rename=\"x\")] field: Signal<f64> }",
+}
+
+#[test]
+fn javascript_inputs_reject_invalid_shapes_and_markers() {
+    for (source, message) in [
+        ("struct Bad(#[js] Signal<f64>);", "requires named fields"),
+        (
+            "enum Bad { A }",
+            "JsInputs can only be derived for a struct",
+        ),
+        (
+            "struct Bad<T> { #[js] field: Signal<T> }",
+            "concrete structs",
+        ),
+        (
+            "struct Bad { #[js(rename=\"x\")] field: Signal<f64> }",
+            "single #[js] marker",
+        ),
     ] {
-        assert!(expand_js_inputs(syn::parse_str(source).unwrap()).is_err());
+        let error = expand_js_inputs(syn::parse_str(source).unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(message), "{source}: {error}");
     }
 }

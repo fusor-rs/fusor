@@ -1,6 +1,8 @@
 //! Hash polling rather than filesystem events behaves the same on every
 //! platform and with editors that write through a temporary file.
-use crate::{context::Context, layout, pipeline::manifest::OutputManifest, workspace::Project};
+use crate::{
+    context::Context, error::Result, layout, pipeline::manifest::OutputManifest, workspace::Project,
+};
 use std::{
     collections::BTreeMap,
     fs,
@@ -11,23 +13,24 @@ use std::{
 
 pub(crate) type Snapshot = BTreeMap<PathBuf, u64>;
 
-pub(crate) fn snapshot(cx: &Context, project: &Project) -> io::Result<Snapshot> {
+pub(crate) fn snapshot(cx: &Context, project: &Project) -> Result<Snapshot> {
     let mut files = source_snapshot(cx, project)?;
     // Package imports and authored modules outside the Cargo package roots are
     // exact dependencies, even though scanning all node_modules is unnecessary.
     // Missing files disappear from the snapshot and therefore trigger a rebuild.
-    if let Ok(output) = OutputManifest::read(&project.output(cx)) {
-        if let Some(javascript) = output.javascript {
-            for input in javascript.inputs {
-                let path = PathBuf::from(input);
-                match fs::read(&path) {
-                    Ok(contents) => {
-                        files.insert(path, fingerprint(&contents));
-                    }
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                    Err(error) => return Err(error),
-                }
+    let Some(javascript) =
+        OutputManifest::read_optional(&project.output(cx))?.and_then(|output| output.javascript)
+    else {
+        return Ok(files);
+    };
+    for input in javascript.inputs {
+        let path = PathBuf::from(input);
+        match fs::read(&path) {
+            Ok(contents) => {
+                files.insert(path, fingerprint(&contents));
             }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
         }
     }
     Ok(files)
@@ -72,7 +75,7 @@ pub(crate) fn record_assets(project: &Project, previous: &mut Snapshot) -> io::R
 }
 
 fn collect(path: &Path, generated: &[PathBuf], out: &mut Snapshot) -> io::Result<()> {
-    if generated.contains(&path.to_path_buf()) {
+    if generated.iter().any(|generated| generated == path) {
         return Ok(());
     }
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {

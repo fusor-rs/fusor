@@ -367,23 +367,24 @@ fn failed_first_read_retries_without_a_write_and_tracks_remaining_inputs() {
     assert_eq!(*results.borrow(), [3, 4, 5]);
 }
 
+struct SignalReadingDrop {
+    value: i32,
+    unrelated: Signal<i32>,
+}
+impl Drop for SignalReadingDrop {
+    fn drop(&mut self) {
+        self.unrelated.get();
+    }
+}
+
 #[test]
 fn destructors_of_discarded_equal_values_do_not_subscribe_the_caller() {
-    struct Value {
-        value: i32,
-        unrelated: Signal<i32>,
-    }
-    impl Drop for Value {
-        fn drop(&mut self) {
-            self.unrelated.get();
-        }
-    }
     let input = signal(0);
     let unrelated = signal(0);
     let value = memo_with_eq(
         {
             let (input, unrelated) = (input.clone(), unrelated.clone());
-            move || Value {
+            move || SignalReadingDrop {
                 value: input.get() / 10,
                 unrelated: unrelated.clone(),
             }
@@ -403,11 +404,15 @@ fn destructors_of_discarded_equal_values_do_not_subscribe_the_caller() {
     assert_eq!(runs.get(), 2);
     unrelated.set(1);
     assert_eq!(runs.get(), 2);
+}
 
+#[test]
+fn final_cache_destructors_do_not_subscribe_the_caller() {
+    let unrelated = signal(0);
     let cache = memo_with_eq(
         {
             let unrelated = unrelated.clone();
-            move || Value {
+            move || SignalReadingDrop {
                 value: 0,
                 unrelated: unrelated.clone(),
             }
@@ -430,7 +435,6 @@ fn destructors_of_discarded_equal_values_do_not_subscribe_the_caller() {
         1,
         "final cache destruction must also stay untracked"
     );
-    assert_eq!(runs.get(), 2);
 }
 
 #[test]

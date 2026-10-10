@@ -2,9 +2,11 @@
 //! on it.
 //!
 //! These tests exercise the CLI the way a user does: as a subprocess, against
-//! a real Cargo project. Nothing here reaches into the crate's internals, so
-//! the suite stays honest about what the shipped binary actually does.
-#![allow(dead_code)]
+//! a real Cargo project.
+#![expect(
+    dead_code,
+    reason = "Integration suites share this fixture but exercise different subprocess operations"
+)]
 use std::{
     fs,
     path::{Path, PathBuf},

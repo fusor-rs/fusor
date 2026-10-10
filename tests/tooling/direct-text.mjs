@@ -103,7 +103,7 @@ fusor::bindings!(app);
 include!(env!("FUSOR_MODULE"));
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn render() -> Result<String, String> {
+pub fn render() -> fusor_server::Result<String> {
     use fusor_server::Render;
     Ok(Fixture::new().render(&mut fusor_server::Context::new())?.into_string())
 }

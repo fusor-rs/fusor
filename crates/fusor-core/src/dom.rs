@@ -344,7 +344,7 @@ impl Listener {
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        let _ = match &self.target {
+        let removal = match &self.target {
             ListenerTarget::Node(node) => {
                 strings::remove(node, &self.event, self.registration.slot)
             }
@@ -354,6 +354,9 @@ impl Drop for Listener {
         };
         let handler = HANDLERS.with_borrow_mut(|handlers| handlers.remove(self.registration));
         drop(handler);
+        if let Err(error) = removal {
+            web_sys::console::error_1(&error);
+        }
     }
 }
 
@@ -557,9 +560,6 @@ impl Scope {
         #[cfg(feature = "islands")]
         delivery::prepare_preview_owner(&self.owner(), parent);
         if self.hydrating {
-            // This used to be the first activation callback on the fresh owner.
-            // Owner's monotone history records the same transition without a
-            // per-scope Rc, callback registry entry and retained registration.
             self.hydration_ownership = HydrationOwnership::CurrentOwner;
         }
     }

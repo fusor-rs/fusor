@@ -413,36 +413,44 @@ mod tests {
                 }
             }
         }
+        for previous in &lists {
+            for next in lists.iter().chain(&duplicated) {
+                assert_small_edit(previous, next);
+            }
+        }
+    }
+
+    fn assert_small_edit(previous: &[u8], next: &[u8]) {
         let distinct = |list: &[u8]| {
             let mut sorted = list.to_vec();
             sorted.sort();
             sorted.windows(2).all(|pair| pair[0] != pair[1])
         };
-        for previous in &lists {
-            for next in lists.iter().chain(&duplicated) {
-                match small_edit(previous, next, |key| previous.contains(key)) {
-                    // The sorted path then validates every key.
-                    None => assert!(next.len() + previous.len() > SMALL_EDIT),
-                    Some(Err(())) => assert!(!distinct(next), "{previous:?} -> {next:?}"),
-                    Some(Ok(EditPlan {
-                        positions,
-                        mut removed,
-                    })) => {
-                        assert!(distinct(next), "{previous:?} -> {next:?}");
-                        assert_eq!(
-                            positions,
-                            oracle(previous, next),
-                            "{previous:?} -> {next:?}"
-                        );
-                        removed.sort();
-                        let gone: Vec<usize> = (0..previous.len())
-                            .filter(|&index| !next.contains(&previous[index]))
-                            .collect();
-                        assert_eq!(removed, gone, "{previous:?} -> {next:?}");
-                    }
-                }
+        match small_edit(previous, next, |key| previous.contains(key)) {
+            // The sorted path then validates every key.
+            None => assert!(next.len() + previous.len() > SMALL_EDIT),
+            Some(Err(())) => assert!(!distinct(next), "{previous:?} -> {next:?}"),
+            Some(Ok(EditPlan {
+                positions,
+                mut removed,
+            })) => {
+                assert!(distinct(next), "{previous:?} -> {next:?}");
+                assert_eq!(
+                    positions,
+                    oracle(previous, next),
+                    "{previous:?} -> {next:?}"
+                );
+                removed.sort();
+                let gone: Vec<usize> = (0..previous.len())
+                    .filter(|&index| !next.contains(&previous[index]))
+                    .collect();
+                assert_eq!(removed, gone, "{previous:?} -> {next:?}");
             }
         }
+    }
+
+    #[test]
+    fn long_lists_preserve_sparse_moves_and_reject_duplicates_and_reversal() {
         let long: Vec<u16> = (0..1000).collect();
         let mut swapped = long.clone();
         swapped.swap(1, 998);

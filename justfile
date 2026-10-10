@@ -109,6 +109,7 @@ test-landing:
 [group('test')]
 test-tools:
     node --test scripts/build.test.mjs
+    node --test scripts/refresh.test.mjs
     node --test "benchmarks/tools/tests/*.test.mjs"
 
 # Prebuild the examples and sites that some suites serve.

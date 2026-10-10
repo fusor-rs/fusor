@@ -40,19 +40,7 @@ pub(super) fn lower(
         policy(&input, "hydrate", &Activation::ALL, Activation::as_str)?.expect("hydrate present");
     let prefetch =
         policy(&input, "hydrate:prefetch", &Prefetch::ALL, Prefetch::as_str)?.unwrap_or_default();
-    let id = input.text("hydrate:id");
-    if let Some((id, offset)) = &id {
-        if id.trim().is_empty() || id.contains("{{") {
-            return Err(
-                input.error_at(*offset, "hydrate:id requires a nonempty static instance ID")
-            );
-        }
-    }
-    if activation == Activation::Interaction && id.is_none() {
-        return Err(input.error(
-            "hydrate=\"interaction\" requires hydrate:id and a native button with the matching hydrate:target",
-        ));
-    }
+    let id = instance_id(&input, activation)?;
     let Binding::Invocation {
         ty,
         inputs,
@@ -88,6 +76,26 @@ pub(super) fn lower(
         template::ELEMENT_ATTRIBUTE,
         template::MANAGED_ATTRIBUTE
     ))
+}
+
+fn instance_id(
+    input: &TagInput,
+    activation: Activation,
+) -> Result<Option<(String, usize)>, ExtractError> {
+    let id = input.text("hydrate:id");
+    if let Some((id, offset)) = &id {
+        if id.trim().is_empty() || id.contains("{{") {
+            return Err(
+                input.error_at(*offset, "hydrate:id requires a nonempty static instance ID")
+            );
+        }
+    }
+    if activation == Activation::Interaction && id.is_none() {
+        return Err(input.error(
+            "hydrate=\"interaction\" requires hydrate:id and a native button with the matching hydrate:target",
+        ));
+    }
+    Ok(id)
 }
 
 /// A hydration policy attribute: one of `all`, spelled as the islands runtime spells it.

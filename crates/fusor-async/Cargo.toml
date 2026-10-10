@@ -20,7 +20,7 @@ futures-util = { workspace = true, features = ["std"] }
 js-sys = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
-web-sys = { workspace = true, optional = true, features = ["Window", "RequestInit", "Response", "AbortController", "AbortSignal"] }
+web-sys = { workspace = true, optional = true, features = ["RequestInit", "Response", "AbortController", "AbortSignal"] }
 
 [dev-dependencies]
 futures-executor.workspace = true

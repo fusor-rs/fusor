@@ -99,11 +99,21 @@ impl Preview {
         }
         self.initial.remove();
         let result = scope.try_commit();
-        if result.is_err() && self.host.is_connected() {
-            let _ = self.host.insert_before(
+        if let Err(commit) = &result {
+            // Removing the host also removes the need for its native fallback.
+            if !self.host.is_connected() {
+                return result;
+            }
+            if let Err(restoration) = self.host.insert_before(
                 &self.initial,
                 Some(scope.root().expect("island entries have one native root")),
-            );
+            ) {
+                let error = js_sys::Error::new(&format!(
+                    "island commit failed: {commit:?}; fallback restoration failed: {restoration:?}"
+                ));
+                error.set_cause(&js_sys::Array::of2(commit, &restoration));
+                return Err(error.into());
+            }
         }
         result
     }

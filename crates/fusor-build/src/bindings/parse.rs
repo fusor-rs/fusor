@@ -640,6 +640,15 @@ impl Parser<'_> {
             Some(BuiltIn::Router | BuiltIn::Route) => return self.start_router(tag, cx),
             _ => {}
         }
+        self.start_authored_tag(tag, cx)
+    }
+
+    fn start_authored_tag(
+        &mut self,
+        tag: StartTag<usize>,
+        cx: TagContext,
+    ) -> Result<(), ExtractError> {
+        let source = self.source;
         if cx
             .parent(&self.stack)
             .is_some_and(|frame| matches!(frame.kind, FrameKind::Router { .. }))
@@ -1285,16 +1294,7 @@ impl Parser<'_> {
             unreachable!()
         };
         super::router_tags::validate(source, tag.span.start, routes, path.as_deref())?;
-        if alias.as_ref().is_some_and(|alias| {
-            cx.lexicals
-                .shadows(alias, &self.components[owner].row_locals)
-        }) {
-            return Err(error(
-                source,
-                tag.span.start,
-                "Route binding cannot shadow an enclosing local",
-            ));
-        }
+        self.check_route_alias(&tag, &cx, owner, alias.as_ref())?;
         let index = self.components.len();
         let id = ComponentId::new(first_component + index);
         self.components
@@ -1324,6 +1324,27 @@ impl Parser<'_> {
             ElementId::new(self.node),
             FrameKind::Route { alias },
         ));
+        Ok(())
+    }
+
+    fn check_route_alias(
+        &self,
+        tag: &StartTag<usize>,
+        cx: &TagContext,
+        owner: usize,
+        alias: Option<&Rust>,
+    ) -> Result<(), ExtractError> {
+        let source = self.source;
+        if alias.is_some_and(|alias| {
+            cx.lexicals
+                .shadows(alias, &self.components[owner].row_locals)
+        }) {
+            return Err(error(
+                source,
+                tag.span.start,
+                "Route binding cannot shadow an enclosing local",
+            ));
+        }
         Ok(())
     }
 
@@ -1563,14 +1584,14 @@ impl Parser<'_> {
         let blocks = self.blocks;
         let name = &cx.name;
         let parent = cx.parent(&self.stack);
+        let rust_script = blocks
+            .iter()
+            .any(|block| block.element.start == tag.span.start);
         if parent.is_some_and(|frame| frame.owns_children()) {
             return Err(error(source, tag.span.start, OWNED_EMPTY));
         }
         if let Some(parent) = parent.filter(|parent| parent.requires_native_root()) {
-            if !blocks
-                .iter()
-                .any(|block| block.element.start == tag.span.start)
-            {
+            if !rust_script {
                 *self
                     .template_roots
                     .entry(parent.owner.expect("component root"))
@@ -1581,9 +1602,6 @@ impl Parser<'_> {
         let inert = parent.is_some_and(|frame| frame.inert());
         // Rust script source metadata is consumed by the extractor, not
         // by the component binding language, including scripts in templates.
-        let rust_script = blocks
-            .iter()
-            .any(|block| block.element.start == tag.span.start);
         if rust_script
             && owner.is_some_and(|index| {
                 self.components[index].capture().is_some()
@@ -1779,12 +1797,6 @@ impl Parser<'_> {
         let source = self.source;
         let name = &cx.name;
         let projected = tag.attributes.get(b"rust:content".as_slice());
-        let ElementOwner {
-            owner,
-            inert,
-            component_id,
-            rust_script,
-        } = *element;
         if tag
             .attributes
             .keys()
@@ -1796,18 +1808,18 @@ impl Parser<'_> {
                 "data-fusor-* attributes are reserved for the HTML compiler",
             ));
         }
-        let has_directive = !rust_script
+        let has_directive = !element.rust_script
             && tag
                 .attributes
                 .keys()
                 .any(|key| native_attributes::is_directive(&String::from_utf8_lossy(key)));
-        let has_interpolation = owner.is_some()
+        let has_interpolation = element.owner.is_some()
             && tag
                 .attributes
                 .values()
                 .any(|value| value.windows(2).any(|bytes| bytes == b"{{"));
-        let region = self.async_region(tag, name, owner)?;
-        if (has_directive || has_interpolation) && (owner.is_none() || inert) {
+        let region = self.async_region(tag, name, element.owner)?;
+        if (has_directive || has_interpolation) && (element.owner.is_none() || element.inert) {
             return Err(error(
                 source,
                 tag.span.start,
@@ -1815,7 +1827,7 @@ impl Parser<'_> {
             ));
         }
         if name == "template"
-            && component_id.is_some()
+            && element.component_id.is_some()
             && projected.is_none()
             && (has_interpolation
                 || tag.attributes.keys().any(|key| {
@@ -1890,59 +1902,50 @@ impl Parser<'_> {
         cx: &TagContext,
         element: &ElementOwner,
     ) -> Result<(), ExtractError> {
-        let source = self.source;
-        let Self {
-            stack,
-            components,
-            edits,
-            foreach_hosts,
-            node,
-            ..
-        } = self;
+        let Some(index) = element
+            .owner
+            .filter(|_| !element.inert && !element.rust_script)
+        else {
+            return Ok(());
+        };
         let name = &cx.name;
-        let projected = tag.attributes.get(b"rust:content".as_slice());
-        let ElementOwner {
-            owner,
-            inert,
-            component_id,
-            rust_script,
-        } = *element;
-        if let Some(index) = owner.filter(|_| !inert && !rust_script) {
-            if foreign_element(name) {
-                return Err(error(
-                    source,
-                    tag.span.start,
-                    "component bindings are not supported inside SVG or MathML",
-                ));
-            }
-            if tag.self_closing && !void_element(name) {
-                return Err(error(
-                    source,
-                    tag.span.start,
-                    "non-void component elements need explicit closing tags",
-                ));
-            }
-            if projected.is_some() {
-                edits.push(replace_tag(
-                    &tag.span,
-                    markup::template_open(component_id.expect("content component")),
-                ));
-            } else if let Some(replacement) = native_attributes::lower(
-                source,
-                tag,
-                &mut components[index],
-                native_attributes::ElementContext {
-                    node: ElementId::new(*node),
-                    component_id,
-                    foreach_host: foreach_hosts.contains(&tag.span.start),
-                    async_root: stack
-                        .last()
-                        .is_some_and(|frame| matches!(frame.kind, FrameKind::Async(_))),
-                },
-            )? {
-                edits.push(replace_tag(&tag.span, replacement));
-                *node += 1;
-            }
+        if foreign_element(name) {
+            return Err(error(
+                self.source,
+                tag.span.start,
+                "component bindings are not supported inside SVG or MathML",
+            ));
+        }
+        if tag.self_closing && !void_element(name) {
+            return Err(error(
+                self.source,
+                tag.span.start,
+                "non-void component elements need explicit closing tags",
+            ));
+        }
+        if tag.attributes.contains_key(b"rust:content".as_slice()) {
+            self.edits.push(replace_tag(
+                &tag.span,
+                markup::template_open(element.component_id.expect("content component")),
+            ));
+            return Ok(());
+        }
+        if let Some(replacement) = native_attributes::lower(
+            self.source,
+            tag,
+            &mut self.components[index],
+            native_attributes::ElementContext {
+                node: ElementId::new(self.node),
+                component_id: element.component_id,
+                foreach_host: self.foreach_hosts.contains(&tag.span.start),
+                async_root: self
+                    .stack
+                    .last()
+                    .is_some_and(|frame| matches!(frame.kind, FrameKind::Async(_))),
+            },
+        )? {
+            self.edits.push(replace_tag(&tag.span, replacement));
+            self.node += 1;
         }
         Ok(())
     }
@@ -2180,51 +2183,15 @@ impl Parser<'_> {
         owner: Option<usize>,
         tag: &EndTag<usize>,
     ) {
-        let source = self.source;
-        let Self {
-            components,
-            edits,
-            text_edits,
-            ..
-        } = self;
         if let Some(host) = element.text_host {
-            if let Some((text_id, text_edit)) =
-                text_edits.remove(&(host.opening.end, tag.span.start))
-            {
-                let component = &mut components[owner.expect("native text host")];
-                let marker = format!(" {}=\"{text_id}\"", template::TEXT_ELEMENT_ATTRIBUTE);
-                let opening = if let Some(index) = host.opening_edit {
-                    &mut edits[index].replacement
-                } else {
-                    edits.push(Edit {
-                        replacement: source[host.opening.clone()].to_owned(),
-                        range: host.opening,
-                    });
-                    &mut edits
-                        .last_mut()
-                        .expect("the opening tag edit was just appended")
-                        .replacement
-                };
-                opening.insert_str(opening.len() - 1, &marker);
-                edits[text_edit].replacement.clear();
-                // Exact authored contents exclude whitespace,
-                // comments and siblings, so this is the last text
-                // slot collected for this component.
-                let last = component.texts.pop();
-                debug_assert_eq!(last, Some(text_id));
-                component.text_elements.push(TextElement {
-                    id: text_id,
-                    host: host.element,
-                    tag: name,
-                });
-            }
+            self.close_text_host(host, name, owner.expect("native text host"), tag);
         }
 
         if element.component_root {
-            components[owner.expect("component root")].range.end = tag.span.end;
+            self.components[owner.expect("component root")].range.end = tag.span.end;
         }
         if let Some(region) = element.region {
-            let component = &mut components[owner.expect("region component")];
+            let component = &mut self.components[owner.expect("region component")];
             let bindings = component.bindings.split_off(region.start);
             component.bindings.push(Binding::Region {
                 node: region.node,
@@ -2233,6 +2200,41 @@ impl Parser<'_> {
                 bindings,
             });
         }
+    }
+
+    fn close_text_host(&mut self, host: TextHost, name: String, owner: usize, tag: &EndTag<usize>) {
+        let Some((text_id, text_edit)) =
+            self.text_edits.remove(&(host.opening.end, tag.span.start))
+        else {
+            return;
+        };
+        let component = &mut self.components[owner];
+        let marker = format!(" {}=\"{text_id}\"", template::TEXT_ELEMENT_ATTRIBUTE);
+        let opening = if let Some(index) = host.opening_edit {
+            &mut self.edits[index].replacement
+        } else {
+            self.edits.push(Edit {
+                replacement: self.source[host.opening.clone()].to_owned(),
+                range: host.opening,
+            });
+            &mut self
+                .edits
+                .last_mut()
+                .expect("the opening tag edit was just appended")
+                .replacement
+        };
+        opening.insert_str(opening.len() - 1, &marker);
+        self.edits[text_edit].replacement.clear();
+        // Exact authored contents exclude whitespace,
+        // comments and siblings, so this is the last text
+        // slot collected for this component.
+        let last = component.texts.pop();
+        debug_assert_eq!(last, Some(text_id));
+        component.text_elements.push(TextElement {
+            id: text_id,
+            host: host.element,
+            tag: name,
+        });
     }
 
     fn close_async(
