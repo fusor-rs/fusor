@@ -25,7 +25,7 @@ fusor-build = { path = "../../../crates/fusor-build" }
 [package.metadata.fusor]
 entry = "web/index.html"
 base-path = "/workers/"
-assets = "public"
+assets = { "/" = "public" }
 [profile.release]
 lto = true
 codegen-units = 1

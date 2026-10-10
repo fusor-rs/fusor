@@ -4,19 +4,6 @@ mod highlight;
 use std::{env, fmt::Write, fs, path::Path};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Serve the canonical installers as ordinary static assets at the site root.
-    for name in ["install.sh", "install.ps1"] {
-        let source = Path::new("../..").join(name);
-        let destination = Path::new("public").join(name);
-        println!("cargo:rerun-if-changed={}", source.display());
-        // Also regenerate files missing from a checkout that reuses target/.
-        println!("cargo:rerun-if-changed={}", destination.display());
-        let contents = fs::read(source)?;
-        if fs::read(&destination).ok().as_ref() != Some(&contents) {
-            fs::write(destination, contents)?;
-        }
-    }
-
     println!("cargo:rerun-if-changed=build/highlight.rs");
     let highlighter = highlight::Highlighter::new();
     let mut generated = String::new();
@@ -55,18 +42,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             generated,
             "pub static {constant}: CodeFile = CodeFile {{ name: {name:?}, href: {href:?}, tokens: {tokens} }};"
         )?;
-
-        let destination = Path::new("public/source").join(format!("{source}.txt"));
-        // Watched too: a fresh checkout with a cached target/ lacks the copy.
-        println!("cargo:rerun-if-changed={}", destination.display());
-        fs::create_dir_all(
-            destination
-                .parent()
-                .expect("source destinations include a file name"),
-        )?;
-        if fs::read_to_string(&destination).ok().as_deref() != Some(&code) {
-            fs::write(destination, &code)?;
-        }
     }
     fs::write(
         Path::new(&env::var("OUT_DIR")?).join("highlighted.rs"),

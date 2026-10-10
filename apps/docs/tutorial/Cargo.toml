@@ -22,7 +22,7 @@ fusor-build = { path = "../../../crates/fusor-build" }
 
 [package.metadata.fusor]
 entry = "web/index.html"
-assets = "public"
+assets = { "/" = "public" }
 output = "dist"
 
 [package.metadata.fusor.components]

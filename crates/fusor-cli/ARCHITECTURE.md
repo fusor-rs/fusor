@@ -78,7 +78,7 @@ locations. Anything unclear (a source that does not tokenize, an unresolved
 file include, a JavaScript module) falls back to a normal build. `fusor-build`
 recognizes its generated includes and direct literal data includes. The CLI
 may clear a data include only when its file remains watched across publications
-and lies outside authored HTML and public assets; editing that file still
+and lies outside authored HTML and published assets; editing that file still
 requires a normal build.
 
 ## Exit codes

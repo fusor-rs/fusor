@@ -18,7 +18,7 @@ serde_json = "1"
 fusor-build.workspace = true
 [package.metadata.fusor]
 entry = "web/index.html"
-assets = "public"
+assets = { "/" = "public" }
 # Copies the published benchmark record into public/ before each build.
 assets-build = ["node", "../../benchmarks/tools/cli.mjs", "site"]
 base-path = "/benchmarks/"

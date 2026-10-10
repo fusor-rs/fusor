@@ -19,5 +19,5 @@ fusor-server.workspace = true
 fusor-build.workspace = true
 [package.metadata.fusor]
 entry = "web/index.html"
-assets = "public"
+assets = { "/" = "public" }
 base-path = "/workloads/fusor/"

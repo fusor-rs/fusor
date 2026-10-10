@@ -1,4 +1,4 @@
-use super::{Result, SourceError};
+use super::{AssetSource, Result, SourceError};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -40,7 +40,8 @@ pub enum SourceKind {
 pub struct AppConfig {
     pub delivery: Option<DeliveryConfig>,
     pub entry: PathBuf,
-    pub assets: Option<PathBuf>,
+    /// Published URL paths, relative to `base-path`, and the files copied there.
+    pub assets: BTreeMap<String, AssetSource>,
     /// Optional executable and arguments, run in the package before publishing
     /// assets. No shell expansion or implicit dependency installation.
     pub assets_build: Vec<String>,
@@ -62,7 +63,7 @@ impl Default for AppConfig {
         Self {
             delivery: None,
             entry: "web/index.html".into(),
-            assets: None,
+            assets: BTreeMap::new(),
             assets_build: Vec::new(),
             dev_refresh: true,
             output: "dist".into(),
@@ -113,6 +114,13 @@ impl AppConfig {
                     .into(),
             );
         }
+        if let Some(directory) = metadata.get("assets").and_then(toml::Value::as_str) {
+            return Err(format!(
+                "assets maps URL paths to files, not a single directory; \
+                 write assets = {{ \"/\" = {directory:?} }}"
+            )
+            .into());
+        }
         let config: Self = metadata.clone().try_into()?;
         config.validate()?;
         Ok(config)
@@ -129,10 +137,13 @@ impl AppConfig {
         {
             return Err("assets-build must start with a nonempty executable".into());
         }
-        if !self.assets_build.is_empty() && self.assets.is_none() {
-            return Err("assets-build requires an assets output directory".into());
+        if !self.assets_build.is_empty() && self.assets.is_empty() {
+            return Err("assets-build requires an entry in [package.metadata.fusor.assets]".into());
         }
         self.validate_paths()?;
+        for (url, source) in &self.assets {
+            source.validate(url, &self.output)?;
+        }
         if !self.base_path.starts_with('/')
             || !self.base_path.ends_with('/')
             || !self
@@ -171,7 +182,6 @@ impl AppConfig {
         for path in std::iter::once(&self.entry)
             .chain(self.components.values())
             .chain(self.templates.iter())
-            .chain(self.assets.iter())
             .chain(std::iter::once(&self.output))
         {
             if path.as_os_str().is_empty()
@@ -198,10 +208,9 @@ impl AppConfig {
         for source in std::iter::once(&self.entry)
             .chain(self.components.values())
             .chain(self.templates.iter())
-            .chain(self.assets.iter())
         {
             if source.starts_with(&self.output) || self.output.starts_with(source) {
-                return Err("output cannot overlap an application source or assets path".into());
+                return Err("output cannot overlap an application source path".into());
             }
         }
         Ok(())

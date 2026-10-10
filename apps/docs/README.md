@@ -76,9 +76,8 @@ background values in sync when changing the theme.
 The ordinary asset pipeline also copies the authored `.md` files into
 `dist/docs/content/`. Every guide has a “View Markdown source” link. Source-file
 inclusion is resolved for the rendered page; the downloadable Markdown retains
-its include directives. `content/resources.json` lists plain-text source copies
-written to the ignored `public/source/` directory. Do not edit those generated
-copies.
+its include directives. `[package.metadata.fusor.assets]` in `Cargo.toml` also
+publishes plain-text copies of example and showcase sources under `/docs/source/`.
 
 From the repository root, run `npm ci --prefix apps/docs --ignore-scripts`,
 `just site`, then `just preview`. Open http://127.0.0.1:8080/docs/.

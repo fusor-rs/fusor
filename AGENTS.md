@@ -75,8 +75,8 @@ and `apps/docs/public/content/html-and-rust/built-in-components.md`.
 - `tests/browser/`: Playwright tests for the playground.
 - `scripts/`: Node repository tooling.
 
-`dist/`, `target/`, `test-results/`, `apps/docs/public/source/` and several
-files under `apps/benchmarks/public/` are generated; don't edit them by hand.
+`dist/`, `target/`, `test-results/` and several files under
+`apps/benchmarks/public/` are generated; don't edit them by hand.
 
 Constraints that hold everywhere:
 

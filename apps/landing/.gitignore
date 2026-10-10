@@ -1,7 +1,3 @@
 /target/
 /dist/
-/public/source/
-# Generated from the repository's canonical installers by build.rs.
-/public/install.sh
-/public/install.ps1
 /test-results/
