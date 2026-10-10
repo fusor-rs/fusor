@@ -25,7 +25,7 @@ pub(crate) fn run(
         cx.reporter.result(format!(
             "Sources created; preparation remains.\n\n  cd {}\n  fusor install\n  fusor dev",
             path.display()
-        ));
+        ))?;
         return Ok(());
     }
     prepare(cx, &path, javascript).map_err(|error| {
@@ -39,7 +39,7 @@ pub(crate) fn run(
     cx.reporter.result(format!(
         "Application checked\n\n  cd {}\n  fusor dev",
         path.display()
-    ));
+    ))?;
     Ok(())
 }
 
@@ -89,7 +89,7 @@ fn scaffold(cx: &Context, path: &Path, framework: Option<&Path>, javascript: boo
     }
     fs::rename(&staging, path)?;
     drop(guard);
-    cx.reporter.result(format!("Created {}", path.display()));
+    cx.reporter.result(format!("Created {}", path.display()))?;
     Ok(())
 }
 
@@ -260,14 +260,46 @@ fn write_javascript(staging: &Path, name: &str) -> Result {
     Ok(())
 }
 
-const GITIGNORE: &str = "/target/\n/dist/\n/.fusor-*/\n/.fusor/\n/node_modules/\n";
+const GITIGNORE: &str = "/target/
+/dist/
+/.fusor-*/
+/.fusor/
+/node_modules/
+";
 
-const STARTER_JAVASCRIPT: &str = "// Import browser libraries here using ordinary JavaScript imports.\nexport function onMount({ root, signal, onCleanup }) {\n  root.addEventListener('pointerdown', () => {\n    root.dataset.lastPointer = 'pressed';\n  }, { signal });\n  onCleanup(() => { delete root.dataset.lastPointer; });\n}\n";
+const STARTER_JAVASCRIPT: &str = r#"// Import browser libraries here using ordinary JavaScript imports.
+export function onMount({ root, signal, onCleanup }) {
+  root.addEventListener('pointerdown', () => {
+    root.dataset.lastPointer = 'pressed';
+  }, { signal });
+  onCleanup(() => {
+    delete root.dataset.lastPointer;
+  });
+}
+"#;
 
-const JAVASCRIPT_README: &str = "JavaScript modules are enabled. Creation prepares package-lock.json; commit it and use `fusor install --locked` for later installations. Builds only use installed, locked dependencies and never install packages. Add libraries with `npm install PACKAGE` and import them from web/app.js. External .ts modules are transpiled; use a separate `tsc --noEmit` step when type checking is wanted.\n";
+const JAVASCRIPT_README: &str =
+    "JavaScript modules are enabled. Creation prepares package-lock.json; commit it
+and use `fusor install --locked` for later installations. Builds only use installed,
+locked dependencies and never install packages. Add libraries with `npm install PACKAGE`
+and import them from web/app.js. External .ts modules are transpiled; use a separate
+`tsc --noEmit` step when type checking is wanted.
+";
 
 fn readme(name: &str) -> String {
     format!(
-        "# {name}\n\nRun `fusor install` to prepare a fresh clone, then `fusor dev`.\nUse `fusor check` to type-check and `fusor build` for a static site in `dist/`.\n\nAssociate HTML with an ordinary Rust module using fusor::template!(\"web/index.html\") or a path under web/components/. The build discovers these templates automatically. Derive FromInputs with #[input] for parent values and #[local(init = ...)] for per-instance state. The derive generates the typed input contract; manual FromInputs implementations support custom setup. The <App state=...> boundary constructs and retains the application.\nPass signals to share reactive inputs; each component keeps its own local state.\n"
+        r#"# {name}
+
+Run `fusor install` to prepare a fresh clone, then `fusor dev`.
+Use `fusor check` to type-check and `fusor build` for a static site in `dist/`.
+
+Associate HTML with an ordinary Rust module using fusor::template!("web/index.html")
+or a path under web/components/. The build discovers these templates automatically.
+Derive FromInputs with #[input] for parent values and #[local(init = ...)] for
+per-instance state. The derive generates the typed input contract; manual FromInputs
+implementations support custom setup. The <App state=...> boundary constructs and
+retains the application.
+Pass signals to share reactive inputs; each component keeps its own local state.
+"#
     )
 }

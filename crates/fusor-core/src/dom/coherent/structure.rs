@@ -1,3 +1,5 @@
+use crate::coherence::Error;
+
 use super::{Frame, RenderSlot, SlotId, Structure, allowed, error, visit};
 use crate::dom::{Children, MountPoint, Scope, TemplateComponent};
 use crate::{OwnerHandle, Signal, coherence::Attempt, signal, versions::Versions};
@@ -69,7 +71,7 @@ impl<T: Clone> EpochSlot<Option<T>> {
 
 impl Frame<'_> {
     /// The typed state of `id`, created on first use.
-    fn slot<S: Default + 'static>(&self, id: SlotId, changed: &str) -> Result<Rc<S>, String> {
+    fn slot<S: Default + 'static>(&self, id: SlotId, changed: &str) -> Result<Rc<S>, Error> {
         let state = self
             .tree
             .slots
@@ -81,7 +83,7 @@ impl Frame<'_> {
     }
 
     /// Validate a range and keep its anchors inside this component.
-    fn range(&mut self, target: &MountPoint) -> Result<(), String> {
+    fn range(&mut self, target: &MountPoint) -> Result<(), Error> {
         target.validate().map_err(error)?;
         self.target(&target.start);
         self.target(&target.end);
@@ -99,7 +101,7 @@ impl Frame<'_> {
         key: Option<K>,
         make: impl FnOnce(OwnerHandle) -> Result<C, JsValue>,
         children: Children,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         self.range(target)?;
         let state: Rc<ChildSlot<Rc<K>>> =
             self.slot(SlotId::Component(slot), "coherent child key type changed")?;
@@ -144,7 +146,7 @@ struct ChildPlan<K> {
     next: Option<(K, Rc<Scope>)>,
 }
 impl<K: Clone + 'static> Structure for ChildPlan<K> {
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self) -> Result<(), Error> {
         self.target.validate().map_err(error)?;
         if let Some((_, scope)) = self.state.current.borrow().as_ref() {
             scope.validate_nodes().map_err(error)?;
@@ -159,7 +161,7 @@ impl<K: Clone + 'static> Structure for ChildPlan<K> {
         }
         Ok(())
     }
-    fn apply(&self) -> Result<(), String> {
+    fn apply(&self) -> Result<(), Error> {
         let next = self.next.as_ref().map(|(_, scope)| scope);
         if let Some(next) = next.filter(|next| !self.target.precedes_end(next.last_node())) {
             next.insert_before(
@@ -190,7 +192,7 @@ impl Frame<'_> {
         slot: usize,
         target: &MountPoint,
         children: &Children,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         self.range(target)?;
         let state: Rc<ChildrenState> = self.slot(
             SlotId::Children(slot),
@@ -231,11 +233,11 @@ struct ChildrenPlan {
     state: Rc<ChildrenState>,
 }
 impl Structure for ChildrenPlan {
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self) -> Result<(), Error> {
         self.target.validate().map_err(error)?;
         self.scope.finish_prepare().map_err(error)
     }
-    fn apply(&self) -> Result<(), String> {
+    fn apply(&self) -> Result<(), Error> {
         let fragment = self
             .scope
             .fragment
@@ -261,7 +263,7 @@ impl Frame<'_> {
         target: &MountPoint,
         read: impl FnOnce() -> (usize, T),
         prepare: impl FnOnce(usize, Signal<T>, &OwnerHandle) -> Result<Scope, JsValue>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         self.range(target)?;
         let ((key, data), inputs) = Versions::capture(read);
         let state: Rc<BranchSlot<T>> =
@@ -307,14 +309,14 @@ struct BranchPlan<T> {
     data: Rc<T>,
 }
 impl<T: Clone + PartialEq + 'static> Structure for BranchPlan<T> {
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self) -> Result<(), Error> {
         self.target.validate().map_err(error)?;
         if self.next.2.owner().is_disposed() {
             return Err("prepared branch was disposed".into());
         }
         self.next.2.finish_prepare().map_err(error)
     }
-    fn apply(&self) -> Result<(), String> {
+    fn apply(&self) -> Result<(), Error> {
         let fragment = self
             .next
             .2
@@ -343,6 +345,34 @@ impl<T: Clone + PartialEq + 'static> Structure for BranchPlan<T> {
 }
 
 impl Frame<'_> {
+    fn prepare_row<T, K>(
+        &self,
+        state: &ListSlot<K, T>,
+        key: &K,
+        item: &T,
+        render: &impl Fn(Signal<T>, &OwnerHandle) -> Result<Scope, JsValue>,
+    ) -> Result<(Signal<T>, Rc<Scope>), Error>
+    where
+        T: Clone,
+        K: Ord,
+    {
+        let existing = state
+            .current
+            .borrow()
+            .get(key)
+            .cloned()
+            .or_else(|| state.candidate.borrow().get(key).cloned());
+        if let Some(existing) = existing {
+            return Ok(existing);
+        }
+        let value = signal(item.clone());
+        let scope = render(value.clone(), &self.tree.owner).map_err(error)?;
+        if scope.render_tree.is_none() {
+            return Err("coherent rows require generated HTML bindings".into());
+        }
+        Ok((value, Rc::new(scope)))
+    }
+
     pub fn keyed<T, K>(
         &mut self,
         RenderSlot {
@@ -352,7 +382,7 @@ impl Frame<'_> {
         items: impl FnOnce() -> Vec<T>,
         key: impl Fn(&T) -> K,
         render: impl Fn(Signal<T>, &OwnerHandle) -> Result<Scope, JsValue>,
-    ) -> Result<(), String>
+    ) -> Result<(), Error>
     where
         T: Clone + PartialEq + 'static,
         K: Ord + Clone + 'static,
@@ -369,23 +399,7 @@ impl Frame<'_> {
         let mut next = BTreeMap::new();
         let mut updates = Vec::new();
         for (key, item) in keys.iter().zip(items) {
-            let existing = state
-                .current
-                .borrow()
-                .get(key)
-                .cloned()
-                .or_else(|| state.candidate.borrow().get(key).cloned());
-            let (value, scope) = match existing {
-                Some(existing) => existing,
-                None => {
-                    let value = signal(item.clone());
-                    let scope = render(value.clone(), &self.tree.owner).map_err(error)?;
-                    if scope.render_tree.is_none() {
-                        return Err("coherent rows require generated HTML bindings".into());
-                    }
-                    (value, Rc::new(scope))
-                }
-            };
+            let (value, scope) = self.prepare_row(&state, key, &item, &render)?;
             let item = Rc::new(item);
             value.with_render_value(item.clone(), inputs.clone(), || {
                 visit(
@@ -429,7 +443,7 @@ struct ListPlan<K, T> {
     order: Vec<Rc<Scope>>,
 }
 impl<K: Ord + Clone + 'static, T: Clone + PartialEq + 'static> Structure for ListPlan<K, T> {
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self) -> Result<(), Error> {
         for scope in &self.remove {
             scope.validate_nodes().map_err(error)?;
         }
@@ -439,7 +453,7 @@ impl<K: Ord + Clone + 'static, T: Clone + PartialEq + 'static> Structure for Lis
         }
         Ok(())
     }
-    fn apply(&self) -> Result<(), String> {
+    fn apply(&self) -> Result<(), Error> {
         for root in &self.remove {
             root.remove_nodes();
         }

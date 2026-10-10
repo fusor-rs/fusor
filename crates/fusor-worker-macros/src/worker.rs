@@ -14,7 +14,7 @@ struct Method<'a> {
     context: bool,
 }
 impl<'a> Method<'a> {
-    fn parse(item: &'a ImplItemFn, constructor: bool) -> syn::Result<Self> {
+    fn parse(item: &'a ImplItemFn, constructor: bool, state: &Type) -> syn::Result<Self> {
         signature::validate(&item.sig)?;
         let (output, error) = signature::result(&item.sig)?;
         let mut args = item.sig.inputs.iter();
@@ -34,15 +34,7 @@ impl<'a> Method<'a> {
                 "worker new must return TaskResult<Self, E>",
             ));
         }
-        let mut types = args
-            .map(|arg| match arg {
-                FnArg::Typed(arg) => Ok((*arg.ty).clone()),
-                FnArg::Receiver(r) => Err(syn::Error::new(
-                    r.span(),
-                    "worker constructor cannot take self",
-                )),
-            })
-            .collect::<syn::Result<Vec<_>>>()?;
+        let mut types = signature::inputs(args, "worker constructor cannot take self")?;
         let context = signature::take_context(&mut types, "TaskContext")?;
         let has_context = context.is_some();
         let progress = context.unwrap_or_else(|| syn::parse_quote!(()));
@@ -57,10 +49,10 @@ impl<'a> Method<'a> {
         signature::owned(&progress)?;
         Ok(Self {
             item,
-            input,
-            output,
-            error,
-            progress,
+            input: signature::scoped(&input, Some(state)),
+            output: signature::scoped(&output, Some(state)),
+            error: signature::scoped(&error, Some(state)),
+            progress: signature::scoped(&progress, Some(state)),
             context: has_context,
         })
     }
@@ -138,11 +130,14 @@ pub fn expand_method(attributes: TokenStream, item: TokenStream) -> syn::Result<
         ));
     }
     let constructor = item.sig.ident == "new";
-    let method = Method::parse(&item, constructor)?;
-    let input = signature::scoped(&method.input, Some(&ty));
-    let output = signature::scoped(&method.output, Some(&ty));
-    let error = signature::scoped(&method.error, Some(&ty));
-    let progress = signature::scoped(&method.progress, Some(&ty));
+    let method = Method::parse(&item, constructor, &ty)?;
+    let Method {
+        input,
+        output,
+        error,
+        progress,
+        ..
+    } = &method;
     let proxy = if constructor {
         quote! {
             impl ::fusor_worker::Worker for #ty {
@@ -179,8 +174,6 @@ fn adapter(method: &Method<'_>, ty: &Type, pool: bool, constructor: bool) -> Tok
         context,
         ..
     } = method;
-    let input = signature::scoped(input, Some(ty));
-    let progress = signature::scoped(progress, Some(ty));
     let name = &item.sig.ident;
     let adapter = format_ident!("__invoke_{name}");
     let ctx = context.then(|| quote!(, ctx.typed::<#progress>()));

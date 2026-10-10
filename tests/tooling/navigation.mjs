@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { join } from "node:path";
 import { chromium, firefox, webkit, expect } from "@playwright/test";
 import { observeFetch } from "../../scripts/observe-fetch.mjs";
+import { observeConsoleErrors } from "../../scripts/observe-console.mjs";
 
 const executable = join(root, "target/debug", `fusor${process.platform === "win32" ? ".exe" : ""}`);
 const env = buildEnv;
@@ -30,6 +31,38 @@ async function exactRoutes(page) {
     window.exact = document.querySelector("#outlet section");
   });
   const current = page.locator("#outlet section");
+  await exactHistory(page, current);
+  const beforeFailure = page.url();
+  await current.evaluate(node => window.exact = node);
+  assert.match(await page.evaluate(() => {
+    try { window.client.exact_navigate("/reader/articles/1?mode=fail", false); }
+    catch (error) { return String(error); }
+  }), /exact preparation failed/);
+  assert.equal(page.url(), beforeFailure);
+  assert(await current.evaluate(node => node === window.exact));
+  await fragmentFailures(page);
+  await presentationFailures(page);
+  await page.evaluate(() => window.client.exact_navigate("/reader/articles/1?mode=reenter", false));
+  await expect(current).toHaveAttribute("data-url", "/articles/1?mode=reenter");
+  await page.evaluate(() => window.client.exact_navigate("/reader/articles/1?mode=dispose", false));
+  await expect(page.locator("#outlet")).toBeEmpty();
+  await page.evaluate(() => {
+    window.client.exact_dispose(); // Repeated disposal remains harmless.
+    window.client.unmount();
+    history.replaceState({}, "", "/reader/");
+    window.client.start_exact_router();
+    window.client.unmount(); // The exported exact-router handle survives its parent.
+  });
+  await expect(page.locator("#outlet")).toBeEmpty();
+  assert.match(await page.evaluate(() => {
+    try { window.client.exact_navigate("/reader/articles/2", false); }
+    catch (error) { return String(error); }
+  }), /router is not active/);
+  await page.evaluate(() => window.client.start());
+  await expect(page.locator("h1")).toHaveText("A small library");
+}
+
+async function exactHistory(page, current) {
   await expect(current).toHaveAttribute("data-url", "/articles/1?key=one#start");
   const initialLength = await page.evaluate(() => history.length);
   await page.evaluate(() => window.client.exact_navigate(location.href, false));
@@ -60,32 +93,97 @@ async function exactRoutes(page) {
   assert.equal(await page.evaluate(() => window.scrollY), 350);
   await page.evaluate(() => window.client.exact_navigate("/reader/articles/1?key=four", false));
   assert.equal(await page.evaluate(() => window.scrollY), 0);
-  const beforeFailure = page.url();
-  await current.evaluate(node => window.exact = node);
-  assert.match(await page.evaluate(() => {
-    try { window.client.exact_navigate("/reader/articles/1?mode=fail", false); }
-    catch (error) { return String(error); }
-  }), /exact preparation failed/);
-  assert.equal(page.url(), beforeFailure);
-  assert(await current.evaluate(node => node === window.exact));
-  await page.evaluate(() => window.client.exact_navigate("/reader/articles/1?mode=reenter", false));
-  await expect(current).toHaveAttribute("data-url", "/articles/1?mode=reenter");
-  await page.evaluate(() => window.client.exact_navigate("/reader/articles/1?mode=dispose", false));
-  await expect(page.locator("#outlet")).toBeEmpty();
-  await page.evaluate(() => {
-    window.client.exact_dispose(); // Repeated disposal remains harmless.
-    window.client.unmount();
-    history.replaceState({}, "", "/reader/");
-    window.client.start_exact_router();
-    window.client.unmount(); // The exported exact-router handle survives its parent.
+}
+
+async function fragmentFailures(page) {
+  await page.evaluate(() => window.client.exact_navigate("/reader/articles/1?fragment=probe", false));
+  assert.equal(await page.evaluate(() => window.client.exact_last_error()), undefined);
+  const original = await page.evaluate(() => {
+    window.exact = document.querySelector("#outlet section");
+    const original = {href: location.href, state: history.state};
+    location.hash = "fail";
+    return original;
   });
-  await expect(page.locator("#outlet")).toBeEmpty();
-  assert.match(await page.evaluate(() => {
-    try { window.client.exact_navigate("/reader/articles/2", false); }
-    catch (error) { return String(error); }
-  }), /router is not active/);
-  await page.evaluate(() => window.client.start());
-  await expect(page.locator("h1")).toHaveText("A small library");
+  await page.waitForFunction(() => window.client.exact_last_error()?.includes("exact preparation failed"));
+  await page.waitForFunction(href => location.href === href, original.href);
+  assert.deepEqual(await page.evaluate(() => history.state), original.state);
+  assert(await page.locator("#outlet section").evaluate(node => node === window.exact));
+  const reloaded = page.waitForEvent("load");
+  const failedWrite = page.waitForEvent("console", {
+    predicate: message => message.text().includes("injected fragment history write failure"),
+  });
+  await page.evaluate(() => {
+    history.replaceState = () => { throw Error("injected fragment history write failure"); };
+    location.hash = "write-failure";
+  });
+  await Promise.all([failedWrite, reloaded]);
+  assert.equal(new URL(page.url()).hash, "#write-failure");
+  await connect(page, "typed");
+  await page.evaluate(() => window.client.start_exact_router());
+  const failedRead = await page.evaluate(() => {
+    Object.defineProperty(history, "state", {configurable: true, get() { throw Error("injected history read failure"); }});
+    try {
+      dispatchEvent(new PopStateEvent("popstate"));
+      return window.client.exact_last_error();
+    } finally {
+      delete history.state;
+    }
+  });
+  assert.match(failedRead, /injected history read failure/);
+}
+
+async function presentationFailures(page) {
+  for (const [method, prototype] of [["focus", "HTMLElement"], ["setAttribute", "Element"], ["querySelector", "Element"]]) {
+    const result = await page.evaluate(({method, prototype}) => {
+      const target = globalThis[prototype].prototype;
+      const original = target[method];
+      target[method] = function(...arguments_) {
+        if ((method === "focus" && this.tagName === "H1")
+          || (method === "setAttribute" && arguments_[0] === "tabindex")
+          || (method === "querySelector" && arguments_[0] === "[autofocus]")) {
+          throw Error(`injected presentation ${method} failure`);
+        }
+        return original.apply(this, arguments_);
+      };
+      try {
+        window.client.exact_navigate(`/reader/articles/1?presentation=${method}`, false);
+        return {error: window.client.exact_last_error(), url: document.querySelector("#outlet section").dataset.url};
+      } finally {
+        target[method] = original;
+      }
+    }, {method, prototype});
+    assert.match(result.error, new RegExp(`injected presentation ${method} failure`));
+    assert.equal(result.url, `/articles/1?presentation=${method}`);
+  }
+}
+
+async function traversalFailures(page, mode) {
+  for (const dispatch of ["throw", "stall"]) {
+    await page.locator("#one-link").click();
+    await expect(page.locator("#status")).toHaveText("Ready article 1 ()");
+    await page.locator("#two-link").click();
+    await expect(page.locator("#status")).toHaveText("Ready article 2 ()");
+    await page.locator("#home-link").click();
+    const reloaded = page.waitForEvent("load");
+    const diagnostic = dispatch === "throw"
+      ? "injected history dispatch failure"
+      : "browser history restoration timed out";
+    const reported = page.waitForEvent("console", {
+      predicate: message => message.text().includes(diagnostic),
+    });
+    await page.evaluate(dispatch => {
+      [...document.querySelectorAll("template")].find(template => template.content.querySelector(".article")).remove();
+      history.go = () => {
+        if (dispatch === "throw") throw Error("injected history dispatch failure");
+      };
+      history.back();
+    }, dispatch);
+    await Promise.all([reported, reloaded]);
+    await connect(page, mode);
+    await expect(page.locator("#status")).toHaveText("Ready article 2 ()");
+    await page.locator("#home-link").click();
+    await expect(page.locator("h1")).toHaveText("A small library");
+  }
 }
 try {
   await exec("cargo", ["build", "-p", "fusor-cli", "--locked", "--offline"], { env, timeout: 180_000 });
@@ -131,8 +229,7 @@ try {
       const page = await browser.newPage();
       const errors = [];
       page.on("pageerror", error => errors.push(String(error)));
-      const consoleErrors = [];
-      page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
+      const consoleErrors = await observeConsoleErrors(page);
       const fetches = await observeFetch(page, "/reader/data/");
       await page.goto(`${origin}/reader/articles/1?revision=initial`); await connect(page, mode);
       await page.evaluate(() => window.client.probe_commit_queue());
@@ -234,6 +331,8 @@ try {
       // Restoration has completed; navigating again remains usable.
       await page.locator("#one-link").click(); await expect(page.locator("#status")).toHaveText("Ready article 1 ()");
       console.log(`PASS (${name}/${mode}): failed staged mount starts no reads; failed pop restores the previous URL and view`);
+
+      await traversalFailures(page, mode);
 
       await page.evaluate(() => {
         [...document.querySelectorAll("template")].find(t => t.content.querySelector(".article")).content.querySelector("#note").setAttribute("autofocus", "");

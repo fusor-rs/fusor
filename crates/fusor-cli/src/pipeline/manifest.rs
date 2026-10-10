@@ -96,7 +96,7 @@ impl OutputManifest {
         let config = AppConfig {
             base_path: self.base_path.clone(),
             history_fallback: self.history_fallback.clone(),
-            ..toml::from_str("")?
+            ..AppConfig::default()
         };
         config.validate()?;
         Ok(())
@@ -112,7 +112,25 @@ impl OutputManifest {
     }
 
     pub fn read(directory: &Path) -> Result<Self> {
-        Self::decode(&fs::read(directory.join(layout::OUTPUT_MANIFEST))?)
+        Self::read_optional(directory)?.ok_or_else(|| {
+            Error::project(format!(
+                "{} is missing",
+                directory.join(layout::OUTPUT_MANIFEST).display()
+            ))
+            .remedy("run `fusor build` to generate it")
+        })
+    }
+
+    pub fn read_optional(directory: &Path) -> Result<Option<Self>> {
+        let path = directory.join(layout::OUTPUT_MANIFEST);
+        let bytes = match fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(Error::from(error).context(path.display())),
+        };
+        Self::decode(&bytes)
+            .map(Some)
+            .map_err(|error| error.context(path.display()))
     }
 
     pub fn write(&self, directory: &Path) -> Result {

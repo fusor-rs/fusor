@@ -6,12 +6,12 @@ fn error(node: &impl Spanned, message: &str) -> syn::Error {
     syn::Error::new(node.span(), message)
 }
 
-pub struct Flags {
-    pub pool: bool,
-    pub stream: bool,
+pub(crate) struct Flags {
+    pub(crate) pool: bool,
+    pub(crate) stream: bool,
 }
 impl Flags {
-    pub fn parse(tokens: TokenStream, stream_allowed: bool) -> syn::Result<Self> {
+    pub(crate) fn parse(tokens: TokenStream, stream_allowed: bool) -> syn::Result<Self> {
         use syn::parse::Parser;
         let names = syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated
             .parse2(tokens)?;
@@ -43,7 +43,7 @@ impl Flags {
     }
 }
 
-pub fn validate(signature: &Signature) -> syn::Result<()> {
+pub(crate) fn validate(signature: &Signature) -> syn::Result<()> {
     if !signature.generics.params.is_empty() || signature.generics.where_clause.is_some() {
         return Err(error(
             &signature.generics,
@@ -63,7 +63,7 @@ pub fn validate(signature: &Signature) -> syn::Result<()> {
     Ok(())
 }
 
-pub fn result(signature: &Signature) -> syn::Result<(Type, Type)> {
+pub(crate) fn result(signature: &Signature) -> syn::Result<(Type, Type)> {
     let ReturnType::Type(_, ty) = &signature.output else {
         return Err(error(
             &signature.output,
@@ -73,16 +73,16 @@ pub fn result(signature: &Signature) -> syn::Result<(Type, Type)> {
     let args = arguments(ty, "TaskResult")
         .filter(|args| matches!(args.len(), 1..=2))
         .ok_or_else(|| error(ty, "expected TaskResult<T, E>"))?;
-    owned(&args[0])?;
+    owned(args[0])?;
     let error = args
         .get(1)
-        .cloned()
+        .map(|ty| (*ty).clone())
         .unwrap_or_else(|| syn::parse_quote!(::fusor_worker::NoError));
     owned(&error)?;
     Ok((args[0].clone(), error))
 }
 
-pub fn arguments(ty: &Type, name: &str) -> Option<Vec<Type>> {
+pub(crate) fn arguments<'a>(ty: &'a Type, name: &str) -> Option<Vec<&'a Type>> {
     let Type::Path(path) = ty else {
         return None;
     };
@@ -97,7 +97,7 @@ pub fn arguments(ty: &Type, name: &str) -> Option<Vec<Type>> {
             .iter()
             .map(|arg| {
                 if let GenericArgument::Type(ty) = arg {
-                    Some(ty.clone())
+                    Some(ty)
                 } else {
                     None
                 }
@@ -107,7 +107,7 @@ pub fn arguments(ty: &Type, name: &str) -> Option<Vec<Type>> {
     }
 }
 
-pub fn take_context(types: &mut Vec<Type>, name: &str) -> syn::Result<Option<Type>> {
+pub(crate) fn take_context(types: &mut Vec<Type>, name: &str) -> syn::Result<Option<Type>> {
     let Some((span, args)) = types
         .last()
         .and_then(|ty| arguments(ty, name).map(|args| (ty.span(), args)))
@@ -117,15 +117,15 @@ pub fn take_context(types: &mut Vec<Type>, name: &str) -> syn::Result<Option<Typ
     if args.len() > 1 {
         return Err(syn::Error::new(span, "context takes one progress type"));
     }
+    let progress = args
+        .first()
+        .map(|ty| (*ty).clone())
+        .unwrap_or_else(|| syn::parse_quote!(()));
     types.pop();
-    Ok(Some(
-        args.into_iter()
-            .next()
-            .unwrap_or_else(|| syn::parse_quote!(())),
-    ))
+    Ok(Some(progress))
 }
 
-pub fn owned(ty: &Type) -> syn::Result<()> {
+pub(crate) fn owned(ty: &Type) -> syn::Result<()> {
     use syn::visit::Visit;
     #[derive(Default)]
     struct Check(Option<syn::Error>);
@@ -149,7 +149,7 @@ pub fn owned(ty: &Type) -> syn::Result<()> {
     check.0.map_or(Ok(()), Err)
 }
 
-pub fn metadata(name: &syn::Ident, kind: &str, pool: bool) -> TokenStream {
+pub(crate) fn metadata(name: &syn::Ident, kind: &str, pool: bool) -> TokenStream {
     let pool = if pool { "pool" } else { "ordinary" };
     quote! {
         // wasm-bindgen's custom-section expansion resolves this name locally.
@@ -164,7 +164,7 @@ pub fn metadata(name: &syn::Ident, kind: &str, pool: bool) -> TokenStream {
     }
 }
 
-pub fn client_attributes(attributes: &[syn::Attribute]) -> Vec<&syn::Attribute> {
+pub(crate) fn client_attributes(attributes: &[syn::Attribute]) -> Vec<&syn::Attribute> {
     attributes
         .iter()
         .filter(|attr| attr.path().is_ident("doc") || attr.path().is_ident("deprecated"))
@@ -172,7 +172,7 @@ pub fn client_attributes(attributes: &[syn::Attribute]) -> Vec<&syn::Attribute> 
 }
 
 // Generated adapters live one module below the authored signature.
-pub fn scoped(ty: &Type, state: Option<&Type>) -> Type {
+pub(crate) fn scoped(ty: &Type, state: Option<&Type>) -> Type {
     use syn::visit_mut::VisitMut;
     struct Scope<'a>(Option<&'a Type>);
     impl VisitMut for Scope<'_> {
@@ -199,4 +199,16 @@ pub fn scoped(ty: &Type, state: Option<&Type>) -> Type {
     let mut ty = ty.clone();
     Scope(state).visit_type_mut(&mut ty);
     ty
+}
+
+pub(crate) fn inputs<'a>(
+    arguments: impl Iterator<Item = &'a syn::FnArg>,
+    receiver_message: &str,
+) -> syn::Result<Vec<Type>> {
+    arguments
+        .map(|argument| match argument {
+            syn::FnArg::Typed(argument) => Ok((*argument.ty).clone()),
+            syn::FnArg::Receiver(receiver) => Err(error(receiver, receiver_message)),
+        })
+        .collect()
 }

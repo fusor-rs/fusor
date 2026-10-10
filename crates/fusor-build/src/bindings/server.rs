@@ -79,7 +79,10 @@ fn construct_child(
         quote! { try_child_with_children }
     };
     let writer = into.then(|| quote! { , __fusor_writer });
-    let convert = quote! { |_| ::std::string::String::from(concat!("component ", stringify!(#ty), " input construction failed")) };
+    let convert = quote! { |error| {
+        use ::fusor_server::InputErrorDiagnostic as _;
+        ::fusor_server::InputError(error).diagnostic(stringify!(#ty))
+    } };
     let construct = super::emit::construct_inputs(ty.span(), ty, fields, convert);
     quote_spanned! {ty.span()=> __fusor_context.#method(|owner| {
         #construct
@@ -177,12 +180,12 @@ fn component_body(component: &Component, components: &[Component], into: bool) -
     }
     let body = render.body.finish();
     if into {
-        quote! {{ #(#body)* ::std::result::Result::<(), ::std::string::String>::Ok(()) }}
+        quote! {{ #(#body)* ::std::result::Result::<(), ::fusor_server::Error>::Ok(()) }}
     } else {
         quote! {{
             let mut __fusor_writer = ::fusor_server::Writer::new();
             #(#body)*
-            ::std::result::Result::<_, ::std::string::String>::Ok(__fusor_writer.finish())
+            ::std::result::Result::<_, ::fusor_server::Error>::Ok(__fusor_writer.finish())
         }}
     }
 }
@@ -193,25 +196,14 @@ fn forwarding_child(
     components: &[Component],
     into: bool,
 ) -> Option<TokenStream> {
-    if !component.inline()
-        || !component.elements.is_empty()
-        || !component.texts.is_empty()
-        || !component.text_elements.is_empty()
-    {
-        return None;
-    }
-    let [
-        Binding::Invocation {
-            ty,
-            inputs,
-            children,
-            condition: None,
-            key: None,
-            ..
-        },
-    ] = component.bindings.as_slice()
+    let Binding::Invocation {
+        ty,
+        inputs,
+        children,
+        ..
+    } = component.forwarded_child()?
     else {
-        return None;
+        unreachable!("forwarding selection returns an invocation");
     };
     Some(construct_child(ty, inputs, children, components, into))
 }

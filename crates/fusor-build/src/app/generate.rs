@@ -145,17 +145,7 @@ impl Generator<'_> {
                 .ok_or("generated module path must be UTF-8")?;
             ui_module = Some(quote! { #[path = #path] pub mod #module; });
         }
-        if self.config.delivery.is_some() {
-            if let Some(module) = page.javascript.first() {
-                return Err(SourceError::at(
-                    html_path,
-                    module.line,
-                    module.column,
-                    "component JavaScript is unsupported in server/island delivery; use a browser application",
-                )
-                .into());
-            }
-        }
+        self.check_javascript_delivery(&page, html_path)?;
         let javascript = javascript::plan(
             self.package_root,
             self.out,
@@ -173,6 +163,23 @@ impl Generator<'_> {
             external,
             javascript,
         })
+    }
+
+    fn check_javascript_delivery(&self, page: &Page, html: &Path) -> Result<()> {
+        if let Some(module) = page
+            .javascript
+            .first()
+            .filter(|_| self.config.delivery.is_some())
+        {
+            return Err(SourceError::at(
+                    html,
+                    module.line,
+                    module.column,
+                    "component JavaScript is unsupported in server/island delivery; use a browser application",
+                )
+                .into());
+        }
+        Ok(())
     }
 
     fn write(self, sources: Vec<CompiledSource>) -> Result<ArtifactManifest> {
@@ -208,15 +215,11 @@ impl Generator<'_> {
                 templates.push('\n');
             }
         }
-        let Entry {
-            mut html,
-            mut loader_offset,
-            managed,
-        } = entry.expect("the entry is always the first source");
-        html::insert_before_body_end(&mut html, &templates, Some(&mut loader_offset));
+        let mut entry = entry.expect("the entry is always the first source");
+        html::insert_before_body_end(&mut entry.html, &templates, Some(&mut entry.loader_offset));
         let html_path = self.out.join(HTML_FILE);
         let module_path = self.out.join(MODULE_FILE);
-        fs::write(&html_path, html)?;
+        fs::write(&html_path, entry.html)?;
         fs::write(
             &module_path,
             quote! { pub mod ui { #(#ui_modules)* } #(#registrations)* }.to_string(),
@@ -225,8 +228,8 @@ impl Generator<'_> {
             version: ARTIFACT_VERSION,
             html: html_path,
             module: module_path,
-            loader_offset,
-            managed_entry: managed,
+            loader_offset: entry.loader_offset,
+            managed_entry: entry.managed,
             sources: artifacts,
             javascript,
         };

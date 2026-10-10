@@ -6,7 +6,6 @@ use std::{
     str::FromStr,
 };
 
-#[derive(Clone)]
 pub(super) struct State {
     pub raw: String,
     pub baseline: String,

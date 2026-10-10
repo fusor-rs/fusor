@@ -6,6 +6,7 @@ use super::{
 use crate::{ExtractError, error};
 use html5gum::{Token, Tokenizer};
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
+use std::borrow::Cow;
 use std::ops::Range;
 
 pub(super) struct Interpolation {
@@ -38,9 +39,9 @@ pub(super) fn interpolations(
         while let Some(end) = value[search..].find("}}").map(|n| search + n) {
             let raw = &value[start + 2..end];
             let expression = if html_text {
-                decode(raw)
+                Cow::Owned(decode(raw))
             } else {
-                raw.to_owned()
+                Cow::Borrowed(raw)
             };
             // A complete native Rust group must survive tokenization. An HTML
             // delimiter inside a line comment consumes the closing brace and

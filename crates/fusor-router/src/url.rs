@@ -14,11 +14,17 @@ impl std::error::Error for UrlError {}
 
 /// Encoded URL components relative to the application's base path. Query and
 /// fragment omit their delimiters. Decode path *segments*, not the entire path.
+/// Construct with [`AppUrl::parse`]; the validated components are read-only.
+///
+/// ```compile_fail
+/// let mut url = fusor_router::AppUrl::parse("/articles/1").unwrap();
+/// url.path = "//another-origin".into();
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppUrl {
-    pub path: String,
-    pub query: String,
-    pub fragment: String,
+    pub(crate) path: String,
+    pub(crate) query: String,
+    pub(crate) fragment: String,
 }
 impl AppUrl {
     pub fn parse(value: &str) -> Result<Self, UrlError> {
@@ -42,6 +48,15 @@ impl AppUrl {
             return Err(UrlError("dot path segments are not routes"));
         }
         Ok(url)
+    }
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+    pub fn fragment(&self) -> &str {
+        &self.fragment
     }
     pub fn segments(&self) -> Result<Vec<String>, UrlError> {
         self.path

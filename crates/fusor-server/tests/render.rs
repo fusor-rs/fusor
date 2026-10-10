@@ -16,7 +16,7 @@ impl Island for Descriptor {
 struct Card(Props);
 impl Render for Card {
     const TEMPLATE_HASH: &'static str = "hash-v1";
-    fn render(&self, _: &mut Context<'_>) -> Result<Html, String> {
+    fn render(&self, _: &mut Context<'_>) -> fusor_server::Result<Html> {
         let mut writer = Writer::new();
         writer.open("article");
         writer.attr("title", &self.0.text);
@@ -120,14 +120,14 @@ fn children_render_with_receiving_context_and_restore_the_caller_on_error() {
     struct Panel;
     impl Render for Panel {
         const TEMPLATE_HASH: &'static str = "panel";
-        fn render(&self, _: &mut Context<'_>) -> Result<Html, String> {
+        fn render(&self, _: &mut Context<'_>) -> fusor_server::Result<Html> {
             unreachable!()
         }
         fn render_with_children(
             &self,
             context: &mut Context<'_>,
             children: Option<&fusor_server::Children<'_>>,
-        ) -> Result<Html, String> {
+        ) -> fusor_server::Result<Html> {
             assert_eq!(*context.owner().context::<Locale>().unwrap(), "child");
             children.unwrap()(context, Some("footer"))
         }
@@ -145,7 +145,9 @@ fn children_render_with_receiving_context_and_restore_the_caller_on_error() {
             Err("failed child render".into())
         }),
     );
-    assert_eq!(result.unwrap_err(), "failed child render");
+    assert!(
+        matches!(result.unwrap_err(), fusor_server::Error::Render(message) if message == "failed child render")
+    );
     assert_eq!(*context.owner().context::<Locale>().unwrap(), "parent");
 }
 
@@ -158,14 +160,14 @@ fn streamed_custom_renderers_keep_children_owner_and_key_metadata() {
     struct Panel;
     impl Render for Panel {
         const TEMPLATE_HASH: &'static str = "panel";
-        fn render(&self, _: &mut Context<'_>) -> Result<Html, String> {
+        fn render(&self, _: &mut Context<'_>) -> fusor_server::Result<Html> {
             unreachable!()
         }
         fn render_with_children(
             &self,
             context: &mut Context<'_>,
             children: Option<&fusor_server::Children<'_>>,
-        ) -> Result<Html, String> {
+        ) -> fusor_server::Result<Html> {
             assert_eq!(*context.owner().context::<Locale>().unwrap(), "child");
             children.unwrap()(context, None)
         }
@@ -206,4 +208,67 @@ fn streamed_custom_renderers_keep_children_owner_and_key_metadata() {
         writer.finish().as_str(),
         "<div><b data-fusor-key=\"7\">&lt;&amp;</b></div>"
     );
+}
+
+#[derive(Clone, Copy)]
+enum RenderFailure {
+    Error,
+    Panic,
+    None,
+}
+struct RecoveringCard(RenderFailure);
+impl Render for RecoveringCard {
+    const TEMPLATE_HASH: &'static str = "hash-v1";
+    fn render(&self, _: &mut Context<'_>) -> fusor_server::Result<Html> {
+        match self.0 {
+            RenderFailure::Error => Err("card rendering failed".into()),
+            RenderFailure::Panic => panic!("card rendering panicked"),
+            RenderFailure::None => Ok(Writer::new().finish()),
+        }
+    }
+}
+
+#[test]
+fn failed_islands_release_instance_ids_and_restore_render_depth() {
+    use std::{
+        cell::Cell,
+        panic::{AssertUnwindSafe, catch_unwind},
+        rc::Rc,
+    };
+    for failure in [RenderFailure::Error, RenderFailure::Panic] {
+        let state = Rc::new(Cell::new(failure));
+        let selected = state.clone();
+        let mut registry = Registry::new();
+        registry
+            .register::<Descriptor, RecoveringCard>(move |_| RecoveringCard(selected.get()))
+            .unwrap();
+        let manifest = manifest();
+        let mut context = Context::with_islands(&manifest, &registry).unwrap();
+        let props = Props {
+            id: 7,
+            text: "card".into(),
+        };
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            context.island::<Descriptor>(Some("card"), &props, Activation::Manual, Prefetch::None)
+        }));
+        match failure {
+            RenderFailure::Error => assert!(
+                matches!(result.unwrap().unwrap_err(), fusor_server::Error::Render(message) if message == "card rendering failed")
+            ),
+            RenderFailure::Panic => assert_eq!(
+                result.unwrap_err().downcast_ref::<&str>(),
+                Some(&"card rendering panicked")
+            ),
+            RenderFailure::None => unreachable!(),
+        }
+        state.set(RenderFailure::None);
+        let html = context
+            .island::<Descriptor>(Some("card"), &props, Activation::Manual, Prefetch::None)
+            .unwrap();
+        assert!(html.as_str().contains(" id=\"card\""));
+        let html = context
+            .island::<Descriptor>(None, &props, Activation::Manual, Prefetch::None)
+            .unwrap();
+        assert!(html.as_str().contains(" id=\"fusor-island-2\""));
+    }
 }

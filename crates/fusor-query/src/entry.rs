@@ -1,7 +1,7 @@
 use super::{Clock, Inner, Key};
 use crate::{Freshness, QueryState};
 use fusor::{Effect, Owner, Signal, effect, signal, untrack};
-use fusor_async::{Data, Resource, ResourceState};
+use fusor_async::{Resource, ResourceData, ResourceState};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -17,7 +17,7 @@ pub(super) struct Entry<K, T, E> {
     request_key: Signal<Option<K>>,
     resource: Resource<K, T, E>,
     pub(super) state: Signal<QueryState<K, T, E>>,
-    cached: RefCell<Option<Data<K, T>>>,
+    cached: RefCell<Option<ResourceData<K, T>>>,
     updated: Cell<Option<Duration>>,
     invalid: Cell<bool>,
     observers: Cell<usize>,
@@ -92,7 +92,7 @@ impl<K: Key, T: 'static, E: 'static> Entry<K, T, E> {
         drop(self.state.replace(state));
     }
 
-    fn cached(&self) -> Option<Data<K, T>> {
+    fn cached(&self) -> Option<ResourceData<K, T>> {
         self.cached.borrow().clone()
     }
 

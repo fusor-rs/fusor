@@ -26,7 +26,7 @@ use std::{
 /// A successful value and the key that actually produced it.
 #[derive(Debug)]
 #[derive_where(Clone; K)]
-pub struct Data<K, T> {
+pub struct ResourceData<K, T> {
     pub key: K,
     pub value: Rc<T>,
 }
@@ -38,18 +38,18 @@ pub enum ResourceState<K, T, E> {
     Idle,
     Loading {
         key: K,
-        previous: Option<Data<K, T>>,
+        previous: Option<ResourceData<K, T>>,
     },
-    Ready(Data<K, T>),
+    Ready(ResourceData<K, T>),
     Error {
         key: K,
         error: Rc<E>,
-        previous: Option<Data<K, T>>,
+        previous: Option<ResourceData<K, T>>,
     },
     Disposed,
 }
 impl<K, T, E> ResourceState<K, T, E> {
-    pub fn data(&self) -> Option<&Data<K, T>> {
+    pub fn data(&self) -> Option<&ResourceData<K, T>> {
         match self {
             Self::Ready(data) => Some(data),
             Self::Loading { previous, .. } | Self::Error { previous, .. } => previous.as_ref(),
@@ -274,7 +274,7 @@ impl<K: Clone + 'static, T: 'static, E: 'static> Inner<K, T, E> {
                 in_flight.complete();
             }
             let next = match result {
-                Ok(value) => ResourceState::Ready(Data {
+                Ok(value) => ResourceState::Ready(ResourceData {
                     key,
                     value: Rc::new(value),
                 }),

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { chromium, firefox, webkit } from "playwright";
 import assert from "node:assert/strict";
 import { observeFetch } from "../../scripts/observe-fetch.mjs";
+import { observeConsoleErrors } from "../../scripts/observe-console.mjs";
 const root = join(process.cwd(), "examples/coherent/dist");
 const requests = [];
 const server = createServer(async (req, res) => {
@@ -194,16 +195,23 @@ try {
     // authored inert flag and selection text were patched. Structural apply
     // failures occur afterward and do not promise this patch rollback contract.
     const rollback = await browser.newPage();
+    const rollbackErrors = await observeConsoleErrors(rollback);
     const beforeRollback = requests.length;
     await rollback.goto(`http://127.0.0.1:${server.address().port}`);
     await wait(() => requests.length === beforeRollback + 2);
     await rollback.evaluate(() => {
       const setAttribute = Element.prototype.setAttribute;
+      let failedRollback = false;
       globalThis.patchTrace = [];
       globalThis.restoreAttributes = () => { Element.prototype.setAttribute = setAttribute; };
       Element.prototype.setAttribute = function (name, value) {
-        if (this.id === "product" && name === "inert")
+        if (this.id === "product" && name === "inert") {
           patchTrace.push(["inert", document.querySelector("#selection").textContent]);
+          if (!failedRollback && patchTrace.some(([kind]) => kind === "failure")) {
+            failedRollback = true;
+            throw new Error("deliberate coherent rollback failure");
+          }
+        }
         if (this.classList.contains("price-child") && name === "title") {
           patchTrace.push(["failure", document.querySelector("#selection").textContent]);
           throw new Error("deliberate later coherent patch failure");
@@ -223,6 +231,7 @@ try {
     const trace = await rollback.evaluate(() => patchTrace);
     assert(trace.some(([kind, text]) => kind === "failure" && text === "A · en"), JSON.stringify(trace));
     assert.deepEqual(trace.at(-1), ["inert", " · "]);
+    assert.equal(rollbackErrors.filter(error => error.includes("deliberate coherent rollback failure")).length, 1);
     assert.equal(await rollback.locator("#selection").textContent(), " · ");
     assert.equal(await rollback.locator("#mounts").textContent(), "0");
     assert.equal(await rollback.locator("#items > li").count(), 0);
@@ -239,6 +248,32 @@ try {
     assert(!(await rollback.locator("#product").evaluate(node => node.inert)));
     await rollback.click("#inside");
     assert.equal(await rollback.locator("#clicks").textContent(), "1");
+    await rollback.evaluate(() => {
+      const root = document.querySelector("#product");
+      const remove = root.removeAttribute;
+      root.removeAttribute = function (name) {
+        if (name === "aria-busy") throw Error("deliberate overlay removal failure");
+        return remove.call(this, name);
+      };
+      globalThis.restoreOverlay = () => { root.removeAttribute = remove; };
+    });
+    const beforeRemoval = requests.length;
+    await rollback.click("#b");
+    await wait(() => requests.length === beforeRemoval + 2);
+    complete("price", "B");
+    complete("stock", "B");
+    await rollback.locator("#status").filter({ hasText: "Ready" }).waitFor();
+    await wait(() => rollbackErrors.some(error => error.includes("deliberate overlay removal failure")));
+    assert.equal(rollbackErrors.filter(error => error.includes("deliberate overlay removal failure")).length, 1);
+    const beforeOverlay = requests.length;
+    await rollback.click("#c");
+    await wait(() => requests.length === beforeOverlay + 2);
+    assert(await rollback.locator("#product").evaluate(node => node.inert && node.getAttribute("aria-busy") === "true"));
+    await rollback.evaluate(() => restoreOverlay());
+    complete("price", "C");
+    complete("stock", "C");
+    await rollback.locator("#status").filter({ hasText: "Ready" }).waitFor();
+    assert(!(await rollback.locator("#product").evaluate(node => node.inert || node.hasAttribute("aria-busy"))));
     await rollback.close();
     console.log(
       "PASS",

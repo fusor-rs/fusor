@@ -499,6 +499,13 @@ generated files in `.fusor/types/.generated.json` and removes only those declara
 they become obsolete. An unreadable or corrupt index stops the command with an error; repair
 the index before retrying.
 
+Declaration discovery follows inline Rust modules. Keep the component struct and its
+`template!` in the associated Rust source; unresolved or ambiguous discovery stops the
+build with a source diagnostic. A component without `JsInputs` exposes an empty input shape.
+
+When the runtime crate has another name, put one `#[js_inputs(crate = path)]` attribute on
+the struct. Empty or duplicate overrides and overrides placed on fields are rejected.
+
 The JSDoc annotation and `@ts-check` enable editor diagnostics without adding runtime code.
 For TypeScript, rename `app.js` to `app.ts`, update the HTML `src`, and use
 `import type { AppMountContext } from "../.fusor/types/web-index-html-App";`. Annotate the

@@ -140,7 +140,6 @@ dependencies = [
 name = "fusor-islands"
 version = "0.1.5"
 dependencies = [
- "fusor-core",
  "serde",
  "serde_json",
 ]

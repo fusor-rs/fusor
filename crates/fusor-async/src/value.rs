@@ -4,7 +4,7 @@ use crate::{CancellationToken, Loader, Spawner, boxed_loader, cancellation::InFl
 use derive_where::derive_where;
 use fusor::{
     OwnerHandle, Registration,
-    coherence::{Attempt, BoundaryLifetime, ReadLease},
+    coherence::{Attempt, BoundaryLifetime, Error, ReadLease},
     versions::Versions,
 };
 use futures_util::future::LocalBoxFuture;
@@ -73,7 +73,7 @@ impl<K, T, E> Inner<K, T, E> {
     fn is_latest(&self, generation: u64) -> bool {
         !self.owner.is_disposed() && self.generation.get() == generation
     }
-    fn adopt_boundary(&self, attempt: &Attempt) -> Result<(), String> {
+    fn adopt_boundary(&self, attempt: &Attempt) -> Result<(), Error> {
         let boundary = attempt.boundary_id();
         let (changed, live) = self
             .boundary
@@ -156,9 +156,9 @@ impl<K, T, E> Inner<K, T, E> {
         *self.in_flight.borrow_mut() = Some(in_flight);
         (self.spawn)(work);
     }
-    fn outcome(&self, attempt: &Attempt) -> Result<AsyncRead<T>, String>
+    fn outcome(&self, attempt: &Attempt) -> Result<AsyncRead<T>, Error>
     where
-        E: std::fmt::Display,
+        E: std::fmt::Display + 'static,
     {
         // Release the state borrow before running the error's Display code.
         let error = match &*self.state.borrow() {
@@ -169,7 +169,7 @@ impl<K, T, E> Inner<K, T, E> {
                 return Ok(AsyncRead::Pending);
             }
         };
-        Err(error.to_string())
+        Err(Error::read(error))
     }
 }
 
@@ -223,7 +223,7 @@ impl<K: Clone + PartialEq + 'static, T: 'static, E: std::fmt::Display + 'static>
 
     /// Renderer integration. Calling this does not commit the component owner.
     #[doc(hidden)]
-    pub fn read(&self, attempt: &Attempt) -> Result<AsyncRead<T>, String> {
+    pub fn read(&self, attempt: &Attempt) -> Result<AsyncRead<T>, Error> {
         let inner = &self.0;
         if inner.owner.is_disposed() {
             return Err("async read owner was disposed".into());

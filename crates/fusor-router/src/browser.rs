@@ -10,14 +10,11 @@ mod tree;
 mod typed;
 pub use typed::{RouteContext, Router, mount_outlet};
 
+use crate::view::{INACTIVE, REENTRANT};
 use crate::{AppUrl, UrlError};
 use fusor::ContextError;
 use std::cell::Cell;
 use wasm_bindgen::JsValue;
-
-/// A disposed router, or one whose owner has not activated.
-const INACTIVE: &str = "router is not active";
-const REENTRANT: &str = "reentrant navigation is not supported";
 
 fn error(message: &str) -> JsValue {
     JsValue::from_str(message)

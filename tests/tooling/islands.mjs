@@ -270,6 +270,20 @@ try {
       )
         throw Error("Rust waiter leaked");
     });
+    const restoration = await page.evaluate(async () => {
+      const host = document.createElement('div');
+      document.body.append(host);
+      try {
+        await controllerUnit.exercise_preview_restoration(host);
+        throw Error('expected preview commit rejection');
+      } catch (error) {
+        return { message: error.message, causes: error.cause?.map(cause => typeof cause === 'string' ? cause : cause.name) };
+      } finally {
+        host.remove();
+      }
+    });
+    assert.match(restoration.message, /island commit failed:.*fallback restoration failed:/);
+    assert.deepEqual(restoration.causes, ['component disposed during activation', 'NotFoundError']);
     await page.evaluate(() => controllerUnit.exercise_messages());
     await page.evaluate(() => controllerUnit.exercise_control("prefetch"));
     assert.equal(api.length, 0);

@@ -4,6 +4,9 @@
 //! Its [`BoundaryStatus`] reports when the complete view is ready or a read has
 //! failed. Keep status displays and retry controls outside the region so they
 //! remain usable while it is pending.
+mod error;
+pub use error::{Error, ErrorKind};
+
 use crate::{
     Effect, OwnerHandle, Registration, Signal, batch, effect, signal, untrack, versions::Versions,
 };
@@ -20,15 +23,15 @@ use std::{
 /// this version. It is independent of the browser template format and of any
 /// external renderer's generated-code protocol.
 #[doc(hidden)]
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BoundaryStatus {
     Detached,
     Pending,
     Ready,
-    Error(String),
-    Faulted(String),
+    Error(Error),
+    Faulted(Error),
     Disposed,
 }
 
@@ -54,13 +57,13 @@ pub trait ReadLease {
 pub trait Publication {
     /// Check that all prepared operations can still target the intended nodes.
     /// An error preserves the previously published scene and reports `Error`.
-    fn validate(&self) -> Result<(), String>;
+    fn validate(&self) -> Result<(), Error>;
     /// Apply the validated update synchronously, without application callbacks,
     /// signal writes, constructors, formatting, or other fallible preparation.
     /// An unexpected failure reports `Faulted`; the boundary cannot undo a
     /// renderer's partial scene mutation. Successful application and finishing
     /// run within one reactive batch.
-    fn apply(&mut self) -> Result<(), String>;
+    fn apply(&mut self) -> Result<(), Error>;
     /// Finish a successful publication: activate adopted owners and retire old
     /// scopes in the renderer's documented order. Application callbacks may run
     /// here, so release mutable scene borrows first. Input changes during this
@@ -68,7 +71,7 @@ pub trait Publication {
     fn finish(self: Box<Self>);
 }
 
-type Evaluate = dyn Fn(&Attempt) -> Result<Box<dyn Publication>, String>;
+type Evaluate = dyn Fn(&Attempt) -> Result<Box<dyn Publication>, Error>;
 
 struct Inner {
     id: u64,
@@ -79,7 +82,7 @@ struct Inner {
     attached: Cell<bool>,
     alive: Cell<bool>,
     driving: Cell<bool>,
-    violation: RefCell<Option<String>>,
+    violation: RefCell<Option<Error>>,
     rejected_retry: Cell<Option<u64>>,
     inputs: RefCell<Versions>,
     reads: RefCell<BTreeMap<u64, Rc<dyn ReadLease>>>,
@@ -177,8 +180,8 @@ impl AsyncBoundary {
     pub fn attach(
         &self,
         owner: &OwnerHandle,
-        evaluate: impl Fn(&Attempt) -> Result<Box<dyn Publication>, String> + 'static,
-    ) -> Result<BoundaryMount, String> {
+        evaluate: impl Fn(&Attempt) -> Result<Box<dyn Publication>, Error> + 'static,
+    ) -> Result<BoundaryMount, Error> {
         if !self.0.alive.get() || owner.is_disposed() {
             return Err("cannot attach a disposed async boundary".into());
         }
@@ -402,7 +405,7 @@ fn publish_attempt(
     inner: &Rc<Inner>,
     attempt: &Attempt,
     inputs: Versions,
-    result: Result<Box<dyn Publication>, String>,
+    result: Result<Box<dyn Publication>, Error>,
 ) {
     let result = match inner.violation.take() {
         Some(error) => {
@@ -460,9 +463,8 @@ fn evaluating_mutation(operation: &str) -> bool {
     EVALUATING.with(|stack| {
         let inner = stack.borrow().last().and_then(Weak::upgrade);
         if let Some(inner) = inner {
-            *inner.violation.borrow_mut() = Some(format!(
-                "coherent render evaluation must be pure: {operation}"
-            ));
+            *inner.violation.borrow_mut() =
+                Some(format!("coherent render evaluation must be pure: {operation}").into());
             true
         } else {
             false

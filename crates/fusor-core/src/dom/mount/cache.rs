@@ -30,6 +30,79 @@ enum SlotPath {
     Element(Path),
 }
 impl Plan {
+    fn resolve_slots(&self, root: &Element) -> Result<Vec<Slot>, JsValue> {
+        let mut slots = Vec::new();
+        for (id, location) in &self.slots {
+            let (position, existing) = match location {
+                SlotPath::Anchored(start, end) => {
+                    let start = follow(root, start)?;
+                    let end = follow(root, end)?;
+                    let existing = text_slot(*id, &start, &end)?;
+                    (TextPosition::Anchored { start, end }, existing)
+                }
+                SlotPath::Element(host) => {
+                    let element: Element = follow(root, host)?.dyn_into()?;
+                    let existing = element_text(*id, &element)?;
+                    (TextPosition::Element(element), existing)
+                }
+            };
+            slots.push(Slot {
+                id: *id,
+                position,
+                existing,
+            });
+        }
+        Ok(slots)
+    }
+
+    fn capture(
+        descriptor: &TemplateDescriptor,
+        mounts: &'static [MountId],
+        root: &Element,
+        resolution: &Resolution,
+    ) -> Result<Self, JsValue> {
+        let (handles, slots, points) = resolution;
+        let pristine = inert_copy(root)?;
+        let handles = handles
+            .iter()
+            .map(|(id, handle)| {
+                let (node, input): (&Node, bool) = match handle {
+                    ElementHandle::Element(element) => (element.as_ref(), false),
+                    ElementHandle::Input(input) => (input.as_ref(), true),
+                };
+                Ok((*id, path(root, node)?, input))
+            })
+            .collect::<Result<_, JsValue>>()?;
+        let slots = slots
+            .iter()
+            .map(|slot| {
+                let location = match &slot.position {
+                    TextPosition::Anchored { start, end } => {
+                        SlotPath::Anchored(path(root, start)?, path(root, end)?)
+                    }
+                    TextPosition::Element(element) => SlotPath::Element(path(root, element)?),
+                };
+                Ok((slot.id, location))
+            })
+            .collect::<Result<_, JsValue>>()?;
+        let points = points
+            .iter()
+            .map(|(id, point)| Ok((*id, path(root, &point.start)?, path(root, &point.end)?)))
+            .collect::<Result<_, JsValue>>()?;
+        Ok(Self {
+            component: descriptor.component,
+            version: descriptor.version,
+            elements: descriptor.elements,
+            texts: descriptor.texts,
+            text_elements: descriptor.text_elements,
+            mounts,
+            pristine,
+            handles,
+            slots,
+            points,
+        })
+    }
+
     fn matches(&self, descriptor: &TemplateDescriptor, mounts: &'static [MountId]) -> bool {
         self.component == descriptor.component
             && self.version == descriptor.version
@@ -101,29 +174,8 @@ pub(super) fn resolve(
         };
         handles.insert(*id, handle);
     }
-    // Resolve every path before inserting any missing text nodes. Inserting the
-    // first slot would otherwise shift sibling paths for later slots/handles.
-    let mut slots = Vec::new();
-    for (id, location) in &plan.slots {
-        let (position, existing) = match location {
-            SlotPath::Anchored(start, end) => {
-                let start = follow(root, start)?;
-                let end = follow(root, end)?;
-                let existing = text_slot(*id, &start, &end)?;
-                (TextPosition::Anchored { start, end }, existing)
-            }
-            SlotPath::Element(host) => {
-                let element: Element = follow(root, host)?.dyn_into()?;
-                let existing = element_text(*id, &element)?;
-                (TextPosition::Element(element), existing)
-            }
-        };
-        slots.push(Slot {
-            id: *id,
-            position,
-            existing,
-        });
-    }
+    // Resolve all paths before missing text nodes can shift later sibling paths.
+    let slots = plan.resolve_slots(root)?;
     let mut mounts = Mounts::new();
     for (id, start, end) in &plan.points {
         mounts.insert(
@@ -144,7 +196,19 @@ pub(super) fn remember(
     root: &Element,
     resolution: &Resolution,
 ) -> Result<(), JsValue> {
-    let (handles, slots, points) = resolution;
+    let plan = Rc::new(Plan::capture(descriptor, mounts, root, resolution)?);
+    PLANS.with(|plans| {
+        let mut plans = plans.borrow_mut();
+        plans.retain(|previous| !previous.matches(descriptor, mounts));
+        if plans.len() >= 32 {
+            plans.pop_front();
+        }
+        plans.push_back(plan);
+    });
+    Ok(())
+}
+
+fn inert_copy(root: &Element) -> Result<Node, JsValue> {
     let document = root
         .owner_document()
         .ok_or_else(|| invalid("template has no document"))?;
@@ -155,52 +219,5 @@ pub(super) fn remember(
         .ok_or_else(|| invalid("template has no inert document"))?;
     // Import into the inert document: custom elements must not be constructed a
     // second time, and the certificate must not activate resource-loading nodes.
-    let pristine = inert.import_node_with_deep(root, true)?;
-    let handles = handles
-        .iter()
-        .map(|(id, handle)| {
-            let (node, input): (&Node, bool) = match handle {
-                ElementHandle::Element(element) => (element.as_ref(), false),
-                ElementHandle::Input(input) => (input.as_ref(), true),
-            };
-            Ok((*id, path(root, node)?, input))
-        })
-        .collect::<Result<_, JsValue>>()?;
-    let slots = slots
-        .iter()
-        .map(|slot| {
-            let location = match &slot.position {
-                TextPosition::Anchored { start, end } => {
-                    SlotPath::Anchored(path(root, start)?, path(root, end)?)
-                }
-                TextPosition::Element(element) => SlotPath::Element(path(root, element)?),
-            };
-            Ok((slot.id, location))
-        })
-        .collect::<Result<_, JsValue>>()?;
-    let points = points
-        .iter()
-        .map(|(id, point)| Ok((*id, path(root, &point.start)?, path(root, &point.end)?)))
-        .collect::<Result<_, JsValue>>()?;
-    let plan = Rc::new(Plan {
-        component: descriptor.component,
-        version: descriptor.version,
-        elements: descriptor.elements,
-        texts: descriptor.texts,
-        text_elements: descriptor.text_elements,
-        mounts,
-        pristine,
-        handles,
-        slots,
-        points,
-    });
-    PLANS.with(|plans| {
-        let mut plans = plans.borrow_mut();
-        plans.retain(|previous| !previous.matches(descriptor, mounts));
-        if plans.len() >= 32 {
-            plans.pop_front();
-        }
-        plans.push_back(plan);
-    });
-    Ok(())
+    inert.import_node_with_deep(root, true)
 }

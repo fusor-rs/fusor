@@ -31,25 +31,21 @@ pub(crate) fn witness(command: &mut Command, what: &str) -> Result<UnitWitness> 
 /// Every browser island needs exactly one native counterpart with the same
 /// props and, where it attaches to markup, the same template.
 pub(crate) fn validate_pairs(native: &UnitWitness, delivery: &DeliveryManifest) -> Result {
-    let browser: Vec<_> = delivery
-        .units
-        .values()
-        .flat_map(|unit| &unit.entries)
-        .collect();
-    if native.entries.len() != browser.len() {
+    let browser = || delivery.units.values().flat_map(|unit| &unit.entries);
+    let browser_count = browser().count();
+    if native.entries.len() != browser_count {
         return Err(Error::compile(format!(
             "the native renderer registered {} islands and the browser units registered {}",
             native.entries.len(),
-            browser.len()
+            browser_count
         )));
     }
-    for entry in browser {
-        let matching: Vec<_> = native
+    for entry in browser() {
+        let mut matching = native
             .entries
             .iter()
-            .filter(|native| native.descriptor == entry.descriptor)
-            .collect();
-        let [native] = matching[..] else {
+            .filter(|native| native.descriptor == entry.descriptor);
+        let (Some(native), None) = (matching.next(), matching.next()) else {
             return Err(Error::compile(format!(
                 "missing or duplicate native registration for {}",
                 entry.descriptor

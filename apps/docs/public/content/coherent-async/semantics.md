@@ -19,8 +19,12 @@ parent does not have to gather its children’s futures.
 `Detached`. While a candidate view loads, it is `Pending`; a complete published view is
 `Ready`.
 
-`Error(String)` carries a loader failure. `Faulted(String)` instead means preparing or
-committing the view failed. `Disposed` means the boundary’s lifetime ended.
+`Error(fusor::coherence::Error)` carries an evaluation, validation, or loader failure.
+`Faulted` carries the same error type when applying a prepared view fails. `error.kind()`
+distinguishes contract, read, and renderer failures; `error.downcast_ref::<E>()` retrieves
+a retained loader error of type `E`. Display formats its diagnostic. `Disposed` means the
+boundary’s lifetime ended.
+DOM failures retain `fusor::dom::coherent::DomError`, whose `.0` holds the browser exception.
 
 Keep status and retry controls outside the region so they remain usable while that region
 blocks interactions.

@@ -129,11 +129,5 @@ from_foreign!(
     fusor_build::SourceMapError,
     fusor_build::BuildError,
     fusor_npm::BundleError,
+    fusor_islands::Error,
 );
-
-/// `fusor_islands` reports validation failures as text.
-impl From<String> for Error {
-    fn from(message: String) -> Self {
-        Self::project(message)
-    }
-}

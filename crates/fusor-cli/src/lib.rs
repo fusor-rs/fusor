@@ -21,8 +21,7 @@ use std::ffi::OsString;
 
 /// `args` includes the executable name, as `env::args_os` yields.
 pub fn run(args: impl IntoIterator<Item = impl Into<OsString> + Clone>) -> Result<(), Error> {
-    let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
-    let cli = match Cli::try_parse_from(&args) {
+    let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
         // `--help` and `--version` arrive here as errors with a zero exit code.
         Err(error) if error.exit_code() == 0 => {
@@ -35,7 +34,7 @@ pub fn run(args: impl IntoIterator<Item = impl Into<OsString> + Clone>) -> Resul
     let Some(action) = cli.command else {
         use clap::CommandFactory;
         Cli::command().print_help()?;
-        println!();
+        cx.reporter.result("")?;
         return Ok(());
     };
     commands::dispatch(&cx, action)

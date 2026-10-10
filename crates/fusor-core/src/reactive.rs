@@ -211,10 +211,6 @@ struct EffectInner {
 }
 
 impl EffectInner {
-    fn unsubscribe(&self) {
-        self.observer.unsubscribe();
-    }
-
     fn run(self: &Rc<Self>, initial: bool) {
         if !self.active.get() {
             return;
@@ -249,7 +245,7 @@ impl Effect {
     /// Stop reacting. Safe to call more than once.
     pub fn dispose(&self) {
         self.0.active.set(false);
-        self.0.unsubscribe();
+        self.0.observer.unsubscribe();
     }
 }
 
@@ -294,7 +290,7 @@ pub fn effect(callback: impl FnMut() + 'static) -> Effect {
         let cleanup = owner.on_cleanup(move || {
             if let Some(inner) = weak.upgrade() {
                 inner.active.set(false);
-                inner.unsubscribe();
+                inner.observer.unsubscribe();
             }
         });
         subscription

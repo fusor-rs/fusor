@@ -1,5 +1,5 @@
 //! Shared route transactions; platform history publishes only after preparation.
-use super::{Boundary, PreparedNavigation, RouteScope, Views, boundary::Plan};
+use super::{Boundary, INACTIVE, PreparedNavigation, REENTRANT, RouteScope, Views, boundary::Plan};
 use crate::AppUrl;
 use fusor::{ContextKey, OwnerHandle, Registration, Signal, batch, signal};
 use std::{
@@ -98,10 +98,10 @@ impl<S: RouteScope> Tree<S> {
 
     pub(crate) fn idle(&self) -> Result<(), S::Error> {
         if self.disposed.get() {
-            return Err(S::error("router is not active"));
+            return Err(S::error(INACTIVE));
         }
         if self.staged.get() || self.activating.get() {
-            return Err(S::error("reentrant navigation is not supported"));
+            return Err(S::error(REENTRANT));
         }
         Ok(())
     }

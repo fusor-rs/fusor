@@ -12,10 +12,10 @@ use std::{
     rc::Rc,
 };
 
-pub type Error = String;
-pub const VERSION: u32 = 1;
-pub fn error(value: impl Display) -> Error {
-    value.to_string()
+pub type Error = fusor::coherence::Error;
+pub const VERSION: u32 = 2;
+pub fn error(value: impl Display + 'static) -> Error {
+    Error::renderer(value)
 }
 
 pub trait Component: Sized + 'static {
@@ -327,13 +327,13 @@ impl Scope {
         self.elements
             .get(&id)
             .cloned()
-            .ok_or_else(|| format!("missing element anchor {id}"))
+            .ok_or_else(|| Error::from(format!("missing element anchor {id}")))
     }
     fn mount(&self, id: usize) -> Result<Node, Error> {
         self.mounts
             .get(&id)
             .cloned()
-            .ok_or_else(|| format!("missing mount anchor {id}"))
+            .ok_or_else(|| Error::from(format!("missing mount anchor {id}")))
     }
     pub fn text<T: Display>(
         &mut self,

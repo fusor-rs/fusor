@@ -77,43 +77,51 @@ fn only(target: &Target) -> Rc<String> {
     target[0].clone()
 }
 
+fn member_route(
+    index: usize,
+    prepared: Rc<RefCell<Vec<AppUrl>>>,
+) -> Result<RouteView<Scope>, String> {
+    RouteView::new("members/:member", move |parent, matched| {
+        let destination = Navigation::<Scope>::from_owner(parent)
+            .unwrap()
+            .location()
+            .get();
+        prepared.borrow_mut().push(destination);
+        let mut scope = Scope::new(parent, matched.params["member"].clone());
+        scope.fail = index == 1 && matched.params["member"] == "bad";
+        Ok(scope)
+    })
+}
+
+fn team_route(
+    children: [Target; 2],
+    prepared: Rc<RefCell<Vec<AppUrl>>>,
+) -> Result<RouteView<Scope>, String> {
+    RouteView::new("/teams/:team/*", move |parent, matched| {
+        let mut scope = Scope::new(parent, matched.params["team"].clone());
+        for (index, target) in children.iter().enumerate() {
+            let route = member_route(index, prepared.clone())?;
+            let nested = ViewRouter::mount(&scope.owner(), target, vec![route], url("/ignored"))?;
+            assert_eq!(
+                nested.navigation().location().get(),
+                Navigation::<Scope>::from_owner(&scope.owner())
+                    .unwrap()
+                    .location()
+                    .get()
+            );
+            scope.retain_state(nested);
+        }
+        Ok(scope)
+    })
+}
+
 #[test]
 fn nested_transitions_retain_identity_and_roll_back_all_siblings_on_failure() {
     let owner = Owner::new();
     let root = Target::default();
     let children = [Target::default(), Target::default()];
     let prepared = Rc::new(RefCell::new(Vec::new()));
-    let route = RouteView::new("/teams/:team/*", {
-        let (children, prepared) = (children.clone(), prepared.clone());
-        move |parent, matched| {
-            let mut scope = Scope::new(parent, matched.params["team"].clone());
-            for (index, target) in children.iter().enumerate() {
-                let prepared = prepared.clone();
-                let route = RouteView::new("members/:member", move |parent, matched| {
-                    let destination = Navigation::<Scope>::from_owner(parent)
-                        .unwrap()
-                        .location()
-                        .get();
-                    prepared.borrow_mut().push(destination);
-                    let mut scope = Scope::new(parent, matched.params["member"].clone());
-                    scope.fail = index == 1 && matched.params["member"] == "bad";
-                    Ok(scope)
-                })?;
-                let nested =
-                    ViewRouter::mount(&scope.owner(), target, vec![route], url("/ignored"))?;
-                assert_eq!(
-                    nested.navigation().location().get(),
-                    Navigation::<Scope>::from_owner(&scope.owner())
-                        .unwrap()
-                        .location()
-                        .get()
-                );
-                scope.retain_state(nested);
-            }
-            Ok(scope)
-        }
-    })
-    .unwrap();
+    let route = team_route(children.clone(), prepared.clone()).unwrap();
     let router = ViewRouter::mount(
         &owner.handle(),
         &root,

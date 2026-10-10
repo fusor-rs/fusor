@@ -61,14 +61,12 @@ pub(crate) fn respond(
         .strip_prefix(&format!("{}/", layout::GENERATED))
         .is_some_and(|path| path.contains('/'));
     let mut response = match read_file(directory, relative) {
-        Some((path, body)) => build_response(200, mime(&path), body, immutable),
-        None if document_fallback(relative, accept, history_fallback) => {
-            match fs::read(directory.join("index.html")) {
-                Ok(body) => build_response(200, "text/html; charset=utf-8", body, false),
-                Err(_) => build_response(404, "text/plain", b"Not found".to_vec(), false),
-            }
+        Ok(Some((path, body))) => build_response(200, mime(&path), body, immutable),
+        Ok(None) if document_fallback(relative, accept, history_fallback) => {
+            return respond(method, base, "", route, serving);
         }
-        None => build_response(404, "text/plain", b"Not found".to_vec(), false),
+        Ok(None) => build_response(404, "text/plain", b"Not found".to_vec(), false),
+        Err(error) => error_response(&error.to_string()),
     };
     if directory.join(layout::WORKER_HEADERS).is_file() {
         response.headers_mut().insert(
@@ -117,13 +115,28 @@ fn update(directory: &Path) -> Result<Vec<u8>> {
 
 /// Canonicalizing both sides is what makes the containment check hold against
 /// links.
-fn read_file(directory: &Path, relative: &str) -> Option<(PathBuf, Vec<u8>)> {
-    let root = directory.canonicalize().ok()?;
-    let path = decode_path(relative)
-        .and_then(|path| directory.join(path).canonicalize().ok())
-        .filter(|path| path.starts_with(&root) && path.is_file())?;
-    let body = fs::read(&path).ok()?;
-    Some((path, body))
+fn read_file(directory: &Path, relative: &str) -> std::io::Result<Option<(PathBuf, Vec<u8>)>> {
+    let Some(relative) = decode_path(relative) else {
+        return Ok(None);
+    };
+    let root = directory.canonicalize()?;
+    let path = match directory.join(relative).canonicalize() {
+        Ok(path) => path,
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    };
+    if !path.starts_with(&root) || !fs::metadata(&path)?.is_file() {
+        return Ok(None);
+    }
+    let body = fs::read(&path)?;
+    Ok(Some((path, body)))
 }
 
 pub(crate) fn build_response(
@@ -248,6 +261,38 @@ fn mime(path: &Path) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_files_are_not_found_but_missing_site_roots_are_server_errors() {
+        let directory = std::env::temp_dir().join(format!(
+            "fusor-http-{}",
+            crate::pipeline::publish::generation().unwrap()
+        ));
+        let _cleanup = crate::transaction::Staging(directory.clone());
+        let respond = |path| {
+            super::respond(
+                &Method::GET,
+                path,
+                "text/html",
+                Route {
+                    directory: &directory,
+                    base: "/",
+                    history_fallback: &["/".into()],
+                },
+                Serving::Preview,
+            )
+        };
+        assert_eq!(respond("/article").status(), 500);
+        fs::create_dir(&directory).unwrap();
+        assert_eq!(respond("/missing.js").status(), 404);
+        fs::write(directory.join("index.html"), "home").unwrap();
+        assert_eq!(respond("/article").body(), b"home");
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink("cycle", directory.join("cycle")).unwrap();
+            assert_eq!(respond("/cycle").status(), 500);
+        }
+    }
 
     #[test]
     fn history_fallback_is_explicit_and_only_for_documents() {

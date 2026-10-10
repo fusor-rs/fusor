@@ -131,20 +131,7 @@ fn workspace_members(located: &Path) -> Result<Vec<Candidate>> {
     let start = located
         .parent()
         .ok_or_else(|| Error::internal("manifest has no parent directory"))?;
-    let Some((manifest, document)) = start
-        .ancestors()
-        .map(|directory| directory.join("Cargo.toml"))
-        .find_map(|manifest| {
-            let document = std::fs::read_to_string(&manifest)
-                .ok()?
-                .parse::<toml::Value>()
-                .ok()?;
-            document
-                .get("workspace")
-                .is_some()
-                .then_some((manifest, document))
-        })
-    else {
+    let Some((manifest, document)) = enclosing_workspace(start)? else {
         return Ok(Vec::new());
     };
     let root = manifest
@@ -185,6 +172,24 @@ fn workspace_members(located: &Path) -> Result<Vec<Candidate>> {
         }
     }
     Ok(candidates)
+}
+
+fn enclosing_workspace(start: &Path) -> Result<Option<(PathBuf, toml::Value)>> {
+    for directory in start.ancestors() {
+        let manifest = directory.join("Cargo.toml");
+        let contents = match std::fs::read_to_string(&manifest) {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(Error::from(error).context(manifest.display())),
+        };
+        let document: toml::Value = contents
+            .parse()
+            .map_err(|error: toml::de::Error| Error::from(error).context(manifest.display()))?;
+        if document.get("workspace").is_some() {
+            return Ok(Some((manifest, document)));
+        }
+    }
+    Ok(None)
 }
 
 fn expand(root: &Path, pattern: &Path) -> Result<Vec<PathBuf>> {

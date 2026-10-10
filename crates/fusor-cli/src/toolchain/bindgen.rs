@@ -155,7 +155,7 @@ fn extract(root: &Path, bytes: &[u8]) -> Result {
     let staging = root.join(format!(
         "{}{}",
         layout::INSTALL_PREFIX,
-        crate::pipeline::publish::generation()
+        crate::pipeline::publish::generation()?
     ));
     fs::create_dir(&staging)?;
     let _cleanup = Staging(staging.clone());

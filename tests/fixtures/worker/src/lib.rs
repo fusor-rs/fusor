@@ -410,3 +410,42 @@ pub async fn exercise_transport() {
     busy::run(&handle, 250).await.unwrap();
     stage("CPU done");
 }
+
+fn worker_failure(error: JobError<fusor_worker::NoError>) -> JsValue {
+    JsValue::from_str(&error.to_string())
+}
+
+#[wasm_bindgen]
+pub async fn startup_probe() -> Result<String, JsValue> {
+    let owner = fusor::Owner::new();
+    owner.commit();
+    echo::run(&owner.handle(), "ready".into())
+        .await
+        .map_err(worker_failure)
+}
+
+#[wasm_bindgen]
+pub async fn cancel_transport_failure() -> Result<u32, JsValue> {
+    let owner = fusor::Owner::new();
+    owner.commit();
+    let service = fusor_worker::spawn::<Delayed>(&owner.handle(), 0)
+        .await
+        .map_err(worker_failure)?;
+    let mut cancelled = service.change((1, 200));
+    start(&mut cancelled).await;
+    let mut waiting = service.read(());
+    start(&mut waiting).await;
+    cancelled.cancellation_handle().cancel();
+    waiting.await.map_err(worker_failure)
+}
+
+#[wasm_bindgen]
+pub async fn credit_transport_failure() -> Result<String, JsValue> {
+    let owner = fusor::Owner::new();
+    owner.commit();
+    let mut stream = numbers::stream(&owner.handle(), 2).buffer(1);
+    assert_eq!(stream.next().await.unwrap().unwrap(), 0);
+    echo::run(&owner.handle(), "after credit".into())
+        .await
+        .map_err(worker_failure)
+}

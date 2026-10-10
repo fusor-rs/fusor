@@ -95,6 +95,9 @@ It runs formatting, the workspace tests, Clippy with warnings denied, each
 the executable external-renderer consumer, and rustdoc. It needs no Node and no
 browser.
 
+CLI socket tests require permission to listen on loopback, including in
+sandboxes. A denied bind fails the test; supported CI hosts must run this coverage.
+
 Then run the browser suites for the area you changed:
 
 | If you changed | Run |

@@ -12,7 +12,7 @@ use proc_macro2::TokenStream;
 use syn::Path;
 
 /// Changes when the backend callback or generated-code contract changes.
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 
 /// An authored location, using a byte offset and one-based line/character column.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -210,7 +210,7 @@ pub enum OperationKind {
     Router {
         routes: Vec<Route>,
     },
-    /// Attach a boundary. `render` is `Fn(&mut Frame<'_>) -> Result<(), String>`.
+    /// Attach a boundary. `render` returns `Result<(), fusor::coherence::Error>`.
     Async {
         boundary: TokenStream,
         render: TokenStream,
@@ -228,7 +228,7 @@ pub struct ComponentCode {
     pub app_state: Option<TokenStream>,
 }
 
-/// Bounded backend v2. Unsupported hydration/JS/server/opaque-content
+/// Bounded backend contract identified by [`VERSION`]. Unsupported hydration/JS/server/opaque-content
 /// operations are rejected by this version even if a backend would accept them.
 pub trait Backend {
     /// Declarations shared by every component in this generated source file.

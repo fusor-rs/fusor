@@ -54,32 +54,10 @@ impl<'a> Linker<'a> {
     ) -> Result<LinkedSource> {
         let html_path = &html.canonical;
         let name = &html.name;
-        let path = html_path.parent().expect("HTML parent").join(&rust.src);
-        let canonical = path.canonicalize().map_err(|error| {
-            SourceError::at_offset(
-                html_path,
-                source,
-                offset,
-                format!("external Rust source {}: {error}", path.display()),
-            )
+        let path = self.external_path(html, source, offset, rust)?;
+        let module: syn::Path = syn::parse_str(&rust.module).map_err(|error| {
+            SourceError::at_offset(html_path, source, offset, &error).with_cause(error)
         })?;
-        if !canonical.starts_with(self.package_root)
-            || canonical.starts_with(&self.package_output)
-            || canonical
-                .extension()
-                .is_none_or(|extension| extension != "rs")
-        {
-            return Err(SourceError::new(html_path, "external Rust source must be a .rs file inside this package, outside its output directory").into());
-        }
-        if !self.linked.insert(canonical) {
-            return Err(SourceError::new(
-                &path,
-                "Rust source registered more than once; share logic through ordinary Rust modules",
-            )
-            .into());
-        }
-        let module: syn::Path = syn::parse_str(&rust.module)
-            .map_err(|error| SourceError::at_offset(html_path, source, offset, error))?;
         // `name` is a module identifier: discovered `@` sources never have Rust.
         let marker = format_ident!("__FUSOR_BINDINGS_{}", name.to_uppercase());
         let expected = path.to_str().ok_or("external source path must be UTF-8")?;
@@ -110,5 +88,40 @@ impl<'a> Linker<'a> {
             line,
             column,
         })
+    }
+    fn external_path(
+        &mut self,
+        html: &Source,
+        source: &str,
+        offset: usize,
+        rust: &ExternalRust,
+    ) -> Result<PathBuf> {
+        let html_path = &html.canonical;
+        let path = html_path.parent().expect("HTML parent").join(&rust.src);
+        let canonical = path.canonicalize().map_err(|error| {
+            SourceError::at_offset(
+                html_path,
+                source,
+                offset,
+                format!("external Rust source {}: {error}", path.display()),
+            )
+            .with_cause(error)
+        })?;
+        if !canonical.starts_with(self.package_root)
+            || canonical.starts_with(&self.package_output)
+            || canonical
+                .extension()
+                .is_none_or(|extension| extension != "rs")
+        {
+            return Err(SourceError::new(html_path, "external Rust source must be a .rs file inside this package, outside its output directory").into());
+        }
+        if !self.linked.insert(canonical) {
+            return Err(SourceError::new(
+                &path,
+                "Rust source registered more than once; share logic through ordinary Rust modules",
+            )
+            .into());
+        }
+        Ok(path)
     }
 }

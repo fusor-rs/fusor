@@ -19,7 +19,6 @@ struct Observer<K: Key, T: 'static, E: 'static> {
 }
 
 impl<K: Key, T: 'static, E: 'static> Observer<K, T, E> {
-    /// Whether this subscription may hold an entry right now.
     fn can_observe(&self) -> bool {
         !self.disposed.get() && self.owner.is_active() && self.client.is_alive()
     }
@@ -28,7 +27,6 @@ impl<K: Key, T: 'static, E: 'static> Observer<K, T, E> {
         self.wake.update(|_| ());
     }
 
-    /// Follow the key once: hold its entry and show that entry's state.
     fn sync(&self, key: &impl Fn() -> Option<K>) {
         self.wake.get();
         if !self.client.track_alive() {
@@ -50,7 +48,6 @@ impl<K: Key, T: 'static, E: 'static> Observer<K, T, E> {
         }
     }
 
-    /// Hold the entry for `next`, unless it is already held.
     fn select(&self, next: &Option<K>) {
         if *self.key.borrow() == *next && self.entry.borrow().is_some() {
             return;
@@ -70,7 +67,6 @@ impl<K: Key, T: 'static, E: 'static> Observer<K, T, E> {
         }
     }
 
-    /// The state to show for `next`: its entry's, or why there is none.
     fn state_for(&self, next: Option<K>) -> QueryState<K, T, E> {
         let entry = self.entry.borrow().clone();
         match (entry, next) {

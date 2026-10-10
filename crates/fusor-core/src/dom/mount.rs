@@ -92,8 +92,12 @@ thread_local! {
 
 /// Held by a generated prepare while it mounts. Bounds recursive component
 /// tags, including cycles across HTML modules.
+///
+/// ```compile_fail
+/// let guard = fusor::dom::NestingGuard;
+/// ```
 #[doc(hidden)]
-pub struct NestingGuard;
+pub struct NestingGuard(());
 
 impl NestingGuard {
     pub fn enter() -> Result<Self, JsValue> {
@@ -104,7 +108,7 @@ impl NestingGuard {
             )));
         }
         NESTING.set(depth + 1);
-        Ok(Self)
+        Ok(Self(()))
     }
 }
 

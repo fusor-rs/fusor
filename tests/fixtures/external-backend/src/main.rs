@@ -289,10 +289,11 @@ fn async_contract() {
 
     let previous = root.text();
     rows.set(vec![row(3, "reject")]);
-    assert_eq!(
-        boundary.status(),
-        BoundaryStatus::Error("rejected async row".into())
-    );
+    let BoundaryStatus::Error(error) = boundary.status() else {
+        panic!("expected renderer rejection");
+    };
+    assert_eq!(error.kind(), fusor::coherence::ErrorKind::Renderer);
+    assert_eq!(error.downcast_ref::<&str>(), Some(&"rejected async row"));
     assert_eq!(
         root.text(),
         previous,
@@ -321,7 +322,14 @@ fn async_contract() {
     assert_eq!(newest.key, 3);
     newest.complete(Err("offline".into())).unwrap();
     executor.run_until_stalled();
-    assert_eq!(boundary.status(), BoundaryStatus::Error("offline".into()));
+    let BoundaryStatus::Error(error) = boundary.status() else {
+        panic!("expected rejected resource read");
+    };
+    assert_eq!(error.kind(), fusor::coherence::ErrorKind::Read);
+    assert_eq!(
+        error.downcast_ref::<String>().map(String::as_str),
+        Some("offline")
+    );
     assert_eq!(root.find("async-value").unwrap().text(), "first");
     boundary.retry();
     executor.run_until_stalled();

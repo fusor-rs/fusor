@@ -40,8 +40,15 @@ fn queries_retain_repeated_values_and_fragment_is_separate() {
     let query = encode_query([("q", "café + a/b"), ("tag", "one"), ("tag", "two")]);
     let url = AppUrl::parse(&format!("/files/report?{query}#part-2")).unwrap();
     assert_eq!(url.query_first("q").unwrap(), "café + a/b");
-    assert_eq!(url.query_pairs().filter(|(key, _)| key == "tag").count(), 2);
-    assert_eq!(url.fragment, "part-2");
+    assert_eq!(
+        url.query_pairs().collect::<Vec<_>>(),
+        [
+            ("q".into(), "café + a/b".into()),
+            ("tag".into(), "one".into()),
+            ("tag".into(), "two".into())
+        ]
+    );
+    assert_eq!(url.fragment(), "part-2");
     assert_eq!(AppUrl::parse(&url.to_string()).unwrap(), url);
 }
 #[test]

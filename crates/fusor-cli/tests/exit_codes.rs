@@ -44,3 +44,26 @@ fn help_and_version_succeed() {
         assert_eq!(exit_code(&mut fixture.cli(&fixture.root, &args)), 0);
     }
 }
+
+#[test]
+#[cfg(unix)]
+fn a_closed_stdout_pipe_fails_with_a_project_error() {
+    use std::{
+        os::{fd::OwnedFd, unix::net::UnixStream},
+        process::Stdio,
+    };
+    let fixture = Fixture::new();
+    let (reader, writer) = UnixStream::pair().unwrap();
+    drop(reader);
+    let output = fixture
+        .cli(
+            &fixture.root,
+            &["new", "closed-pipe", "--skip-install", "--framework-path"],
+        )
+        .arg(&fixture.framework)
+        .stdout(Stdio::from(OwnedFd::from(writer)))
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(PROJECT));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("writing command output"));
+}

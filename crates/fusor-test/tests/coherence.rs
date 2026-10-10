@@ -1,11 +1,11 @@
 use fusor::{
     Owner, Signal, batch,
-    coherence::{AsyncBoundary, BoundaryStatus, Publication},
+    coherence::{AsyncBoundary, BoundaryStatus, Error, ErrorKind, Publication},
     signal,
 };
 use fusor_async::{AsyncRead, AsyncValue};
 use fusor_test::{ControlledLoader, TestExecutor};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, error::Error as _, rc::Rc};
 
 struct Publish {
     view: Rc<RefCell<Vec<String>>>,
@@ -13,11 +13,11 @@ struct Publish {
     after: Option<Box<dyn FnOnce()>>,
 }
 impl Publication for Publish {
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self) -> Result<(), Error> {
         Ok(())
     }
-    fn apply(&mut self) -> Result<(), String> {
-        *self.view.borrow_mut() = self.next.clone();
+    fn apply(&mut self) -> Result<(), Error> {
+        *self.view.borrow_mut() = std::mem::take(&mut self.next);
         Ok(())
     }
     fn finish(mut self: Box<Self>) {
@@ -41,6 +41,31 @@ fn read(
         move |key, context| loader.load(key, context),
         executor.spawner(),
     )
+}
+
+fn complete(loader: &Loader, executor: &TestExecutor, result: Result<String, String>) {
+    loader.next_request().unwrap().complete(result).unwrap();
+    executor.run_until_stalled();
+}
+
+fn publication(view: &Rc<RefCell<Vec<String>>>, next: Vec<String>) -> Box<dyn Publication> {
+    Box::new(Publish {
+        view: view.clone(),
+        next,
+        after: None,
+    })
+}
+
+fn append_ready(
+    read: &AsyncValue<String, String, String>,
+    attempt: &fusor::coherence::Attempt,
+    next: &mut Vec<String>,
+) -> Result<bool, Error> {
+    let AsyncRead::Ready(value) = read.read(attempt)? else {
+        return Ok(false);
+    };
+    next.push((*value).clone());
+    Ok(true)
 }
 
 #[test]
@@ -67,35 +92,17 @@ fn independent_reads_prepare_without_dom_activation_and_commit_together() {
             let view = view.clone();
             move |attempt| {
                 let mut next = vec![selected.get()];
-                if let AsyncRead::Ready(value) = price.read(attempt)? {
-                    next.push((*value).clone());
-                }
-                if let AsyncRead::Ready(value) = stock.read(attempt)? {
-                    next.push((*value).clone());
-                }
-                Ok(Box::new(Publish {
-                    view: view.clone(),
-                    next,
-                    after: None,
-                }))
+                append_ready(&price, attempt, &mut next)?;
+                append_ready(&stock, attempt, &mut next)?;
+                Ok(publication(&view, next))
             }
         })
         .unwrap();
     executor.run_until_stalled();
     assert!(!owner.handle().is_active());
-    prices
-        .next_request()
-        .unwrap()
-        .complete(Ok("price-A".into()))
-        .unwrap();
-    executor.run_until_stalled();
+    complete(&prices, &executor, Ok("price-A".into()));
     assert_eq!(&*view.borrow(), &["fallback"]);
-    stocks
-        .next_request()
-        .unwrap()
-        .complete(Ok("stock-A".into()))
-        .unwrap();
-    executor.run_until_stalled();
+    complete(&stocks, &executor, Ok("stock-A".into()));
     assert_eq!(&*view.borrow(), &["A", "price-A", "stock-A"]);
     assert_eq!(boundary.status(), BoundaryStatus::Ready);
     assert_eq!(interactive.borrow().last(), Some(&true));
@@ -109,21 +116,12 @@ fn independent_reads_prepare_without_dom_activation_and_commit_together() {
     selected.set("C".into());
     executor.run_until_stalled();
     assert!(old_price.is_cancelled() && old_stock.is_cancelled());
-    let _ = old_stock.complete(Ok("stock-B".into()));
-    let _ = old_price.complete(Ok("price-B".into()));
-    stocks
-        .next_request()
-        .unwrap()
-        .complete(Ok("stock-C".into()))
-        .unwrap();
-    executor.run_until_stalled();
+    for (request, value) in [(old_stock, "stock-B"), (old_price, "price-B")] {
+        assert_eq!(request.complete(Ok(value.into())), Err(Ok(value.into())));
+    }
+    complete(&stocks, &executor, Ok("stock-C".into()));
     assert_eq!(&*view.borrow(), &["A", "price-A", "stock-A"]);
-    prices
-        .next_request()
-        .unwrap()
-        .complete(Ok("price-C".into()))
-        .unwrap();
-    executor.run_until_stalled();
+    complete(&prices, &executor, Ok("price-C".into()));
     assert_eq!(&*view.borrow(), &["C", "price-C", "stock-C"]);
     assert_eq!(prices.counts().started, 3);
     owner.dispose();
@@ -139,9 +137,9 @@ fn aba_restarts_but_retry_reuses_success_and_third_descendant_joins() {
     let first = Loader::new();
     let second = Loader::new();
     let third = Loader::new();
-    let a = read(&owner, &selected, &first, &executor);
-    let b = read(&owner, &selected, &second, &executor);
-    let c = read(&owner, &selected, &third, &executor);
+    let first_read = read(&owner, &selected, &first, &executor);
+    let second_read = read(&owner, &selected, &second, &executor);
+    let dependent_read = read(&owner, &selected, &third, &executor);
     let boundary = AsyncBoundary::coherent();
     let view = Rc::new(RefCell::new(vec![]));
     let _mount = boundary
@@ -150,21 +148,11 @@ fn aba_restarts_but_retry_reuses_success_and_third_descendant_joins() {
             let locale = locale.clone();
             move |attempt| {
                 let mut next = vec![locale.get()];
-                if let AsyncRead::Ready(value) = a.read(attempt)? {
-                    next.push((*value).clone());
+                append_ready(&first_read, attempt, &mut next)?;
+                if append_ready(&second_read, attempt, &mut next)? {
+                    append_ready(&dependent_read, attempt, &mut next)?;
                 }
-                if let AsyncRead::Ready(value) = b.read(attempt)? {
-                    next.push((*value).clone());
-                    // Independently discovered only after b resolves.
-                    if let AsyncRead::Ready(value) = c.read(attempt)? {
-                        next.push((*value).clone());
-                    }
-                }
-                Ok(Box::new(Publish {
-                    view: view.clone(),
-                    next,
-                    after: None,
-                }))
+                Ok(publication(&view, next))
             }
         })
         .unwrap();
@@ -177,40 +165,22 @@ fn aba_restarts_but_retry_reuses_success_and_third_descendant_joins() {
     });
     executor.run_until_stalled();
     assert!(stale_a.is_cancelled() && stale_b.is_cancelled());
-    first
-        .next_request()
-        .unwrap()
-        .complete(Ok("a".into()))
-        .unwrap();
-    executor.run_until_stalled();
-    second
-        .next_request()
-        .unwrap()
-        .complete(Err("unavailable".into()))
-        .unwrap();
-    executor.run_until_stalled();
-    assert_eq!(
-        boundary.status(),
-        BoundaryStatus::Error("unavailable".into())
-    );
+    complete(&first, &executor, Ok("a".into()));
+    complete(&second, &executor, Err("unavailable".into()));
+    let BoundaryStatus::Error(error) = boundary.status() else {
+        panic!("expected read failure")
+    };
+    assert_eq!(error.kind(), ErrorKind::Read);
+    assert_eq!(error.downcast_ref::<String>().unwrap(), "unavailable");
+    assert_eq!(error.source().unwrap().to_string(), "unavailable");
     assert!(view.borrow().is_empty());
     boundary.retry();
     executor.run_until_stalled();
     assert_eq!(first.counts().started, 2);
-    second
-        .next_request()
-        .unwrap()
-        .complete(Ok("b".into()))
-        .unwrap();
-    executor.run_until_stalled();
+    complete(&second, &executor, Ok("b".into()));
     assert!(view.borrow().is_empty());
     assert_eq!(third.counts().started, 1);
-    third
-        .next_request()
-        .unwrap()
-        .complete(Ok("c".into()))
-        .unwrap();
-    executor.run_until_stalled();
+    complete(&third, &executor, Ok("c".into()));
     assert_eq!(&*view.borrow(), &["en", "a", "b", "c"]);
     locale.set("fr".into());
     executor.run_until_stalled();
@@ -233,11 +203,13 @@ fn own_status_cycles_fail_and_attach_is_exclusive() {
             }))
         })
         .unwrap();
-    assert!(matches!(boundary.status(), BoundaryStatus::Error(_)));
-    assert!(
-        boundary
-            .attach(&owner.handle(), |_| unreachable!())
-            .is_err()
+    assert_eq!(
+        boundary.status(),
+        BoundaryStatus::Error("a coherent region cannot read its own boundary status".into())
+    );
+    assert_eq!(
+        boundary.attach(&owner.handle(), |_| unreachable!()).err(),
+        Some("an async boundary can only attach once".into())
     );
 }
 
@@ -310,8 +282,9 @@ fn abandoned_reads_cancel_and_impure_evaluation_does_not_publish() {
             }
         })
         .unwrap();
-    assert!(
-        matches!(boundary.status(), BoundaryStatus::Error(message) if message.contains("pure"))
+    assert_eq!(
+        boundary.status(),
+        BoundaryStatus::Error("coherent render evaluation must be pure: signal write".into())
     );
     assert_eq!(&*view.borrow(), &["previous"]);
 }
@@ -320,10 +293,10 @@ fn abandoned_reads_cancel_and_impure_evaluation_does_not_publish() {
 fn failed_dom_publication_faults_without_activating_work() {
     struct Failure;
     impl Publication for Failure {
-        fn validate(&self) -> Result<(), String> {
+        fn validate(&self) -> Result<(), Error> {
             Ok(())
         }
-        fn apply(&mut self) -> Result<(), String> {
+        fn apply(&mut self) -> Result<(), Error> {
             Err("DOM removed".into())
         }
         fn finish(self: Box<Self>) {
@@ -358,11 +331,7 @@ fn retained_read_can_remount_after_its_boundary_disposes_but_cannot_join_two_liv
                     AsyncRead::Ready(value) => vec![value.as_ref().clone()],
                     AsyncRead::Pending => Vec::new(),
                 };
-                Ok(Box::new(Publish {
-                    view: view.clone(),
-                    next,
-                    after: None,
-                }))
+                Ok(publication(&view, next))
             })
             .unwrap()
     };
@@ -372,10 +341,12 @@ fn retained_read_can_remount_after_its_boundary_disposes_but_cannot_join_two_liv
     let old = loader.next_request().unwrap();
     let conflicting = AsyncBoundary::coherent();
     let conflict_mount = attach(&conflicting);
-    assert!(matches!(
+    assert_eq!(
         conflicting.status(),
-        BoundaryStatus::Error(_) | BoundaryStatus::Faulted(_)
-    ));
+        BoundaryStatus::Error(
+            "one AsyncValue cannot participate in different live async boundaries".into()
+        )
+    );
     assert!(!old.is_cancelled());
     drop(conflict_mount);
     drop(first_mount);
@@ -384,7 +355,10 @@ fn retained_read_can_remount_after_its_boundary_disposes_but_cannot_join_two_liv
     let _replacement_mount = attach(&replacement);
     executor.run_until_stalled();
     let fresh = loader.next_request().unwrap();
-    let _ = old.complete(Ok("obsolete".into()));
+    assert_eq!(
+        old.complete(Ok("obsolete".into())),
+        Err(Ok("obsolete".into()))
+    );
     executor.run_until_stalled();
     assert!(view.borrow().is_empty());
     fresh.complete(Ok("fresh".into())).unwrap();

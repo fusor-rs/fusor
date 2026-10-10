@@ -2,6 +2,8 @@
 //! component factories. Browser entries live in independently built packages.
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
+mod error;
+pub use error::Error;
 
 /// Browser registry shipped with this protocol release.
 pub const REGISTRY_JAVASCRIPT: &str = include_str!("../runtime/registry.js");
@@ -142,17 +144,23 @@ pub struct DeliveryManifest {
     pub units: BTreeMap<String, Unit>,
 }
 impl DeliveryManifest {
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), Error> {
         if self.version != PROTOCOL_VERSION {
-            return Err("unsupported island delivery protocol".into());
+            return Err(Error::Protocol(self.version));
         }
         if self.generation.is_empty() {
-            return Err("delivery generation cannot be empty".into());
+            return Err(Error::Manifest {
+                identity: "generation".into(),
+                reason: "delivery generation cannot be empty",
+            });
         }
         let mut descriptors = std::collections::BTreeSet::new();
         for (name, unit) in &self.units {
             if name.is_empty() || unit.entries.is_empty() {
-                return Err("delivery unit needs a name and entries".into());
+                return Err(Error::Manifest {
+                    identity: name.clone(),
+                    reason: "delivery unit needs a name and entries",
+                });
             }
             for url in std::iter::once(&unit.javascript)
                 .chain(std::iter::once(&unit.wasm))
@@ -163,27 +171,34 @@ impl DeliveryManifest {
                     || url.contains("..")
                     || url.contains(['#', '?', '\\'])
                 {
-                    return Err(
-                        "delivery URLs must be immutable, same-origin absolute paths".into(),
-                    );
+                    return Err(Error::Manifest {
+                        identity: url.clone(),
+                        reason: "delivery URLs must be immutable, same-origin absolute paths",
+                    });
                 }
             }
             for entry in &unit.entries {
                 if &entry.unit != name {
-                    return Err("island entry belongs to a different delivery unit".into());
+                    return Err(Error::Manifest {
+                        identity: entry.descriptor.clone(),
+                        reason: "island entry belongs to a different delivery unit",
+                    });
                 }
                 if entry.descriptor.is_empty()
                     || entry.props_schema.is_empty()
                     || entry.template_hash.is_empty()
                     || !descriptors.insert(&entry.descriptor)
                 {
-                    return Err("island descriptors must be unique and include schema and template identity".into());
+                    return Err(Error::Manifest {
+                        identity: entry.descriptor.clone(),
+                        reason: "island descriptors must be unique and include schema and template identity",
+                    });
                 }
             }
         }
         Ok(())
     }
-    pub fn entry<D: Island>(&self) -> Result<&Entry, String> {
+    pub fn entry<D: Island>(&self) -> Result<&Entry, Error> {
         let entry = self
             .units
             .get(D::UNIT)
@@ -192,9 +207,12 @@ impl DeliveryManifest {
                     .iter()
                     .find(|entry| entry.descriptor == D::NAME)
             })
-            .ok_or_else(|| format!("unregistered island {} in unit {}", D::NAME, D::UNIT))?;
+            .ok_or(Error::Unregistered {
+                descriptor: D::NAME,
+                unit: D::UNIT,
+            })?;
         if entry.props_schema != D::SCHEMA || entry.mode != D::MODE {
-            return Err(format!("island descriptor/schema mismatch: {}", D::NAME));
+            return Err(Error::DescriptorMismatch(D::NAME));
         }
         Ok(entry)
     }

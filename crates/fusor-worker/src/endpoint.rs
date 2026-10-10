@@ -310,7 +310,7 @@ impl Endpoint {
             | Event::Result(Err(crate::JobError::Application(payload)))
             | Event::End(Err(crate::JobError::Application(payload))) => match payload {
                 Payload::Instance(instance) => {
-                    let _ = self.send(&Command::Dispose { instance });
+                    self.dispose(instance);
                 }
                 payload => self.codec.discard(payload),
             },
@@ -332,13 +332,22 @@ impl Endpoint {
         self.services.borrow_mut().insert(instance, registration);
     }
     pub fn dispose(&self, instance: u64) {
-        let _ = self.send(&Command::Dispose { instance });
+        self.send_control(&Command::Dispose { instance });
     }
     pub fn cancel(&self, id: u64) {
-        let _ = self.send(&Command::Cancel { id });
+        self.send_control(&Command::Cancel { id });
     }
     pub fn credit(&self, id: u64) {
-        let _ = self.send(&Command::Credit { id });
+        self.send_control(&Command::Credit { id });
+    }
+    fn send_control(&self, frame: &Command) {
+        // Cleanup may run after shutdown has already closed the transport.
+        if self.error.borrow().is_some() {
+            return;
+        }
+        if let Err(error) = self.send(frame) {
+            self.terminate(error);
+        }
     }
     pub fn forget(&self, id: u64) {
         self.jobs.borrow_mut().remove(&id);

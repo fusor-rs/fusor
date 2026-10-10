@@ -310,6 +310,7 @@ impl Frame<'_> {
                 "missing coherent {} anchor {id}",
                 if element { "element" } else { "mount" }
             )
+            .into()
         })
     }
     pub fn text<T: Display>(&mut self, id: usize, read: impl Fn() -> T) -> Result<(), Error> {

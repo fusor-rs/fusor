@@ -1,7 +1,10 @@
 //! Progress and diagnostics go to stderr as a short event log: a banner, then
 //! `○` for work starting, `✓` for work done and `✗` for failures. What a user
 //! might pipe goes to stdout.
-use crate::cli::Color;
+use crate::{
+    cli::Color,
+    error::{Error, Result},
+};
 use std::{
     fmt::Display,
     io::{IsTerminal, Write},
@@ -124,17 +127,19 @@ impl Reporter {
 
     /// Data a script consumes, such as generated source. Printed even under
     /// `--quiet`, which silences progress only.
-    pub fn result(&self, detail: impl Display) {
+    pub fn result(&self, detail: impl Display) -> Result {
         let mut out = std::io::stdout().lock();
-        let _ = writeln!(out, "{detail}");
+        writeln!(out, "{detail}")
+            .map_err(|error| Error::from(error).context("writing command output"))
     }
 
     /// A server's address, for scripts. The banner already shows it to a person,
     /// so it goes to stdout only when stdout is not a terminal.
-    pub fn address(&self, url: &str) {
+    pub fn address(&self, url: &str) -> Result {
         if !std::io::stdout().is_terminal() {
-            self.result(url);
+            self.result(url)?;
         }
+        Ok(())
     }
 
     fn mark(&self, color: &str, symbol: &str, detail: impl Display) {
@@ -156,6 +161,7 @@ impl Reporter {
     }
 
     fn line(&self, text: &str) {
+        // Progress is best effort: losing stderr must not prevent command results.
         let _ = writeln!(std::io::stderr().lock(), "{text}");
     }
 }

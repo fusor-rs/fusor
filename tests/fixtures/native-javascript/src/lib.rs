@@ -45,42 +45,46 @@ pub fn stop() -> Result<(), wasm_bindgen::JsValue> {
     fusor::dom::application::unmount()
 }
 
-#[derive(FromInputs, JsInputs)]
-struct Probe {
-    #[input]
-    #[js]
-    value: Signal<f64>,
-    #[input]
-    other: Signal<f64>,
-    #[input]
-    show: Signal<bool>,
-    #[input]
-    observed: Signal<String>,
-    #[local(init = signal("ordinary field".to_owned()))]
-    #[js]
-    __proto__: Signal<String>,
-    #[local(init = signal(true))]
-    #[js]
-    constructor: Signal<bool>,
-}
+mod components {
+    use super::*;
 
-#[derive(FromInputs)]
-struct NoInputs;
+    #[derive(FromInputs, JsInputs)]
+    struct Probe {
+        #[input]
+        #[js]
+        value: Signal<f64>,
+        #[input]
+        other: Signal<f64>,
+        #[input]
+        show: Signal<bool>,
+        #[input]
+        observed: Signal<String>,
+        #[local(init = signal("ordinary field".to_owned()))]
+        #[js]
+        __proto__: Signal<String>,
+        #[local(init = signal(true))]
+        #[js]
+        constructor: Signal<bool>,
+    }
 
-#[derive(FromInputs, JsInputs)]
-struct EmptyInputs;
+    #[derive(FromInputs)]
+    struct NoInputs;
 
-impl Probe {
-    fn from_js(&self, event: web_sys::Event) {
-        let message = fusor::js::event_detail::<String>(&event).unwrap();
-        self.observed.set(format!("{message}:{}", self.other.get()));
-        if message == "rewrite" {
-            self.value.set(3.0);
-        }
-        if message == "dispose" {
-            self.show.set(false);
+    #[derive(FromInputs, JsInputs)]
+    struct EmptyInputs;
+
+    impl Probe {
+        fn from_js(&self, event: web_sys::Event) {
+            let message = fusor::js::event_detail::<String>(&event).unwrap();
+            self.observed.set(format!("{message}:{}", self.other.get()));
+            if message == "rewrite" {
+                self.value.set(3.0);
+            }
+            if message == "dispose" {
+                self.show.set(false);
+            }
         }
     }
-}
 
-fusor::template!("web/index.html");
+    fusor::template!("web/index.html");
+}

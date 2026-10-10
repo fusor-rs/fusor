@@ -1,6 +1,7 @@
 use crate::Result;
 use fusor::template::escape_into;
 use std::fmt::Write as _;
+const KEY_ATTRIBUTE: &str = " data-fusor-key=\"";
 
 /// HTML created by a generated server component. It cannot be constructed from
 /// arbitrary runtime strings; dynamic values go through escaped writer methods.
@@ -23,12 +24,8 @@ impl Html {
         let offset = self
             .first_open
             .ok_or("keyed rows require an element root")?;
-        let mut attribute = String::from(" data-fusor-key=\"");
-        escape_into(
-            &mut attribute,
-            &fusor_islands::encode(key).map_err(|error| error.to_string())?,
-            true,
-        );
+        let mut attribute = String::from(KEY_ATTRIBUTE);
+        escape_into(&mut attribute, &fusor_islands::encode(key)?, true);
         attribute.push('"');
         self.source.insert_str(offset, &attribute);
         Ok(self)
@@ -166,10 +163,10 @@ impl Writer {
                 .first_open
                 .ok_or("keyed rows require an element root")?;
             writer.key_json.clear();
-            serde_json::to_writer(&mut writer.key_json, key).map_err(|error| error.to_string())?;
-            let json = std::str::from_utf8(&writer.key_json).map_err(|error| error.to_string())?;
+            serde_json::to_writer(&mut writer.key_json, key)?;
+            let json = std::str::from_utf8(&writer.key_json).expect("serde_json writes UTF-8");
             writer.key_attribute.clear();
-            writer.key_attribute.push_str(" data-fusor-key=\"");
+            writer.key_attribute.push_str(KEY_ATTRIBUTE);
             escape_into(&mut writer.key_attribute, json, true);
             writer.key_attribute.push('"');
             writer.source.insert_str(offset, &writer.key_attribute);
@@ -236,110 +233,101 @@ impl Writer {
 mod tests {
     use super::Writer;
 
+    fn section_pair(editable: bool) -> (Writer, Writer) {
+        let mut ordinary = Writer::new();
+        ordinary.literal("<!--日本語😀-->");
+        ordinary.open("section");
+        ordinary.static_attributes(
+            if editable {
+                " contenteditable=\"FALSE\""
+            } else {
+                " contenteditable=\"false\""
+            },
+            editable,
+        );
+        ordinary.end_open();
+        let mut packed = Writer::new();
+        packed.static_markup(
+            if editable {
+                "<!--日本語😀--><section contenteditable=\"FALSE\">"
+            } else {
+                "<!--日本語😀--><section contenteditable=\"false\">"
+            },
+            Some("<!--日本語😀--><section".len()),
+            editable,
+        );
+        (ordinary, packed)
+    }
+
     #[test]
-    fn packed_markup_preserves_utf8_root_editability_and_region_rollback() {
-        use std::panic::{AssertUnwindSafe, catch_unwind};
-        let prefix = "<!--日本語😀-->";
+    fn packed_markup_preserves_utf8_root_editability_and_escaping() {
         for editable in [false, true] {
-            let mut ordinary = Writer::new();
-            ordinary.literal(prefix);
-            ordinary.open("section");
-            ordinary.static_attributes(
-                if editable {
-                    " contenteditable=\"FALSE\""
-                } else {
-                    " contenteditable=\"false\""
-                },
-                editable,
-            );
-            ordinary.end_open();
-            let mut packed = Writer::new();
-            packed.static_markup(
-                if editable {
-                    "<!--日本語😀--><section contenteditable=\"FALSE\">"
-                } else {
-                    "<!--日本語😀--><section contenteditable=\"false\">"
-                },
-                Some(prefix.len() + "<section".len()),
-                editable,
-            );
+            let (mut ordinary, mut packed) = section_pair(editable);
             assert_eq!(packed.source, ordinary.source);
             assert_eq!(packed.first_open, ordinary.first_open);
             assert_eq!(packed.editable, ordinary.editable);
             packed.text("<&\"日本語");
             ordinary.text("<&\"日本語");
-            for panic in [false, true] {
-                let before = packed.source.clone();
-                let root = packed.first_open;
-                let result = catch_unwind(AssertUnwindSafe(|| {
-                    packed.child_into(|writer| {
-                        writer.static_markup(
-                            "<!--nested--><input>",
-                            Some("<!--nested--><input".len()),
-                            true,
-                        );
-                        if panic {
-                            panic!("expected renderer panic");
-                        }
-                        Err("expected renderer error".into())
-                    })
-                }));
-                assert!(if panic {
-                    result.is_err()
-                } else {
-                    result.unwrap().is_err()
-                });
-                assert_eq!(packed.source, before);
-                assert_eq!(packed.first_open, root);
-                assert_eq!(packed.editable, editable);
-            }
             packed.static_markup("</section>", None, false);
             ordinary.close("section");
-            let key = "<&日本語";
             assert_eq!(
-                packed.finish().with_key(&key).unwrap().as_str(),
-                ordinary.finish().with_key(&key).unwrap().as_str()
+                packed.finish().with_key(&"<&日本語").unwrap().as_str(),
+                ordinary.finish().with_key(&"<&日本語").unwrap().as_str()
             );
         }
     }
 
     #[test]
-    fn streamed_children_preserve_root_keys_and_rollback_errors_and_panics() {
+    fn packed_and_streamed_regions_rollback_errors_and_panics() {
         use std::panic::{AssertUnwindSafe, catch_unwind};
-        let mut writer = Writer::new();
-        writer.open("ul");
-        writer.end_open();
-        let parent_root = writer.first_open;
-        for panic in [false, true] {
+        for editable in [false, true] {
+            let (_, mut writer) = section_pair(editable);
             let before = writer.source.clone();
-            let result = catch_unwind(AssertUnwindSafe(|| {
-                writer.child_into(|child| {
-                    child.open("input");
-                    child.end_open();
-                    if panic {
-                        panic!("renderer failed");
-                    }
-                    Err("renderer failed".into())
+            let root = writer.first_open;
+            let error = writer.child_into(|writer| {
+                writer.static_markup(
+                    "<!--nested--><input>",
+                    Some("<!--nested--><input".len()),
+                    true,
+                );
+                Err("renderer failed".into())
+            });
+            assert!(
+                matches!(error.unwrap_err(), crate::Error::Render(message) if message == "renderer failed")
+            );
+            let panic = catch_unwind(AssertUnwindSafe(|| {
+                writer.child_into(|writer| {
+                    writer.open("input");
+                    writer.end_open();
+                    panic!("renderer failed");
                 })
             }));
-            if panic {
-                assert!(result.is_err());
-            } else {
-                assert!(result.unwrap().is_err());
-            }
+            assert_eq!(
+                panic.unwrap_err().downcast_ref::<&str>(),
+                Some(&"renderer failed")
+            );
             assert_eq!(writer.source, before);
-            assert_eq!(writer.first_open, parent_root);
-            assert!(!writer.editable);
-        }
-        assert!(
-            writer
+            assert_eq!(writer.first_open, root);
+            assert_eq!(writer.editable, editable);
+            let error = writer
                 .keyed_child(&1, |child| {
                     child.text("no root");
                     Ok(())
                 })
-                .is_err()
-        );
-        assert_eq!(writer.source, "<ul>");
+                .unwrap_err();
+            assert!(
+                matches!(error, crate::Error::Render(message) if message == "keyed rows require an element root")
+            );
+            assert_eq!(writer.source, before);
+        }
+    }
+
+    #[test]
+    fn streamed_children_preserve_nested_root_keys() {
+        let mut writer = Writer::new();
+        writer.open("ul");
+        writer.end_open();
+        let parent_root = writer.first_open;
         writer
             .keyed_child(&"日本語<&", |child| {
                 child.open("li");
@@ -356,9 +344,8 @@ mod tests {
         assert_eq!(writer.first_open, parent_root);
         assert!(writer.editable);
         writer.close("ul");
-        let html = writer.finish().with_key(&9).unwrap();
         assert_eq!(
-            html.as_str(),
+            writer.finish().with_key(&9).unwrap().as_str(),
             "<ul data-fusor-key=\"9\"><li data-fusor-key=\"&quot;日本語&lt;&amp;&quot;\"><input></li></ul>"
         );
     }
@@ -459,26 +446,21 @@ mod tests {
         writer.end_open();
         let parent_root = writer.first_open;
         let mut expected = String::from("<ul>");
-        for key in [
-            "日本語\"'&<>😀".to_owned(),
-            "x".repeat(2048),
-            String::new(),
-            "short".to_owned(),
+        for (key, row) in [
+            ("日本語\"'&<>😀".to_owned(), r#"<li data-fusor-key="&quot;日本語\&quot;&#39;&amp;&lt;&gt;😀&quot;">payload</li>"#.to_owned()),
+            ("x".repeat(2048), format!("<li data-fusor-key=\"&quot;{}&quot;\">payload</li>", "x".repeat(2048))),
+            (String::new(), "<li data-fusor-key=\"&quot;&quot;\">payload</li>".into()),
+            ("short".to_owned(), "<li data-fusor-key=\"&quot;short&quot;\">payload</li>".into()),
         ] {
-            let mut standalone = Writer::new();
-            leaf(&mut standalone).unwrap();
-            let standalone = standalone.finish().with_key(&key).unwrap();
-            expected.push_str(standalone.as_str());
+            expected.push_str(&row);
             writer.keyed_child(&key, leaf).unwrap();
             assert_eq!(writer.first_open, parent_root);
         }
-        let outer = ("outer<&", 7);
-        let inner = ["a", "日本語\"&😀"];
         writer
-            .keyed_child(&outer, |writer| {
+            .keyed_child(&("outer<&", 7), |writer| {
                 writer.open("li");
                 writer.end_open();
-                writer.keyed_child(&inner, |writer| {
+                writer.keyed_child(&["a", "日本語\"&😀"], |writer| {
                     writer.open("span");
                     writer.end_open();
                     writer.text("nested");
@@ -489,51 +471,41 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        let mut nested = Writer::new();
-        nested.open("span");
-        nested.end_open();
-        nested.text("nested");
-        nested.close("span");
-        let nested = nested.finish().with_key(&inner).unwrap();
-        let mut standalone = Writer::new();
-        standalone.open("li");
-        standalone.end_open();
-        standalone.child(&nested);
-        standalone.close("li");
-        expected.push_str(standalone.finish().with_key(&outer).unwrap().as_str());
+        expected.push_str(r#"<li data-fusor-key="[&quot;outer&lt;&amp;&quot;,7]"><span data-fusor-key="[&quot;a&quot;,&quot;日本語\&quot;&amp;😀&quot;]">nested</span></li>"#);
         writer.close("ul");
         expected.push_str("</ul>");
         assert_eq!(writer.first_open, parent_root);
         assert_eq!(writer.finish().as_str(), expected);
     }
 
+    struct Broken<'a> {
+        panic: bool,
+        rendered: &'a std::cell::Cell<bool>,
+    }
+    impl serde::Serialize for Broken<'_> {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            assert!(
+                self.rendered.get(),
+                "key serialization must follow child rendering"
+            );
+            use serde::ser::SerializeSeq;
+            let mut sequence = serializer.serialize_seq(Some(2))?;
+            sequence.serialize_element("partial日本語<&")?;
+            if self.panic {
+                panic!("expected key serialization panic");
+            }
+            Err(serde::ser::Error::custom(
+                "expected key serialization error",
+            ))
+        }
+    }
+
     #[test]
     fn partial_key_serialization_errors_and_panics_allow_subsequent_keys() {
-        use serde::ser::SerializeSeq;
         use std::{
             cell::Cell,
             panic::{AssertUnwindSafe, catch_unwind},
         };
-        struct Broken<'a> {
-            panic: bool,
-            rendered: &'a Cell<bool>,
-        }
-        impl serde::Serialize for Broken<'_> {
-            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                assert!(
-                    self.rendered.get(),
-                    "key serialization must follow child rendering"
-                );
-                let mut sequence = serializer.serialize_seq(Some(2))?;
-                sequence.serialize_element("partial日本語<&")?;
-                if self.panic {
-                    panic!("expected key serialization panic");
-                }
-                Err(serde::ser::Error::custom(
-                    "expected key serialization error",
-                ))
-            }
-        }
         let mut writer = Writer::new();
         writer.open("section");
         writer.end_open();
@@ -554,14 +526,15 @@ mod tests {
                 })
             }));
             if panic {
-                assert!(result.is_err());
-            } else {
-                assert!(
-                    result
-                        .unwrap()
-                        .unwrap_err()
-                        .contains("expected key serialization error")
+                assert_eq!(
+                    result.unwrap_err().downcast_ref::<&str>(),
+                    Some(&"expected key serialization panic")
                 );
+            } else {
+                let crate::Error::Json(error) = result.unwrap().unwrap_err() else {
+                    panic!("expected key serialization error");
+                };
+                assert_eq!(error.to_string(), "expected key serialization error");
             }
             assert!(rendered.get());
             assert_eq!(writer.source, before);
@@ -576,12 +549,12 @@ mod tests {
                     Ok(())
                 })
                 .unwrap();
-            let mut standalone = Writer::new();
-            standalone.open("div");
-            standalone.end_open();
-            standalone.close("div");
-            let expected = standalone.finish().with_key(&key).unwrap();
-            assert_eq!(writer.source, format!("{before}{}", expected.as_str()));
+            assert_eq!(
+                writer.source,
+                format!(
+                    "{before}<div data-fusor-key=\"&quot;recovered日本語&lt;&amp;&quot;\"></div>"
+                )
+            );
             assert_eq!(writer.first_open, parent_root);
         }
     }

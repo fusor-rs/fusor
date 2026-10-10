@@ -8,16 +8,49 @@ use support::{Fixture, failure, success};
 #[test]
 fn scaffolding_and_read_only_commands_run_without_rust() {
     let fixture = Fixture::new();
-    let help = success(&mut fixture.cli(&fixture.root, &[]));
+    let help = success(fixture.cli(&fixture.root, &[]).env("PATH", ""));
     assert!(String::from_utf8_lossy(&help.stdout).contains("fusor new my-app"));
 
-    let application = fixture.scaffold("starter");
+    success(
+        fixture
+            .cli(
+                &fixture.root,
+                &["new", "starter", "--skip-install", "--framework-path"],
+            )
+            .arg(&fixture.framework)
+            .env("PATH", ""),
+    );
+    let application = fixture.root.join("starter");
     let before = fs::read(application.join("Cargo.toml")).unwrap();
     // Doctor reports problems; it never resolves a lockfile or edits anything.
     let error = failure(fixture.cli(&application, &["doctor"]).env("PATH", ""));
     assert!(error.contains("Cargo.lock is missing"), "{error}");
     assert_eq!(before, fs::read(application.join("Cargo.toml")).unwrap());
     assert!(!application.join("Cargo.lock").exists());
+}
+
+#[test]
+fn doctor_reports_broken_ancestor_manifests_without_rust() {
+    let fixture = Fixture::new();
+    let malformed = fixture.root.join("malformed");
+    let unreadable = fixture.root.join("unreadable");
+    fs::create_dir(&malformed).unwrap();
+    fs::write(malformed.join("Cargo.toml"), "[broken").unwrap();
+    fs::create_dir_all(unreadable.join("Cargo.toml")).unwrap();
+    for root in [malformed, unreadable] {
+        let application = root.join("app");
+        fs::create_dir(&application).unwrap();
+        fs::write(
+            application.join("Cargo.toml"),
+            "[package]\nname = 'app'\n[package.metadata.fusor]\n",
+        )
+        .unwrap();
+        let error = failure(fixture.cli(&application, &["doctor"]).env("PATH", ""));
+        assert!(
+            error.contains(&root.join("Cargo.toml").display().to_string()),
+            "{error}"
+        );
+    }
 }
 
 #[test]

@@ -23,7 +23,7 @@ pub(crate) fn run(cx: &Context, project: &Project, module: &str) -> Result {
                 .remedy(format!("registered modules: {registered}"))
         })?;
     cx.reporter
-        .result(std::fs::read_to_string(&source.rust)?.trim_end());
+        .result(std::fs::read_to_string(&source.rust)?.trim_end())?;
     Ok(())
 }
 

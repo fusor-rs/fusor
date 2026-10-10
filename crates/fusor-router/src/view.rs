@@ -19,6 +19,9 @@ use crate::{
 use fusor::{Derived, OwnerHandle, derived};
 use std::rc::Rc;
 
+pub(crate) const INACTIVE: &str = "router is not active";
+pub(crate) const REENTRANT: &str = "reentrant navigation is not supported";
+
 /// Version of the portable routing integration contract.
 pub const VERSION: u32 = 1;
 

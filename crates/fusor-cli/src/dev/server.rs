@@ -3,6 +3,7 @@ use super::http::{self, Body};
 use crate::{
     context::Context,
     error::{Error, Result},
+    layout,
     pipeline::{manifest::OutputManifest, publish, site::route},
     reporter::elapsed_text,
     workspace::Project,
@@ -38,10 +39,11 @@ pub(crate) fn dev(
 
     let server = bind(port)?;
     let mut routes = Vec::new();
+    let mut watchers = Vec::new();
     for DevApp { cx, project } in apps {
         let base = project.config.base_path.clone();
         let state = Arc::new(RwLock::new(project.clone()));
-        super::watch::start(&cx, project, state.clone())?;
+        watchers.push(super::watch::start(&cx, project, state.clone())?);
         routes.push((base, (cx, state)));
     }
     let base = routes
@@ -66,25 +68,35 @@ pub(crate) fn dev(
         let Some((cx, state)) = route(&routes, url) else {
             return http::build_response(404, "text/plain", b"Not found".to_vec(), false);
         };
-        // A publication must not swap the directory out from under a read.
-        let Ok(_access) = publish::OUTPUT_ACCESS.lock() else {
-            return http::error_response("the output publication lock was poisoned");
-        };
-        let Ok(project) = state.read() else {
-            return http::error_response("the preview state lock was poisoned");
-        };
-        http::respond(
-            method,
-            url,
-            accept,
-            http::Route {
-                directory: &project.output(cx),
-                base: &project.config.base_path,
-                history_fallback: &project.config.history_fallback,
-            },
-            http::Serving::Development,
-        )
+        respond_project(cx, state, method, url, accept)
     })
+}
+
+fn respond_project(
+    cx: &Context,
+    state: &RwLock<Project>,
+    method: &Method,
+    url: &str,
+    accept: &str,
+) -> Body {
+    // A publication must not swap the directory out from under a read.
+    let Ok(_access) = publish::OUTPUT_ACCESS.lock() else {
+        return http::error_response("the output publication lock was poisoned");
+    };
+    let Ok(project) = state.read() else {
+        return http::error_response("the preview state lock was poisoned");
+    };
+    http::respond(
+        method,
+        url,
+        accept,
+        http::Route {
+            directory: &project.output(cx),
+            base: &project.config.base_path,
+            history_fallback: &project.config.history_fallback,
+        },
+        http::Serving::Development,
+    )
 }
 
 fn validate_apps(apps: &[DevApp]) -> Result {
@@ -127,7 +139,7 @@ pub(crate) fn url(port: u16, base: &str) -> String {
 pub(crate) fn ready(cx: &Context, port: u16, base: &str, open: bool, message: &str) -> Result {
     let url = url(port, base);
     cx.reporter.done(message);
-    cx.reporter.address(&url);
+    cx.reporter.address(&url)?;
     if open {
         open_browser(&url)?;
     }
@@ -151,51 +163,65 @@ pub(crate) fn serve(
         let listener = tokio::net::TcpListener::from_std(server)?;
         loop {
             let (stream, _) = listener.accept().await?;
-            let cx = cx.clone();
-            let answer = answer.clone();
-            tokio::task::spawn_local(async move {
-                let service = service_fn(|request: Request<hyper::body::Incoming>| {
-                    let started = Instant::now();
-                    let url = request
-                        .uri()
-                        .path_and_query()
-                        .map_or("/", |value| value.as_str());
-                    let accept = request
-                        .headers()
-                        .get("Accept")
-                        .and_then(|value| value.to_str().ok())
-                        .unwrap_or_default();
-                    let response = answer(request.method(), url, accept);
-                    let status = response.status().as_u16();
-                    if logged(&cx, url, &response, status) {
-                        cx.reporter.request(
-                            request.method().as_str(),
-                            request.uri().path(),
-                            status,
-                            started.elapsed(),
-                        );
-                    }
-                    std::future::ready(Ok::<_, Infallible>(
-                        response.map(|body| Full::new(Bytes::from(body))),
-                    ))
-                });
-                if let Err(error) = hyper::server::conn::http1::Builder::new()
-                    .timer(TokioTimer::new())
-                    .serve_connection(TokioIo::new(stream), service)
-                    .await
-                {
-                    cx.reporter.note(format!("HTTP: {error}"));
-                }
-            });
+            tokio::task::spawn_local(serve_connection(cx.clone(), stream, answer.clone()));
         }
     })
+}
+
+async fn serve_connection(
+    cx: Rc<Context>,
+    stream: tokio::net::TcpStream,
+    answer: Rc<impl Fn(&Method, &str, &str) -> Body>,
+) {
+    let service = service_fn(|request| {
+        std::future::ready(Ok::<_, Infallible>(answer_request(&cx, &*answer, request)))
+    });
+    if let Err(error) = hyper::server::conn::http1::Builder::new()
+        .timer(TokioTimer::new())
+        .serve_connection(TokioIo::new(stream), service)
+        .await
+    {
+        cx.reporter.note(format!("HTTP: {error}"));
+    }
+}
+
+fn answer_request(
+    cx: &Context,
+    answer: &impl Fn(&Method, &str, &str) -> Body,
+    request: Request<hyper::body::Incoming>,
+) -> hyper::Response<Full<Bytes>> {
+    let started = Instant::now();
+    let url = request
+        .uri()
+        .path_and_query()
+        .map_or("/", |value| value.as_str());
+    // A non-text Accept header cannot authorize the HTML history fallback.
+    let accept = request
+        .headers()
+        .get("Accept")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let response = answer(request.method(), url, accept);
+    let status = response.status().as_u16();
+    if logged(cx, url, &response, status) {
+        cx.reporter.request(
+            request.method().as_str(),
+            request.uri().path(),
+            status,
+            started.elapsed(),
+        );
+    }
+    response.map(|body| Full::new(Bytes::from(body)))
 }
 
 /// Page loads and errors, like a framework dev server: not every script, image
 /// and stylesheet a page pulls in, and never the refresh client's polling.
 fn logged(cx: &Context, url: &str, response: &Body, status: u16) -> bool {
     let path = url.split('?').next().unwrap_or("");
-    if path.ends_with("__fusor/version") || path.ends_with("__fusor/update") {
+    if ["version", "update"]
+        .iter()
+        .any(|name| path.ends_with(&format!("{}/{name}", layout::GENERATED)))
+    {
         return false;
     }
     let document = response

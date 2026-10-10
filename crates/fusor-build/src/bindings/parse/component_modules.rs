@@ -50,15 +50,7 @@ impl PendingModule {
         }
         let digest = format!("{:x}", Sha256::digest(source.as_bytes()));
         let (line, column) = crate::location(source, tag.span.end);
-        let component_name = component.app().map_or_else(
-            || component.ty.tokens.to_string(),
-            |app| {
-                syn::parse2::<syn::Expr>(app.tokens.clone())
-                    .ok()
-                    .and_then(|expression| app_name(&expression))
-                    .unwrap_or_else(|| "App".into())
-            },
-        );
+        let component_name = component_name(component);
         let module = JavaScriptModule {
             id: format!(
                 "{component_name}:{}:{}",
@@ -102,6 +94,19 @@ impl PendingModule {
         };
         Ok((module, edit))
     }
+}
+
+fn component_name(component: &Component) -> String {
+    component.app().map_or_else(
+        || component.ty.tokens.to_string(),
+        |app| {
+            match syn::parse2::<syn::Expr>(app.tokens.clone()) {
+                Ok(expression) => app_name(&expression).unwrap_or_else(|| "App".into()),
+                // Rustc diagnoses malformed factories; App is only the editor alias.
+                Err(_) => "App".into(),
+            }
+        },
+    )
 }
 
 fn app_name(expression: &syn::Expr) -> Option<String> {

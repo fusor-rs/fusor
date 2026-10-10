@@ -1,4 +1,4 @@
-//! Derives re-exported by `fusor` with its `dom` feature.
+//! `FromInputs` is re-exported with `derive`; `JsInputs` with `javascript`.
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote, quote_spanned};
@@ -34,62 +34,62 @@ impl Fold for ComponentSelf {
     }
 }
 
-fn inputs_runtime(input: &DeriveInput) -> Result<Path> {
+fn runtime_path(input: &DeriveInput, attribute: &str, markers: &[&str]) -> Result<Path> {
     let mut runtime: Path = parse_quote!(::fusor);
     let mut custom_crate = false;
     for attr in &input.attrs {
-        if attr.path().is_ident("input") || attr.path().is_ident("local") {
+        if markers.iter().any(|marker| attr.path().is_ident(marker)) {
+            return Err(Error::new_spanned(attr, "place field markers on a field"));
+        }
+        if !attr.path().is_ident(attribute) {
+            continue;
+        }
+        if custom_crate {
             return Err(Error::new_spanned(
                 attr,
-                "place #[input] or #[local(init = ...)] on a field",
+                format!("duplicate #[{attribute}] attribute"),
             ));
         }
-        if attr.path().is_ident("from_inputs") {
+        attr.parse_nested_meta(|meta| {
+            if !meta.path.is_ident("crate") {
+                return Err(meta.error("expected `crate = path`"));
+            }
             if custom_crate {
-                return Err(Error::new_spanned(
-                    attr,
-                    "duplicate #[from_inputs] attribute",
-                ));
+                return Err(meta.error("duplicate crate path"));
             }
-            attr.parse_nested_meta(|meta| {
-                if !meta.path.is_ident("crate") {
-                    return Err(meta.error("expected `crate = path`"));
-                }
-                if custom_crate {
-                    return Err(meta.error("duplicate crate path"));
-                }
-                runtime = meta.value()?.parse()?;
-                custom_crate = true;
-                Ok(())
-            })?;
-            if !custom_crate {
-                return Err(Error::new_spanned(
-                    attr,
-                    "expected #[from_inputs(crate = path)]",
-                ));
-            }
+            runtime = meta.value()?.parse()?;
+            custom_crate = true;
+            Ok(())
+        })?;
+        if !custom_crate {
+            return Err(Error::new_spanned(
+                attr,
+                format!("expected #[{attribute}(crate = path)]"),
+            ));
         }
     }
     Ok(runtime)
 }
 
-fn input_fields(input: &DeriveInput) -> Result<&Fields> {
+fn input_fields<'a>(input: &'a DeriveInput, derive: &str) -> Result<&'a Fields> {
     if !input.generics.params.is_empty() || input.generics.where_clause.is_some() {
         return Err(Error::new_spanned(
             &input.generics,
-            "FromInputs derive currently supports concrete structs; implement FromInputs manually for generic components",
+            format!(
+                "{derive} derive supports concrete structs; implement {derive} manually for generic components"
+            ),
         ));
     }
     let Data::Struct(data) = &input.data else {
         return Err(Error::new_spanned(
             &input.ident,
-            "FromInputs can only be derived for a struct",
+            format!("{derive} can only be derived for a struct"),
         ));
     };
     if matches!(data.fields, Fields::Unnamed(_)) {
         return Err(Error::new_spanned(
             &data.fields,
-            "FromInputs requires named fields or a unit struct",
+            format!("{derive} requires named fields or a unit struct"),
         ));
     }
     Ok(&data.fields)
@@ -198,8 +198,8 @@ fn local_initializer(attr: &syn::Attribute) -> Result<Expr> {
 }
 
 fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
-    let runtime = inputs_runtime(&input)?;
-    let fields = input_fields(&input)?;
+    let runtime = runtime_path(&input, "from_inputs", &["input", "local"])?;
+    let fields = input_fields(&input, "FromInputs")?;
     let name = &input.ident;
     let visibility = &input.vis;
     let inputs_name = format_ident!(
@@ -273,48 +273,12 @@ fn supported_js_value(ty: &syn::Type) -> bool {
 }
 
 fn expand_js_inputs(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
-    let mut runtime: Path = parse_quote!(::fusor);
-    for attr in &input.attrs {
-        if attr.path().is_ident("js_inputs") {
-            attr.parse_nested_meta(|meta| {
-                if !meta.path.is_ident("crate") {
-                    return Err(meta.error("expected `crate = path`"));
-                }
-                runtime = meta.value()?.parse()?;
-                Ok(())
-            })?;
-        }
-        if attr.path().is_ident("js") {
-            return Err(Error::new_spanned(
-                attr,
-                "place #[js] on an exposed Signal field",
-            ));
-        }
-    }
-    if !input.generics.params.is_empty() || input.generics.where_clause.is_some() {
-        return Err(Error::new_spanned(
-            &input.generics,
-            "JsInputs derive supports concrete structs",
-        ));
-    }
-    let Data::Struct(data) = input.data else {
-        return Err(Error::new_spanned(
-            input.ident,
-            "JsInputs requires a struct",
-        ));
-    };
-    if matches!(data.fields, Fields::Unnamed(_)) {
-        return Err(Error::new_spanned(
-            data.fields,
-            "JsInputs requires named fields or a unit struct",
-        ));
-    }
-    let name = input.ident;
-    let fields = data
-        .fields
+    let runtime = runtime_path(&input, "js_inputs", &["js"])?;
+    let fields = input_fields(&input, "JsInputs")?
         .iter()
         .filter_map(|field| expose_js_field(field).transpose())
         .collect::<Result<Vec<_>>>()?;
+    let name = &input.ident;
     Ok(quote! {
         impl #runtime::js::JsInputs for #name {
             fn js_inputs(&self) -> #runtime::js::Inputs {
@@ -327,24 +291,34 @@ fn expand_js_inputs(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
 }
 
 fn expose_js_field(field: &syn::Field) -> Result<Option<proc_macro2::TokenStream>> {
-    let attributes: Vec<_> = field
+    if let Some(attr) = field
         .attrs
         .iter()
-        .filter(|attr| attr.path().is_ident("js"))
-        .collect();
-    if attributes.is_empty() {
-        return Ok(None);
-    }
-    if attributes.len() != 1 || !matches!(attributes[0].meta, Meta::Path(_)) {
+        .find(|attr| attr.path().is_ident("js_inputs"))
+    {
         return Err(Error::new_spanned(
-            attributes[0],
+            attr,
+            "#[js_inputs(crate = path)] belongs on the struct",
+        ));
+    }
+    let mut attributes = field.attrs.iter().filter(|attr| attr.path().is_ident("js"));
+    let Some(attribute) = attributes.next() else {
+        return Ok(None);
+    };
+    if attributes.next().is_some() || !matches!(attribute.meta, Meta::Path(_)) {
+        return Err(Error::new_spanned(
+            attribute,
             "use a single #[js] marker without arguments",
         ));
     }
     let supported = if let syn::Type::Path(path) = &field.ty {
         path.path.segments.last().is_some_and(|segment| {
-                if segment.ident != "Signal" { return false; }
-                let syn::PathArguments::AngleBracketed(args) = &segment.arguments else { return false; };
+                if segment.ident != "Signal" {
+                    return false;
+                }
+                let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+                    return false;
+                };
                 args.args.len() == 1 && matches!(args.args.first(), Some(syn::GenericArgument::Type(inner)) if supported_js_value(inner))
             })
     } else {

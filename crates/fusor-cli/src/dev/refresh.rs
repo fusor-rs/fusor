@@ -339,7 +339,7 @@ mod tests {
             static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
             let root = std::env::temp_dir().join(format!(
                 "fusor-refresh-{}-{}",
-                crate::pipeline::publish::generation(),
+                crate::pipeline::publish::generation().unwrap(),
                 NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             ));
             let app = root.join("app");
@@ -486,7 +486,7 @@ exit "$1"
         let output = fixture.project.output(&Context::default());
         fs::create_dir_all(&output).unwrap();
         let mut manifest = OutputManifest::new(
-            crate::pipeline::publish::generation(),
+            crate::pipeline::publish::generation().unwrap(),
             &fixture.project.config,
         );
         manifest.javascript = Some(crate::pipeline::manifest::Javascript {

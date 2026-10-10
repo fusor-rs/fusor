@@ -54,7 +54,7 @@ pub(crate) const TARGET: &str = "wasm32-unknown-unknown";
 /// Applications are checked against these, so changing one is part of a CLI
 /// release.
 pub(crate) const BINDGEN_VERSION: &str = "0.2.117";
-pub(crate) const ESBUILD_VERSION: &str = "0.28.2";
+pub(crate) const ESBUILD_VERSION: &str = fusor_npm::ESBUILD_VERSION;
 pub(crate) const WASM_OPT_VERSION: &str = "132";
 
 /// The Rust toolchain new projects pin. The CLI itself builds on older Rust;

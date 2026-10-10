@@ -252,32 +252,43 @@ mod tests {
         assert_eq!(calls.get(), 2);
     }
 
+    struct CloneCountedItem {
+        value: u32,
+        clones: Rc<Cell<usize>>,
+    }
+    impl Clone for CloneCountedItem {
+        fn clone(&self) -> Self {
+            self.clones.set(self.clones.get() + 1);
+            Self {
+                value: self.value,
+                clones: self.clones.clone(),
+            }
+        }
+    }
+    impl PartialEq for CloneCountedItem {
+        fn eq(&self, other: &Self) -> bool {
+            self.value == other.value
+        }
+    }
+    #[derive(Clone)]
+    struct NestedSignalItem {
+        id: u32,
+        value: Signal<u32>,
+    }
+    impl PartialEq for NestedSignalItem {
+        fn eq(&self, other: &Self) -> bool {
+            self.id == other.id
+        }
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn server_row_keeps_item_projection_lazy_and_cached() {
-        struct Item {
-            value: u32,
-            clones: Rc<Cell<usize>>,
-        }
-        impl Clone for Item {
-            fn clone(&self) -> Self {
-                self.clones.set(self.clones.get() + 1);
-                Self {
-                    value: self.value,
-                    clones: self.clones.clone(),
-                }
-            }
-        }
-        impl PartialEq for Item {
-            fn eq(&self, other: &Self) -> bool {
-                self.value == other.value
-            }
-        }
         let clones = Rc::new(Cell::new(0));
         let row = ForEach::server_row(
             "parent",
             Entry {
-                value: Item {
+                value: CloneCountedItem {
                     value: 7,
                     clones: clones.clone(),
                 },
@@ -313,21 +324,11 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn server_row_preserves_nested_signal_identity_and_tracking() {
-        #[derive(Clone)]
-        struct Item {
-            id: u32,
-            value: Signal<u32>,
-        }
-        impl PartialEq for Item {
-            fn eq(&self, other: &Self) -> bool {
-                self.id == other.id
-            }
-        }
         let source = signal(1_u32);
         let row = ForEach::server_row(
             (),
             Entry {
-                value: Item {
+                value: NestedSignalItem {
                     id: 7,
                     value: source.clone(),
                 },
@@ -353,28 +354,12 @@ mod tests {
 
     #[test]
     fn item_only_rows_keep_item_projection_lazy_and_shared() {
-        struct Item {
-            value: u32,
-            clones: Rc<Cell<usize>>,
-        }
-        impl Clone for Item {
-            fn clone(&self) -> Self {
-                self.clones.set(self.clones.get() + 1);
-                Self {
-                    value: self.value,
-                    clones: self.clones.clone(),
-                }
-            }
-        }
-        impl PartialEq for Item {
-            fn eq(&self, other: &Self) -> bool {
-                self.value == other.value
-            }
-        }
-        fn verify(make: impl FnOnce(Entry<Item>) -> ItemRow<&'static str, Item>) {
+        fn verify(
+            make: impl FnOnce(Entry<CloneCountedItem>) -> ItemRow<&'static str, CloneCountedItem>,
+        ) {
             let clones = Rc::new(Cell::new(0));
             let row = make(Entry {
-                value: Item {
+                value: CloneCountedItem {
                     value: 7,
                     clones: clones.clone(),
                 },
@@ -401,19 +386,9 @@ mod tests {
 
     #[test]
     fn item_only_row_suppresses_moves_and_preserves_nested_signal_tracking() {
-        #[derive(Clone)]
-        struct Item {
-            id: u32,
-            value: Signal<u32>,
-        }
-        impl PartialEq for Item {
-            fn eq(&self, other: &Self) -> bool {
-                self.id == other.id
-            }
-        }
         let nested = signal(1_u32);
         let source = signal(Entry {
-            value: Item {
+            value: NestedSignalItem {
                 id: 7,
                 value: nested.clone(),
             },
@@ -435,38 +410,29 @@ mod tests {
         );
         nested.set(2);
         assert_eq!(*values.borrow(), [1, 2]);
+        let replacement = signal(3);
         source.set(Entry {
-            value: Item {
+            value: NestedSignalItem {
                 id: 8,
-                value: signal(3),
+                value: replacement.clone(),
             },
             position: 3,
         });
         assert_eq!(*values.borrow(), [1, 2, 3]);
         drop(subscription);
-        nested.set(4);
+        replacement.set(4);
         assert_eq!(*values.borrow(), [1, 2, 3]);
     }
 
     #[test]
     fn value_rows_republish_only_changed_values_and_keep_nested_tracking() {
-        #[derive(Clone)]
-        struct Item {
-            id: u32,
-            value: Signal<u32>,
-        }
-        impl PartialEq for Item {
-            fn eq(&self, other: &Self) -> bool {
-                self.id == other.id
-            }
-        }
         let nested = signal(1_u32);
         let items = vec![
-            Item {
+            NestedSignalItem {
                 id: 7,
                 value: nested.clone(),
             },
-            Item {
+            NestedSignalItem {
                 id: 9,
                 value: signal(5),
             },
@@ -490,7 +456,7 @@ mod tests {
         source.set(Value(items[1].clone()));
         assert_eq!(*observed.borrow(), [1, 2, 5]);
         drop(subscription);
-        nested.set(4);
+        items[1].value.set(4);
         assert_eq!(*observed.borrow(), [1, 2, 5]);
     }
 

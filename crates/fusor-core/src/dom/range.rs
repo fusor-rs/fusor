@@ -24,7 +24,9 @@ impl Drop for Anchors {
     fn drop(&mut self) {
         for node in [&self.0.start, &self.0.end] {
             if let Some(parent) = node.parent_node() {
-                let _ = parent.remove_child(node);
+                if let Err(error) = parent.remove_child(node) {
+                    web_sys::console::error_1(&error);
+                }
             }
         }
     }
@@ -38,7 +40,9 @@ impl MountPoint {
         let end: Node = document.create_comment("fusor:end").into();
         container.append_child(&start)?;
         if let Err(error) = container.append_child(&end) {
-            let _ = container.remove_child(&start);
+            if let Err(rollback) = container.remove_child(&start) {
+                web_sys::console::error_1(&rollback);
+            }
             return Err(error);
         }
         let point = Self { start, end };
@@ -195,8 +199,16 @@ impl MountPoint {
 
     /// Remove this fragment's anchors and content from the document.
     pub(super) fn remove(&self) {
-        let Ok(nodes) = self.nodes() else {
+        // Structural publication removes retired ranges before their scopes drop.
+        if self.start.parent_node().is_none() && self.end.parent_node().is_none() {
             return;
+        }
+        let nodes = match self.nodes() {
+            Ok(nodes) => nodes,
+            Err(error) => {
+                web_sys::console::error_1(&error);
+                return;
+            }
         };
         for node in nodes {
             #[cfg(feature = "islands")]
@@ -204,7 +216,9 @@ impl MountPoint {
                 super::delivery::dispose_tree(element);
             }
             if let Some(parent) = node.parent_node() {
-                let _ = parent.remove_child(&node);
+                if let Err(error) = parent.remove_child(&node) {
+                    web_sys::console::error_1(&error);
+                }
             }
         }
     }

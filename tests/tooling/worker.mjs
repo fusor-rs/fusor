@@ -69,6 +69,48 @@ try {
       });
       assert.ok(ticks >= 5, 'UI timers keep running during CPU work');
       assert.equal(await page.evaluate(() => activeWorkers.size), 0, 'owner cleanup terminates physical workers');
+      for (const command of ['Call', 'Cancel', 'Credit']) {
+        const message = await page.evaluate(async command => {
+          const NativeWorker = globalThis.Worker;
+          globalThis.Worker = class extends NativeWorker {
+            postMessage(message, ...arguments_) {
+              if (message.type === command) throw Error(`injected ${command} transport failure`);
+              super.postMessage(message, ...arguments_);
+            }
+          };
+          try {
+            const operation = {
+              Call: 'startup_probe',
+              Cancel: 'cancel_transport_failure',
+              Credit: 'credit_transport_failure',
+            }[command];
+            await workerFixture[operation]();
+          } catch (error) {
+            return String(error);
+          } finally {
+            globalThis.Worker = NativeWorker;
+          }
+        }, command);
+        assert.match(message, new RegExp(`worker loading failed:.*injected ${command} transport failure`));
+        assert.equal(await page.evaluate(() => activeWorkers.size), 0, 'transport failure terminates physical workers');
+      }
+      const startupFailure = await page.evaluate(async () => {
+        const NativeWorker = globalThis.Worker;
+        globalThis.Worker = class extends NativeWorker {
+          postMessage(message, ...arguments_) {
+            if (!message.initialize) super.postMessage(message, ...arguments_);
+          }
+        };
+        try {
+          await workerFixture.startup_probe();
+        } catch (error) {
+          return String(error);
+        } finally {
+          globalThis.Worker = NativeWorker;
+        }
+      });
+      assert.equal(startupFailure, 'worker loading failed: Worker startup timed out');
+      assert.equal(await page.evaluate(() => activeWorkers.size), 0, 'startup deadline terminates stalled workers');
       if (process.env.FUSOR_TEST_POOL) {
         await page.evaluate(async () => {
           await workerFixture.exercise_pool();

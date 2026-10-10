@@ -14,7 +14,7 @@ pub(crate) fn run(cx: &Context) -> Result {
     match select::from_filesystem(cx) {
         Ok(Some(candidate)) => {
             cx.reporter
-                .result(format!("Manifest: {}", candidate.manifest.display()));
+                .result(format!("Manifest: {}", candidate.manifest.display()))?;
             inspect(cx, &candidate.manifest, &mut problems)?;
         }
         Ok(None) => problems.push(
@@ -28,14 +28,14 @@ pub(crate) fn run(cx: &Context) -> Result {
             "wasm-bindgen {}: {}",
             layout::BINDGEN_VERSION,
             binary.display()
-        )),
+        ))?,
         Err(error) => problems.push(error.to_string()),
     }
 
     if problems.is_empty() {
         cx.reporter.result(
             "Local prerequisites are ready. Run `fusor check --frozen` to validate the dependency graph and application.",
-        );
+        )?;
         return Ok(());
     }
     for problem in &problems {
@@ -114,7 +114,7 @@ fn check_lockfile(cx: &Context, root: &Path, problems: &mut Vec<String>) -> Resu
             cx.reporter.result(format!(
                 "Cargo lockfile: {} (graph resolution is checked by `fusor check`)",
                 lock.display()
-            ));
+            ))?;
         }
         None => problems.push("Cargo.lock is missing; run `fusor install`".to_owned()),
     }

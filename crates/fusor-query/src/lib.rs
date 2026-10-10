@@ -63,14 +63,15 @@ impl<K: Key, T: 'static, E: 'static> QueryClient<K, T, E> {
         });
         let weak = Rc::downgrade(&inner);
         let cleanup = inner.owner.handle().on_cleanup(move || {
-            if let Some(inner) = weak.upgrade() {
-                batch(|| {
-                    inner.alive.set(false);
-                    for entry in inner.entries.take().into_values() {
-                        entry.dispose();
-                    }
-                });
-            }
+            let Some(inner) = weak.upgrade() else {
+                return;
+            };
+            batch(|| {
+                inner.alive.set(false);
+                for entry in inner.entries.take().into_values() {
+                    entry.dispose();
+                }
+            });
         });
         *inner.cleanup.borrow_mut() = Some(cleanup);
         inner.owner.commit();

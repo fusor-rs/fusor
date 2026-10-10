@@ -217,7 +217,7 @@ impl AppConfig {
             let authored = root.join(path);
             let canonical = authored
                 .canonicalize()
-                .map_err(|error| SourceError::new(&authored, error))?;
+                .map_err(|error| SourceError::new(&authored, &error).with_cause(error))?;
             if !canonical.starts_with(&root) || canonical.starts_with(root.join(&self.output)) {
                 return Err(SourceError::new(
                     path,

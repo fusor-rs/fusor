@@ -175,7 +175,7 @@ mod browser {
     }
 }
 #[cfg(not(target_arch = "wasm32"))]
-pub fn server_render(n: u32) -> Result<String, String> {
+pub fn server_render(n: u32) -> fusor_server::Result<String> {
     use fusor_server::Render;
     Ok(App {
         model: Model::new(n, "rows".into()),

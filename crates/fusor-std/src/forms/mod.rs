@@ -34,7 +34,38 @@ pub enum FormError {
 }
 impl std::fmt::Display for FormError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "form: {self:?}")
+        f.write_str(match self {
+            Self::Invalid => "form validation failed; correct the reported fields",
+            Self::ChangedDuringPreparation => {
+                "form changed while preparing; prepare a fresh snapshot"
+            }
+            Self::WrongForm => "snapshot belongs to another form; prepare it from this form",
+            Self::StaleSnapshot => "snapshot is stale; prepare it again after the latest edit",
+            Self::DuplicateField => "form contains a repeated field; include each field once",
+            Self::UnknownField => {
+                "response maps a field outside this form; correct the response mapping"
+            }
+            Self::DuplicateMapping => "response maps a field twice; map each field once",
+            Self::StaleBaseline => {
+                "confirmed state changed; reconcile before applying this response"
+            }
+            Self::VersionRegression => {
+                "response lowers the confirmed version; reconcile server state"
+            }
+            Self::Busy => "form is saving; wait for the pending submission",
+            Self::NotActive => "form owner is not active; commit its owner before submitting",
+            Self::Disposed => "editing session is closed; create a new form",
+            Self::Unresolved => "save outcome is unresolved; reconcile before submitting again",
+            Self::WrongAction => {
+                "form outcome belongs to another action; reconcile its original action"
+            }
+            Self::Mapping(message) => {
+                return write!(
+                    f,
+                    "response mapping failed: {message}; reconcile server state"
+                );
+            }
+        })
     }
 }
 impl std::error::Error for FormError {}
@@ -64,7 +95,6 @@ impl SubmissionStatus {
         )
     }
 }
-#[derive(Clone)]
 pub(super) struct SnapshotInfo {
     id: u64,
     form: u64,
@@ -103,7 +133,7 @@ struct State {
     status: SubmissionStatus,
     snapshot: Option<Rc<SnapshotInfo>>,
     validation: Option<Rc<field::Issue>>,
-    publication_error: Option<String>,
+    publication_error: Option<FormError>,
 }
 type Validator<V> = dyn Fn(&V) -> Result<(), String>;
 struct Inner<F: Fields, C> {
@@ -210,7 +240,7 @@ impl<F: Fields, C: 'static> Form<F, C> {
             .filter(|issue| issue.current())
             .map_or_else(String::new, |issue| issue.message.clone())
     }
-    pub fn publication_error(&self) -> Option<String> {
+    pub fn publication_error(&self) -> Option<FormError> {
         self.0.state.with(|state| state.publication_error.clone())
     }
     pub fn submission_message(&self) -> String {
@@ -255,47 +285,47 @@ impl<F: Fields, C: 'static> Form<F, C> {
     }
 
     pub fn prepare(&self) -> Result<Snapshot<C>, FormError> {
-        untrack(|| {
-            batch(|| {
-                if self.0.owner.is_disposed() {
-                    return Err(FormError::Disposed);
-                }
-                let stamps = self.0.fields.stamps();
-                let generation = self.0.generation.get();
-                self.0.fields.mark_submitted();
-                self.0.state.update(|state| state.validation = None);
-                let values = self.0.fields.values();
-                self.check_preparation(generation, &stamps)?;
-                let values = values?;
-                let validators = self.0.validators.borrow().clone();
-                for validator in validators {
-                    let result = validator(&values);
-                    self.check_preparation(generation, &stamps)?;
-                    if let Err(message) = result {
-                        self.0.state.update(|state| {
-                            state.validation = Some(Rc::new(field::Issue {
-                                message,
-                                dependencies: stamps.clone(),
-                                #[cfg(feature = "actions")]
-                                origin: crate::identity::next(),
-                            }))
-                        });
-                        return Err(FormError::Invalid);
-                    }
-                }
-                let command = (self.0.build)(values);
-                self.check_preparation(generation, &stamps)?;
-                Ok(Snapshot {
-                    info: Rc::new(SnapshotInfo {
-                        id: crate::identity::next(),
-                        form: self.0.id,
-                        generation,
-                        entity: self.0.entity.clone(),
-                        fields: stamps,
-                    }),
-                    command: Rc::new(command),
-                })
-            })
+        untrack(|| batch(|| self.prepare_snapshot()))
+    }
+
+    fn prepare_snapshot(&self) -> Result<Snapshot<C>, FormError> {
+        if self.0.owner.is_disposed() {
+            return Err(FormError::Disposed);
+        }
+        let stamps = self.0.fields.stamps();
+        let generation = self.0.generation.get();
+        self.0.fields.mark_submitted();
+        self.0.state.update(|state| state.validation = None);
+        let values = self.0.fields.values();
+        self.check_preparation(generation, &stamps)?;
+        let values = values?;
+        let validators = self.0.validators.borrow().clone();
+        for validator in validators {
+            let result = validator(&values);
+            self.check_preparation(generation, &stamps)?;
+            if let Err(message) = result {
+                self.0.state.update(|state| {
+                    state.validation = Some(Rc::new(field::Issue {
+                        message,
+                        dependencies: stamps,
+                        #[cfg(feature = "actions")]
+                        origin: crate::identity::next(),
+                    }))
+                });
+                return Err(FormError::Invalid);
+            }
+        }
+        let command = (self.0.build)(values);
+        self.check_preparation(generation, &stamps)?;
+        Ok(Snapshot {
+            info: Rc::new(SnapshotInfo {
+                id: crate::identity::next(),
+                form: self.0.id,
+                generation,
+                entity: self.0.entity.clone(),
+                fields: stamps,
+            }),
+            command: Rc::new(command),
         })
     }
 }

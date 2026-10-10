@@ -3,7 +3,7 @@
 use crate::api::{self, Project, SaveError, UpdateProject};
 use fusor::prelude::*;
 use fusor_std::{
-    actions::{Action, SavePolicy, Status, browser::action},
+    actions::{Action, Status, browser::action},
     forms::{Form, FormError, TextField},
     query::QueryClient,
 };
@@ -82,7 +82,7 @@ impl Session {
                 }
             },
         )?;
-        let save = action(&owner.handle(), SavePolicy::RejectWhilePending, api::save);
+        let save = action(&owner.handle(), api::save);
         owner.commit();
         Ok(Rc::new(Self {
             title,

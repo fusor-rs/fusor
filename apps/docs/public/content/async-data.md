@@ -158,6 +158,13 @@ cancels that read.
 Cancellation stops local work where supported; it cannot undo changes a server has already
 made.
 
+With the `fusor-std` actions feature, `Action::new(owner, load, spawn)` admits one command
+at a time. The browser feature provides `actions::browser::action(owner, load)`.
+Pending commands reject another dispatch with `AdmissionError::Busy`.
+Forms retain failed response mappings as
+`FormError` in `form.publication_error()` and `action.state().publication_error`; display
+the error for recovery guidance and reconcile the confirmed server state before retrying.
+
 - [Why removal cancels owned work](/docs/ownership)
 
 ## Keep your data layer in your application {#choose}

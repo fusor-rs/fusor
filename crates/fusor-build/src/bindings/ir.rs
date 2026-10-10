@@ -92,6 +92,26 @@ impl Component {
         }
     }
 
+    pub fn forwarded_child(&self) -> Option<&Binding> {
+        if !self.inline()
+            || !self.elements.is_empty()
+            || !self.texts.is_empty()
+            || !self.text_elements.is_empty()
+        {
+            return None;
+        }
+        match self.bindings.as_slice() {
+            [
+                binding @ Binding::Invocation {
+                    condition: None,
+                    key: None,
+                    ..
+                },
+            ] => Some(binding),
+            _ => None,
+        }
+    }
+
     pub fn inline(&self) -> bool {
         matches!(self.shape, ComponentShape::Row)
     }
