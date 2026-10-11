@@ -141,6 +141,7 @@ ci-browser:
     just test template-cache
     just test dev
     just test standalone
+    just test tailwind
     just test router
     just test navigation
     just test composition

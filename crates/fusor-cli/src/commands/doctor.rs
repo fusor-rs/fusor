@@ -97,8 +97,16 @@ fn check_application(manifest: &Path, document: &toml::Value, problems: &mut Vec
             "this manifest is not an application; select one with --manifest-path (workspace roots are not applications)"
                 .to_owned(),
         );
-    } else if let Err(error) = fusor_build::app::AppConfig::load(manifest) {
-        problems.push(format!("invalid [package.metadata.fusor]: {error}"));
+    } else {
+        match fusor_build::app::AppConfig::load(manifest) {
+            Err(error) => problems.push(format!("invalid [package.metadata.fusor]: {error}")),
+            Ok(config) if config.tailwind.is_some() => {
+                if let Err(error) = toolchain::tailwind::resolve() {
+                    problems.push(error.to_string());
+                }
+            }
+            Ok(_) => {}
+        }
     }
 }
 

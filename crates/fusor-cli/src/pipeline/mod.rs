@@ -9,6 +9,7 @@ pub(crate) mod islands;
 pub(crate) mod manifest;
 pub(crate) mod publish;
 pub(crate) mod site;
+pub(crate) mod tailwind;
 pub(crate) mod wasm;
 pub(crate) mod workers;
 

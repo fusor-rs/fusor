@@ -14,6 +14,7 @@ use crate::{
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
 };
@@ -187,6 +188,7 @@ impl Generator<'_> {
         let mut registrations = Vec::new();
         let mut artifacts = Vec::new();
         let mut javascript = Vec::new();
+        let mut classes = BTreeSet::new();
         let mut entry = None;
         let mut templates = String::new();
         for compiled in sources {
@@ -200,6 +202,7 @@ impl Generator<'_> {
                     .map(|module| module.artifact),
             );
             let page = compiled.page;
+            classes.extend(page.classes);
             if compiled.source.kind == SourceKind::Entry {
                 // A native entry has no script to load next to, so load before </body>.
                 let loader_offset = page
@@ -232,6 +235,7 @@ impl Generator<'_> {
             managed_entry: entry.managed,
             sources: artifacts,
             javascript,
+            classes,
         };
         fs::write(
             self.out.join(MANIFEST_FILE),

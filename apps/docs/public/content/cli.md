@@ -42,8 +42,9 @@ fusor new my-app --skip-install
 ## Prepare a fresh clone {#install}
 
 `fusor install` fetches Cargo dependencies, adds the `wasm32-unknown-unknown` target if it
-is missing, and installs the pinned wasm-bindgen. When the application has a `package.json`,
-it restores `node_modules` from `package-lock.json` with `npm ci`.
+is missing, and installs the pinned wasm-bindgen. It also installs the pinned Tailwind CSS
+when the application sets `tailwind`. When the application has a `package.json`, it restores
+`node_modules` from `package-lock.json` with `npm ci`.
 
 It may create or update `Cargo.lock`. Pass `--locked` to require the committed lock
 unchanged.
@@ -56,7 +57,7 @@ fusor install --locked
 fusor doctor
 ```
 
-> wasm-bindgen is cached once per user, by version and host. Set `FUSOR_CACHE_DIR` to use
+> wasm-bindgen and Tailwind CSS are cached once per user, by version and host. Set `FUSOR_CACHE_DIR` to use
 > another directory.
 
 ## Add a capability {#add}
@@ -113,9 +114,10 @@ Source watchers stop and join when the dev server returns. An active build finis
 before a watcher exits.
 
 A literal `include_str!` or `include_bytes!` can keep live refresh enabled when it reads a
-watched file outside the app's HTML templates and published assets. Editing that file rebuilds
-the app. Embedding a template or published asset, custom Rust file includes, and include paths
-the CLI cannot resolve keep refresh disabled.
+watched file outside the app's HTML templates, published assets and Tailwind stylesheet.
+Editing that file rebuilds the app. Embedding a template, a published asset or the Tailwind
+stylesheet, custom Rust file includes, and include paths the CLI cannot resolve keep refresh
+disabled.
 
 In a workspace that declares a site, `fusor dev --site` does the same for every mounted
 application at once, served from one address.
@@ -205,7 +207,7 @@ An application declares `[package.metadata.fusor]` in its `Cargo.toml`. Paths ar
 to the package, and unknown keys are rejected.
 
 The values below are the defaults, except `assets`, which new applications set to publish
-`public/` at the site root.
+`public/` at the site root, and `tailwind`, which is unset unless you add it.
 
 ```toml title=Cargo.toml
 [package.metadata.fusor]
@@ -213,6 +215,7 @@ entry = "web/index.html"        # the HTML entry page
 templates = ["web/components"]  # searched for reusable HTML; [] turns discovery off
 assets = { "/" = "public" }     # files copied into the published site
 assets-build = []               # a program and its arguments, run before assets are copied
+tailwind = "web/app.css"        # optional: a Tailwind CSS stylesheet to compile and link
 output = "dist"                 # where fusor build publishes
 base-path = "/"                 # the URL path the site is served under
 history-fallback = []           # prefixes that receive index.html, for client-side routes
@@ -223,6 +226,7 @@ dev-refresh = true              # false when build logic reads HTML or assets
 > table.
 
 - [Set up island delivery](/docs/islands/setup)
+- [Style with Tailwind CSS](/docs/tailwind)
 
 ### Publish static files {#assets}
 
@@ -283,6 +287,7 @@ it.
 ```text title=Text
 FUSOR_CACHE_DIR          where downloaded tools are stored
 FUSOR_WASM_BINDGEN       use this wasm-bindgen; it must be version 0.2.117
+FUSOR_TAILWIND           use this tailwindcss; it must be version 4.3.3
 FUSOR_WASM_OPT           run this Binaryen 132 wasm-opt on release builds
 FUSOR_KEEP_WASM_NAMES=1  keep Wasm function names in release builds
 FUSOR_NODE               the Node executable for bundling and island checks

@@ -18,7 +18,9 @@ mod tags;
 mod tokens;
 
 use crate::{BindingLocation, ExtractError, RustBlock};
+use ir::Binding;
 pub(crate) use ir::Edit;
+use std::collections::BTreeSet;
 
 pub(crate) use codegen::generate_backend;
 
@@ -30,6 +32,7 @@ pub(crate) struct Compiled {
     pub app_offset: Option<usize>,
     pub fingerprint: String,
     pub javascript: Vec<crate::JavaScriptModule>,
+    pub classes: BTreeSet<String>,
 }
 
 pub(crate) fn compile(
@@ -50,7 +53,17 @@ pub(crate) fn compile(
     let fingerprint = rust.clone();
     rust.push_str(&codegen::delivery(&plan.components).to_string());
     rust.push('\n');
+    let classes = plan
+        .components
+        .iter()
+        .flat_map(|component| Binding::walk(&component.bindings))
+        .filter_map(|binding| match binding {
+            Binding::Class { name, .. } => Some(name.clone()),
+            _ => None,
+        })
+        .collect();
     Ok(Compiled {
+        classes,
         javascript: plan
             .components
             .iter()

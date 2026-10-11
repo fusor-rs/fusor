@@ -1,11 +1,12 @@
 use super::Result;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
 };
 
-pub const ARTIFACT_VERSION: u32 = 4;
+pub const ARTIFACT_VERSION: u32 = 5;
 
 /// File names inside Cargo's `OUT_DIR`.
 pub(crate) const MANIFEST_FILE: &str = "fusor_artifacts.json";
@@ -25,6 +26,9 @@ pub struct ArtifactManifest {
     pub sources: Vec<SourceArtifact>,
     #[serde(default)]
     pub javascript: Vec<JavaScriptArtifact>,
+    /// Every class a `class:name` binding toggles. The markup holds no trace of
+    /// them, so CSS tools that scan sources for class names need this list.
+    pub classes: BTreeSet<String>,
 }
 
 /// Native browser modules discovered from component templates, plus editor types.

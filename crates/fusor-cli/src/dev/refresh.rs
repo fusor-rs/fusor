@@ -4,7 +4,7 @@ use crate::{
     context::Context,
     error::{Error, Result},
     layout,
-    pipeline::{Publication, assets, html, manifest::OutputManifest},
+    pipeline::{BuildMode, Publication, assets, html, manifest::OutputManifest, tailwind},
     workspace::Project,
 };
 use fusor_build::app::{self, ArtifactManifest};
@@ -54,27 +54,31 @@ pub(crate) fn enabled(
 
 struct RefreshInputs {
     watched: BTreeSet<PathBuf>,
-    html: BTreeSet<PathBuf>,
-    assets: BTreeSet<PathBuf>,
+    /// HTML, assets and the Tailwind stylesheet: a refresh republishes these
+    /// without Cargo, so Rust that embeds one would keep stale data.
+    republished: BTreeSet<PathBuf>,
 }
 
 impl RefreshInputs {
     fn new(project: &Project, watched: &super::sources::Snapshot) -> Result<Self> {
+        let mut republished: BTreeSet<PathBuf> = project
+            .config
+            .discover_sources(&project.root)?
+            .into_iter()
+            .map(|source| source.canonical)
+            .collect();
+        for path in assets::sources(project)?
+            .iter()
+            .chain(&tailwind_stylesheet(project))
+        {
+            republished.insert(fs::canonicalize(path)?);
+        }
         Ok(Self {
             watched: watched
                 .keys()
                 .filter_map(|path| path.canonicalize().ok())
                 .collect(),
-            html: project
-                .config
-                .discover_sources(&project.root)?
-                .into_iter()
-                .map(|source| source.canonical)
-                .collect(),
-            assets: assets::sources(project)?
-                .iter()
-                .map(fs::canonicalize)
-                .collect::<std::io::Result<_>>()?,
+            republished,
         })
     }
 
@@ -82,8 +86,13 @@ impl RefreshInputs {
         let Some(path) = resolve_data(source, literal) else {
             return false;
         };
-        self.watched.contains(&path) && !self.html.contains(&path) && !self.assets.contains(&path)
+        self.watched.contains(&path) && !self.republished.contains(&path)
     }
+}
+
+fn tailwind_stylesheet(project: &Project) -> Option<PathBuf> {
+    let stylesheet = project.config.tailwind.as_ref()?;
+    Some(project.root.join(stylesheet))
 }
 
 /// Snapshot collection does not follow symlinks. Reject them in include paths
@@ -135,12 +144,16 @@ pub(crate) fn try_refresh(
         .map(|source| project.root.join(source.path))
         .collect();
     let assets = assets::sources(project)?;
-    let only_html_and_assets = changed
-        .iter()
-        .all(|path| html.contains(path) || assets.contains(path) && !compiled(path));
-    if !only_html_and_assets {
-        cx.reporter
-            .note("a changed file is neither authored HTML nor an asset; rebuilding");
+    let stylesheet = tailwind_stylesheet(project);
+    let republishable = changed.iter().all(|path| {
+        html.contains(path)
+            || assets.contains(path) && !compiled(path)
+            || stylesheet.as_ref() == Some(path)
+    });
+    if !republishable {
+        cx.reporter.note(
+            "a changed file is not authored HTML, an asset or the Tailwind stylesheet; rebuilding",
+        );
         return Ok(false);
     }
 
@@ -212,13 +225,15 @@ fn publish_revision(
     if non_css_assets(&site)? != non_css_assets(publication.staging())? {
         output.reload_after = Some(revision);
     }
+    let package = publication.generated().join(layout::PACKAGE);
+    let stylesheet = tailwind::compile(project, artifact, &package, BuildMode::Development)?;
     fs::write(
         publication.staging().join("index.html"),
         html::render(
             artifact,
             &publication.url_prefix(),
             Some(revision),
-            &[],
+            stylesheet.as_slice(),
             &[],
         )?,
     )?;
@@ -372,6 +387,7 @@ mod tests {
                 managed_entry: false,
                 sources: vec![],
                 javascript: vec![],
+                classes: BTreeSet::new(),
             };
             Self {
                 project,

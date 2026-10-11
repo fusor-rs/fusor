@@ -1,20 +1,17 @@
 //! The glue and the Rust it binds must come from the same wasm-bindgen, so every
 //! path here ends with the binary reporting the exact pinned version.
+use super::download;
 use crate::{
     context::Context,
     error::{Error, Result},
     layout,
     process::{cargo, checked},
-    transaction::Staging,
 };
-use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
     env, fs,
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
     process::Command,
-    time::Duration,
 };
 
 /// Far above the real size (~10 MB), so a wrong URL cannot stream forever.
@@ -28,7 +25,7 @@ fn executable_name() -> String {
 /// `FUSOR_WASM_BINDGEN`, then the cache, then `PATH`. An explicit override is
 /// authoritative even when wrong: saying so beats quietly using another.
 pub(crate) fn resolve() -> Result<PathBuf> {
-    let cached = super::tools_root()
+    let cached = root()
         .ok()
         .map(|root| root.join("bin").join(executable_name()));
     let binary = env::var_os("FUSOR_WASM_BINDGEN")
@@ -57,6 +54,10 @@ pub(crate) fn resolve() -> Result<PathBuf> {
     Ok(binary)
 }
 
+fn root() -> Result<PathBuf> {
+    super::tool_root("wasm-bindgen", layout::BINDGEN_VERSION)
+}
+
 fn expected_version() -> String {
     format!("wasm-bindgen {}", layout::BINDGEN_VERSION)
 }
@@ -75,7 +76,7 @@ pub(crate) fn install(cx: &Context, project_root: &Path) -> Result {
         ))
         .remedy("run `fusor install` while online, or set FUSOR_WASM_BINDGEN"));
     }
-    let root = super::tools_root()?;
+    let root = root()?;
     if !download(cx, &root)? {
         cx.reporter.step(format!(
             "Compiling wasm-bindgen {} from source; no prebuilt tool supports this host, so this may take several minutes ...",
@@ -108,9 +109,7 @@ fn download(cx: &Context, root: &Path) -> Result<bool> {
         host => host,
     };
     let archive = format!("wasm-bindgen-{}-{host}.tar.gz", layout::BINDGEN_VERSION);
-    let releases: BTreeMap<String, String> =
-        serde_json::from_str(include_str!("tool-releases.json"))?;
-    let Some(checksum) = releases.get(&archive) else {
+    let Some(checksum) = download::checksum(&archive)? else {
         return Ok(false);
     };
     let url = format!(
@@ -121,47 +120,24 @@ fn download(cx: &Context, root: &Path) -> Result<bool> {
         "Downloading wasm-bindgen {} for {host} ...",
         layout::BINDGEN_VERSION
     ));
-    let response = ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(120))
-        .build()
-        .get(&url)
-        .call()
-        .map_err(|error| {
-            Error::tooling(format!("could not download {url}: {error}"))
-                .remedy("retry `fusor install`; no project files were changed")
-        })?;
-    let mut bytes = Vec::new();
-    response
-        .into_reader()
-        .take(DOWNLOAD_LIMIT + 1)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > DOWNLOAD_LIMIT {
-        return Err(Error::tooling(
-            "the wasm-bindgen archive exceeds the download limit",
-        ));
-    }
-    if format!("{:x}", Sha256::digest(&bytes)) != *checksum {
-        return Err(Error::tooling(
-            "the downloaded wasm-bindgen archive does not match its pinned checksum; it was not executed or cached",
-        ));
-    }
-    extract(root, &bytes)?;
+    let (staging, _cleanup) = download::staging(root)?;
+    let archive = staging.join(archive);
+    download::fetch("wasm-bindgen", &url, &checksum, DOWNLOAD_LIMIT, &archive)?;
+    let binary = extract(&archive, &staging)?;
+    download::install(
+        "wasm-bindgen",
+        &binary,
+        &root.join("bin").join(executable_name()),
+        reports_expected_version,
+    )?;
     Ok(true)
 }
 
-/// The binary must run before it is renamed into the cache.
-fn extract(root: &Path, bytes: &[u8]) -> Result {
-    fs::create_dir_all(root)?;
-    let staging = root.join(format!(
-        "{}{}",
-        layout::INSTALL_PREFIX,
-        crate::pipeline::publish::generation()?
-    ));
-    fs::create_dir(&staging)?;
-    let _cleanup = Staging(staging.clone());
+/// The verified archive's single wasm-bindgen binary, written into `staging`.
+fn extract(archive: &Path, staging: &Path) -> Result<PathBuf> {
     let name = executable_name();
     let binary = staging.join(&name);
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(archive)?));
     let mut found = false;
     for entry in archive.entries()? {
         let mut entry = entry?;
@@ -183,11 +159,7 @@ fn extract(root: &Path, bytes: &[u8]) -> Result {
             .open(&binary)?;
         std::io::copy(&mut entry, &mut output)?;
         output.flush()?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&binary, fs::Permissions::from_mode(0o755))?;
-        }
+        download::make_executable(&binary)?;
         found = true;
     }
     if !found {
@@ -195,27 +167,15 @@ fn extract(root: &Path, bytes: &[u8]) -> Result {
             "the verified wasm-bindgen archive contains no wasm-bindgen binary",
         ));
     }
-    if !reports_expected_version(&binary)? {
-        return Err(Error::tooling(
-            "the downloaded wasm-bindgen cannot run on this host",
-        ));
-    }
-    let bin = root.join("bin");
-    fs::create_dir_all(&bin)?;
-    // Another installation may win this race. Its binary was validated the
-    // same way, so a matching one is usable; anything else is a real failure.
-    if let Err(error) = fs::rename(&binary, bin.join(&name)) {
-        if !reports_expected_version(&bin.join(&name)).unwrap_or(false) {
-            return Err(error.into());
-        }
-    }
-    Ok(())
+    Ok(binary)
 }
 
-fn reports_expected_version(binary: &Path) -> Result<bool> {
-    let Ok(output) = Command::new(binary).arg("--version").output() else {
-        return Ok(false);
-    };
-    Ok(output.status.success()
-        && String::from_utf8_lossy(&output.stdout).trim() == expected_version())
+fn reports_expected_version(binary: &Path) -> bool {
+    Command::new(binary)
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| {
+            output.status.success()
+                && String::from_utf8_lossy(&output.stdout).trim() == expected_version()
+        })
 }
