@@ -12,7 +12,7 @@ use proc_macro2::TokenStream;
 use syn::Path;
 
 /// Changes when the backend callback or generated-code contract changes.
-pub const VERSION: u32 = 5;
+pub const VERSION: u32 = 6;
 
 /// An authored location, using a byte offset and one-based line/character column.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -154,6 +154,7 @@ pub enum OperationKind {
     Text {
         read: TokenStream,
     },
+    /// `read` returns `Option<String>`; `None` removes the attribute.
     Attribute {
         name: String,
         read: TokenStream,

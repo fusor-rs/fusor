@@ -105,6 +105,31 @@ pub(super) fn string(value: &InterpolatedString) -> TokenStream {
     }
 }
 
+/// An interpolated attribute value as `Option<String>`, where `None` omits it.
+pub(super) fn optional_string(value: &InterpolatedString) -> TokenStream {
+    let Some(expression) = value.as_expression() else {
+        let value = string(value);
+        return quote! { ::std::option::Option::Some(#value) };
+    };
+    present(expression, |present| {
+        quote! { #present.map(::std::string::ToString::to_string) }
+    })
+}
+
+/// An attribute written as one interpolation, read by `body` as `Option<&T>`:
+/// `Option<T>` keeps its value and any other type is `Some`. The value's
+/// temporaries live until the statement in `body` ends.
+pub(super) fn present(
+    expression: &Rust,
+    body: impl FnOnce(TokenStream) -> TokenStream,
+) -> TokenStream {
+    let span = expression.span();
+    let body = body(quote_spanned! {span=>
+        (&::fusor::attribute::Value(&(#expression))).__fusor_present()
+    });
+    quote_spanned! {span=> { use ::fusor::attribute::Present as _; #body } }
+}
+
 /// An interpolated attribute value as `format_args!`, for a writer that escapes
 /// it at once, so borrowed arguments never outlive their statement.
 pub(super) fn format_args(value: &InterpolatedString) -> TokenStream {

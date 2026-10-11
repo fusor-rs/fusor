@@ -183,7 +183,7 @@ fn bind_writes_server_state_on_each_control() {
             1,
         ),
         (
-            r#"__fusor_writer.boolean("selected", ::fusor::bind::TextValue::shows(&(state.size), & ::std::string::ToString::to_string(&(state.large()))));"#,
+            r#"__fusor_writer.boolean("selected", ::fusor::bind::TextValue::shows(&(state.size), &{ use ::fusor::attribute::Present as _; (& ::fusor::attribute::Value(&(state.large()))).__fusor_present().map(::std::string::ToString::to_string) }.unwrap_or_else(|| ::std::string::String::from("Large"))));"#,
             1,
         ),
     ] {
@@ -1431,7 +1431,7 @@ fn binding_bundle_uses_dense_ordinals_and_defers_typed_extraction_to_fallback() 
         .unwrap();
     let rust = &rust[start..];
     assert!(rust.contains(&tokens(
-        "__fusor_scope.bundle_attr_value(&__fusor_bundle, 0u32, \"title\", move || { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(&(state.title))).__fusor_into_text() })? ;"
+        "__fusor_scope.bundle_attr_value(&__fusor_bundle, 0u32, \"title\", move || { use ::fusor::attribute::Present as _; (& ::fusor::attribute::Value(&(state.title))).__fusor_present().map(|__fusor_value| { use ::fusor::dom::text_value::Convert as _; (& ::fusor::dom::text_value::Value(__fusor_value)).__fusor_into_text() }) })? ;"
     )), "{rust}");
     assert!(rust.contains(&tokens(
         "__fusor_scope.bundle_on(&__fusor_bundle, 1u32, \"click\", move | #[allow(unused_variables, reason = \"handlers may ignore the event\")] event| { state.click() })? ;"

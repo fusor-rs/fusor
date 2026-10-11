@@ -11,6 +11,8 @@
 //! ```
 
 #[doc(hidden)]
+pub mod attribute;
+#[doc(hidden)]
 pub mod authoring;
 pub mod bind;
 mod cleanup;

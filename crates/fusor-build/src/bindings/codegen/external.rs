@@ -65,7 +65,7 @@ impl CompilerBackend for ExternalBackend<'_> {
                 read: quote_spanned! {span=> move || ::std::string::ToString::to_string(&(#value)) },
             },
             Binding::Attribute { name, value, .. } => {
-                let value = emit::string(value);
+                let value = emit::optional_string(value);
                 OperationKind::Attribute {
                     name: name.clone(),
                     read: quote_spanned! {span=> move || #value },

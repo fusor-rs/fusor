@@ -269,15 +269,17 @@ pub(super) fn scoped(binding: &Binding, bundle: Option<&Bundle>) -> Option<Token
         // A lone interpolation shares the text path's exact-integer conversion.
         Binding::Attribute { name, value, .. } => match value.as_expression() {
             Some(expression) if typed_text_eligible(expression) => {
-                let read = typed_text_closure(span, expression);
-                ("attr_value", quote_spanned! {span=> #name, #read })
+                let read = emit::present(expression, |present| {
+                    quote_spanned! {span=> #present.map(|__fusor_value| {
+                        use ::fusor::dom::text_value::Convert as _;
+                        (&::fusor::dom::text_value::Value(__fusor_value)).__fusor_into_text()
+                    }) }
+                });
+                ("attr_value", quote_spanned! {span=> #name, move || #read })
             }
             _ => {
-                let value = string(value);
-                (
-                    "attr",
-                    quote_spanned! {span=> #name, move || ::std::option::Option::Some(#value) },
-                )
+                let value = emit::optional_string(value);
+                ("attr", quote_spanned! {span=> #name, move || #value })
             }
         },
         Binding::Event { name, handler, .. } => (

@@ -169,7 +169,12 @@ impl<'a> Select<'a> {
                     );
                     emit::string(&InterpolatedString::literal(&text))
                 },
-                emit::string,
+                // Without its value attribute, an option's value is its text.
+                |value| {
+                    let value = emit::optional_string(value);
+                    let text = emit::string(&InterpolatedString::literal(&option_text(following)));
+                    quote! { #value.unwrap_or_else(|| #text) }
+                },
             );
         let (value, chooses) = (self.value, chooses(self.control));
         quote_spanned! {value.span()=> __fusor_writer.boolean("selected", #chooses(&(#value), &#choice)); }

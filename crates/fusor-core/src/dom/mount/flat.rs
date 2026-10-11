@@ -271,21 +271,25 @@ impl Scope {
         })
     }
 
-    /// An attribute that is always present, with the text path's conversion.
+    /// A lone attribute interpolation, with the text path's conversion.
+    /// `None` removes it.
     #[doc(hidden)]
     pub fn bundle_attr_value(
         &mut self,
         nodes: &Rc<JsValue>,
         index: u32,
         name: &'static str,
-        read: impl Fn() -> crate::dom::text_value::Output + 'static,
+        read: impl Fn() -> Option<crate::dom::text_value::Output> + 'static,
     ) -> Result<(), JsValue> {
         use crate::dom::text_value::Output;
         let nodes = Rc::clone(nodes);
         let name = strings::static_attribute(name);
         self.bind_dom(move || match read() {
-            Output::String(value) => binding_set_attribute(&nodes, index, &name, &value),
-            Output::Integer(value) => binding_set_integer_attribute(&nodes, index, &name, value),
+            Some(Output::String(value)) => binding_set_attribute(&nodes, index, &name, &value),
+            Some(Output::Integer(value)) => {
+                binding_set_integer_attribute(&nodes, index, &name, value)
+            }
+            None => binding_remove_attribute(&nodes, index, &name),
         })
     }
 

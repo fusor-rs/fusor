@@ -343,8 +343,19 @@ impl<'a> ServerRender<'a> {
         let span = binding.span();
         match binding {
             Binding::Attribute { name, value, .. } if !element.island || name != "id" => {
-                let value = super::emit::format_args(value);
-                quote_spanned! {span=> __fusor_writer.attr(#name, #value); }
+                match value.as_expression() {
+                    Some(expression) => super::emit::present(expression, |present| {
+                        quote_spanned! {span=>
+                            if let ::std::option::Option::Some(__fusor_value) = #present {
+                                __fusor_writer.attr(#name, __fusor_value);
+                            }
+                        }
+                    }),
+                    None => {
+                        let value = super::emit::format_args(value);
+                        quote_spanned! {span=> __fusor_writer.attr(#name, #value); }
+                    }
+                }
             }
             Binding::Boolean { name, value, .. } => {
                 quote_spanned! {span=> __fusor_writer.boolean(#name, { #value }); }
@@ -522,8 +533,7 @@ fn island_prelude(tag: &StartTag<usize>, bindings: &[&Binding], island: &Binding
         .iter()
         .find(|binding| matches!(binding, Binding::Attribute { name, .. } if name == "id"))
     {
-        let value = super::emit::string(value);
-        quote! { ::std::option::Option::Some(#value) }
+        super::emit::optional_string(value)
     } else if let Some(value) = tag.attributes.get(b"id".as_slice()) {
         let value = String::from_utf8_lossy(value).into_owned();
         quote! { ::std::option::Option::Some(::std::string::String::from(#value)) }

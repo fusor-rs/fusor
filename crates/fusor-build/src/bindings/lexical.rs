@@ -1,6 +1,6 @@
 //! Rewrite lexical captures shared by lists, routes, Case and Await.
 use super::{
-    emit::{clone_locals, indexed},
+    emit::{self, clone_locals, indexed},
     ir::*,
     tokens::Rust,
 };
@@ -82,6 +82,9 @@ impl Lexical<'_> {
                 expressions(inputs).for_each(|value| self.wrap(value))
             }
             Binding::Text { value, .. } => self.wrap_text(value),
+            Binding::Attribute { value, .. } if value.as_expression().is_some() => value
+                .expressions_mut()
+                .for_each(|value| self.wrap_attribute(value)),
             Binding::Attribute { value, .. } | Binding::Value { value, .. } => value
                 .expressions_mut()
                 .for_each(|value| self.wrap_text(value)),
@@ -132,11 +135,25 @@ impl Lexical<'_> {
     }
 
     fn wrap_text(&self, value: &mut Rust) {
+        self.wrap_owned(value, |original| {
+            quote! { ::std::string::ToString::to_string(&(#original)) }
+        });
+    }
+
+    /// A lone attribute interpolation stays an `Option`, so `None` still omits it.
+    fn wrap_attribute(&self, value: &mut Rust) {
+        self.wrap_owned(value, |original| {
+            emit::present(original, |present| {
+                quote! { #present.map(::std::string::ToString::to_string) }
+            })
+        });
+    }
+
+    fn wrap_owned(&self, value: &mut Rust, owned: impl FnOnce(&Rust) -> proc_macro2::TokenStream) {
         // Format before the lexical block ends: a string slice may borrow a
         // freshly read capture or a cloned route parameter inside that block.
         if !self.snapshots.is_empty() || !self.routes.is_empty() {
-            let original = &value.tokens;
-            value.tokens = quote! { ::std::string::ToString::to_string(&(#original)) };
+            value.tokens = owned(value);
         }
         self.wrap(value);
     }
