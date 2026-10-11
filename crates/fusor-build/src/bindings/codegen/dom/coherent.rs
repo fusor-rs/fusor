@@ -96,8 +96,8 @@ fn value_binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream {
         }
         Binding::Attribute { node, name, value } => {
             let node = element(*node);
-            let value = string(value);
-            quote_spanned! {span=> __fusor_frame.attr(#node.as_ref(), #name, ::std::option::Option::Some(#value))?; }
+            let value = emit::optional_string(value);
+            quote_spanned! {span=> __fusor_frame.attr(#node.as_ref(), #name, #value)?; }
         }
         Binding::Boolean { node, name, value } => {
             let node = element(*node);

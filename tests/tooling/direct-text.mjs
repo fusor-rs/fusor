@@ -74,6 +74,13 @@ impl Fixture {
             rows: signal(vec![1, 2]),
         }
     }
+    fn link(&self) -> Option<String> {
+        Some(self.value.get()).filter(|value| !value.is_empty())
+    }
+    fn length(&self) -> Option<u32> {
+        let length = self.empty.get().chars().count() as u32;
+        (length > 0).then_some(length)
+    }
 }
 struct Large {
     value: Signal<String>,
@@ -287,7 +294,7 @@ mod browser {
 `);
   await writeFile(join(scratch, 'web/index.html'), `<!doctype html><html><head><meta charset="utf-8"></head><body><div id="host"></div>
 <script type="text/rust" src="../src/lib.rs" rust:module="crate"></script>
-<template rust:component="Fixture" rust:render="shared"><section id="fixture"><output id="value" title="{{ state.value.get() }}">{{ state.value.get() }}</output><output id="empty">{{ state.empty.get() }}</output><output id="normal">{{ "plain" }}</output><p id="mixed">before {{ state.value.get() }} after</p><pre id="pre">{{ state.newline.get() }}</pre><listing id="listing">{{ state.newline.get() }}</listing><Panel><strong id="projected">{{ state.value.get() }}</strong><ul id="rows"><ForEach items="{{ state.rows.get() }}" key="{{ |item| *item }}"><li data-id="{{ item.get() }}">{{ item.get() }}</li></ForEach></ul></Panel><Large value="{{ state.value.clone() }}" empty="{{ state.empty.clone() }}"></Large></section></template>
+<template rust:component="Fixture" rust:render="shared"><section id="fixture"><output id="value" title="{{ state.value.get() }}">{{ state.value.get() }}</output><output id="empty">{{ state.empty.get() }}</output><output id="normal">{{ "plain" }}</output><a id="link" href="{{ state.link() }}" data-length="{{ state.length() }}">link</a><p id="mixed">before {{ state.value.get() }} after</p><pre id="pre">{{ state.newline.get() }}</pre><listing id="listing">{{ state.newline.get() }}</listing><Panel><strong id="projected">{{ state.value.get() }}</strong><ul id="rows"><ForEach items="{{ state.rows.get() }}" key="{{ |item| *item }}"><li data-id="{{ item.get() }}">{{ item.get() }}</li></ForEach></ul></Panel><Large value="{{ state.value.clone() }}" empty="{{ state.empty.clone() }}"></Large></section></template>
 <template rust:component="Large" rust:render="shared"><section id="large">${largeMarkup}</section></template>
 <template rust:component="Panel" rust:render="shared"><article id="panel"><Children></Children></article></template>
 </body></html>`);
@@ -300,6 +307,7 @@ mod browser {
   const { stdout: html } = await run('cargo', ['run', '--quiet', '--bin', 'render', '--locked', '--offline']);
   assert.match(html, /<output\b(?=[^>]*id="empty")[^>]*><\/output>/);
   assert.match(html, /&lt;\/script&gt;/);
+  assert.match(html, /<a\b(?=[^>]*\bhref="日本語)(?![^>]*data-length)[^>]*id="link"/);
   assert.ok(html.includes('日本語😀'));
   for (const tag of ['pre', 'listing']) {
     assert.match(html, new RegExp(`<${tag}\\b[^>]*><!--fusor:\\d+-->\\nline `));
@@ -338,6 +346,8 @@ mod browser {
         require(byId('value').getAttribute('title') === value, 'escaped attribute value');
         require(byId('empty').textContent === empty, 'empty slot value');
         require(byId('normal').textContent === 'plain', 'normal direct text');
+        require(byId('link').getAttribute('href') === (value || null), 'optional href');
+        require(byId('link').getAttribute('data-length') === (empty ? String([...empty].length) : null), 'optional data-length');
         require(byId('mixed').textContent === `before ${value} after`, 'mixed content');
         for (const id of ['pre', 'listing']) require(byId(id).textContent === newline, `${id}: lost initial newline`);
         for (let index = 0; index < largePairs; index++) {

@@ -301,6 +301,17 @@ Boolean attributes such as `hidden` use boolean presence semantics.
 <p hidden="{{ !state.visible.get() }}">Hello {{ state.name.get() }}</p>
 ```
 
+When an attribute's whole value is one expression of type `Option<T>`, `Some` sets the
+attribute and `None` removes it. `T` is any type the attribute accepts without `Option`.
+An `Option` mixed with other text, as in `href="/{{ path }}"`, is a compile error.
+
+```html title=HTML
+<a href="{{ state.url.get() }}">{{ state.label.get() }}</a>
+```
+
+> This excerpt assumes url: `Signal<Option<String>>`. With `None`, the `<a>` has no `href`,
+> which HTML treats as a placeholder link.
+
 - [Learn HTML interpolation](/docs/html-and-rust)
 
 ## data-fusor-link — navigate through the router {#link}

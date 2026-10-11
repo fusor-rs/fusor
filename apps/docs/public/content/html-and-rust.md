@@ -49,7 +49,9 @@ Use `on:click` to run Rust when a click occurs. Use `bind` to synchronize a form
 with a signal in both directions; pass `state.name`, the signal handle, without `.get()`.
 
 Boolean attributes follow browser semantics: `disabled="{{ false }}"` removes the attribute
-rather than writing the text “false”.
+rather than writing the text “false”. Any other attribute whose whole value is one
+`Option` expression is set for `Some` and removed for `None`: `href="{{ state.url.get() }}"`
+with a `Signal<Option<String>>` renders `<a>` without `href` until there is a URL.
 
 > Reading a signal with `get()` inside a text or attribute binding subscribes that binding.
 > A plain Rust field is ordinary state; changing it alone does not notify the DOM.
