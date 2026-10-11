@@ -112,6 +112,8 @@ pub(crate) enum Action {
         #[arg(long)]
         open: bool,
     },
+    /// Replace this fusor with the latest stable release
+    Upgrade,
     /// Print generated Rust for one HTML module without compiling Wasm
     Expand {
         #[arg(long, default_value = "app")]

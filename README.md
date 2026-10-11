@@ -72,7 +72,7 @@ curl -fsSL https://fusor.build/install.sh | sh
 irm https://fusor.build/install.ps1 | iex
 ```
 
-The installer downloads the latest release, verifies its checksum, and puts `fusor` in `.fusor/bin` under your home directory. On macOS and Linux it prints the line to add to your `PATH` and leaves your shell configuration alone. On Windows it adds the directory to your user `PATH`; open a new terminal before running `fusor`. The scripts are [install.sh](install.sh) and [install.ps1](install.ps1) in this repository if you want to read them first.
+The installer downloads the latest release, verifies its checksum, and puts `fusor` in `.fusor/bin` under your home directory. On macOS and Linux it prints the line to add to your `PATH` and leaves your shell configuration alone. On Windows it adds the directory to your user `PATH`; open a new terminal before running `fusor`. The scripts are [install.sh](install.sh) and [install.ps1](install.ps1) in this repository if you want to read them first. Run `fusor upgrade` later to move to the latest release.
 
 Create and run an app:
 
