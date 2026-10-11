@@ -358,5 +358,20 @@
     "token": "Message",
     "href": "/docs/workers/api#message",
     "label": "Message · worker data requirements"
+  },
+  {
+    "token": "ContextKey",
+    "href": "/docs/context#how",
+    "label": "ContextKey · name a shared value"
+  },
+  {
+    "token": "provide::<",
+    "href": "/docs/context#how",
+    "label": "provide · share a value with descendants"
+  },
+  {
+    "token": "context::<",
+    "href": "/docs/context#how",
+    "label": "context · read the nearest provided value"
   }
 ]

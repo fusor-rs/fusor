@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>User sessions</title>
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <App state="{{ App::new(owner)? }}">
+    <div class="page">
+      <header>
+        <AccountMenu></AccountMenu>
+      </header>
+      <main>
+        <Match value="{{ state.session.status() }}">
+          <Case pattern="SessionStatus::Checking">
+            <p role="status">Checking your session…</p>
+          </Case>
+          <Case pattern="SessionStatus::SignedOut">
+            <h1>Sign in</h1>
+            <form method="post" action="/api/sign-in">
+              <label>Name <input name="name" autocomplete="username" required></label>
+              <button>Sign in</button>
+            </form>
+          </Case>
+          <Case pattern="SessionStatus::SignedIn { name }">
+            <h1>Welcome back, {{ name.get() }}</h1>
+            <p>Only signed-in people see this page.</p>
+          </Case>
+          <Case pattern="SessionStatus::Unavailable { reason }">
+            <p role="alert">Could not check your session: {{ reason.get() }}</p>
+            <button on:click="state.session.me.refresh()">Try again</button>
+          </Case>
+        </Match>
+      </main>
+    </div>
+  </App>
+
+  <template rust:component="AccountMenu">
+    <nav aria-label="Account">
+      <Match value="{{ state.session.status() }}">
+        <Case pattern="SessionStatus::SignedIn { name }">
+          <span>Signed in as {{ name.get() }}</span>
+          <form method="post" action="/api/sign-out"><button>Sign out</button></form>
+        </Case>
+        <Case pattern="_">
+          <span>Not signed in</span>
+        </Case>
+      </Match>
+    </nav>
+  </template>
+</body>
+</html>

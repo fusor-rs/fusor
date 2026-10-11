@@ -3,20 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Typed context</title>
+  <title>Context</title>
   <link rel="icon" href="data:,">
 </head>
 <body>
   <App state="{{ App::new(owner)? }}">
     <main>
-      <h1>A shared theme</h1>
-      <button on:click='state.theme.set("light".into())'>Use light theme</button>
-      <div><Badge></Badge></div>
+      <h1>Context</h1>
+      <button on:click='state.user.set("Grace".into())'>Switch to Grace</button>
+      <Sidebar></Sidebar>
     </main>
   </App>
 
-  <template rust:component="Badge">
-    <p data-theme="{{ state.theme.get() }}">Theme: {{ state.theme.get() }}</p>
+  <template rust:component="Sidebar">
+    <aside>
+      <h2>Sidebar</h2>
+      <UserBadge></UserBadge>
+    </aside>
+  </template>
+
+  <template rust:component="UserBadge">
+    <p class="user-badge">Signed in as {{ state.user.get() }}</p>
   </template>
 </body>
 </html>

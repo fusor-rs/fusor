@@ -72,6 +72,10 @@
     "reference": true
   },
   {
+    "slug": "context",
+    "group": "Core concepts"
+  },
+  {
     "slug": "async-data",
     "group": "Application guides"
   },
@@ -156,6 +160,10 @@
   {
     "slug": "tailwind",
     "group": "Application guides"
+  },
+  {
+    "slug": "quick-guides/user-sessions",
+    "group": "Quick guides"
   },
   {
     "slug": "tooling",

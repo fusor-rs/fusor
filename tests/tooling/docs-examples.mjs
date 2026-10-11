@@ -37,10 +37,40 @@ const cli = resolve(
 );
 let activeDist;
 let browser;
+// The user-sessions guide's server contract: an HttpOnly cookie names a
+// session; /api/me answers 401 without one.
+const sessions = new Map();
+let failNextMe = false;
+async function sessionApi(request, response, pathname) {
+  const id = /(?:^|;\s*)session=([^;]+)/.exec(request.headers.cookie || "")?.[1];
+  if (pathname === "/api/me") {
+    if (failNextMe) {
+      failNextMe = false;
+      response.writeHead(500).end();
+    } else if (sessions.has(id)) {
+      response.writeHead(200, { "content-type": "text/plain" }).end(sessions.get(id));
+    } else {
+      response.writeHead(401).end();
+    }
+    return;
+  }
+  let body = "";
+  for await (const chunk of request) body += chunk;
+  const cookie = pathname === "/api/sign-in"
+    ? `session=${sessions.size + 1}; HttpOnly; SameSite=Lax; Path=/`
+    : "session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0";
+  if (pathname === "/api/sign-in") sessions.set(String(sessions.size + 1), new URLSearchParams(body).get("name"));
+  else sessions.delete(id);
+  response.writeHead(303, { location: "/", "set-cookie": cookie }).end();
+}
 const server = createServer(async (request, response) => {
   const pathname = decodeURIComponent(
     new URL(request.url, "http://localhost").pathname,
   );
+  if (pathname.startsWith("/api/")) {
+    await sessionApi(request, response, pathname);
+    return;
+  }
   const file = resolve(
     activeDist,
     extname(pathname) ? pathname.slice(1) : "index.html",
@@ -134,7 +164,7 @@ try {
     await frameworkCli(["build", "--manifest-path", join(app, "Cargo.toml")]);
     console.log(`PASS build: copied ${lesson} guide in a standalone application`);
   }
-  for (const lesson of ["basics", "forms", "routing", "context", "mounting", "foreach", "app", "control-flow"]) {
+  for (const lesson of ["basics", "forms", "routing", "context", "mounting", "foreach", "app", "control-flow", "session"]) {
     const app = join(scratch, lesson);
     await frameworkCli(["new", app, "--framework-path", root, "--skip-install"]);
     const files =
@@ -177,6 +207,13 @@ try {
       const html = join(app, "web/index.html");
       await writeFile(html, (await readFile(html, "utf8")).replace("</main>",
         '<If condition="{{ !state.newsletter.get() }}"><label><input type="checkbox" bind="state.newsletter"> Hide after subscribing</label></If>\n</main>'));
+    }
+    if (lesson === "session") {
+      const manifest = join(app, "Cargo.toml");
+      await writeFile(manifest, (await readFile(manifest, "utf8")).replace(
+        "[dependencies]\n",
+        `[dependencies]\nfusor-async = { path = ${JSON.stringify(join(root, "crates/fusor-async"))}, features = ["browser"] }\n`,
+      ));
     }
     if (lesson === "routing") {
       const manifest = join(app, "Cargo.toml");
@@ -352,13 +389,10 @@ try {
 
     activeDist = join(scratch, "context/dist");
     await page.goto(origin);
-    await expect(page.locator("[data-theme]")).toHaveText("Theme: dark");
-    await page.getByRole("button", { name: "Use light theme" }).click();
-    await expect(page.locator("[data-theme]")).toHaveText("Theme: light");
-    await expect(page.locator("[data-theme]")).toHaveAttribute(
-      "data-theme",
-      "light",
-    );
+    const badge = page.locator("aside .user-badge");
+    await expect(badge).toHaveText("Signed in as Ada");
+    await page.getByRole("button", { name: "Switch to Grace" }).click();
+    await expect(badge).toHaveText("Signed in as Grace");
 
     activeDist = join(scratch, "app", "dist");
     await page.goto(origin);
@@ -392,6 +426,25 @@ try {
     await page.getByRole("button", {name:"Sign out",exact:true}).click();
     await page.getByRole("button", {name:"Sign in",exact:true}).click();
     await expect(page.getByRole("button", {name:"Clicks: 0",exact:true})).toBeVisible();
+
+    activeDist = join(scratch, "session", "dist");
+    const account = page.getByRole("navigation", { name: "Account" });
+    await page.goto(origin);
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(account).toHaveText("Not signed in");
+    await page.getByLabel("Name").fill("Ada");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Welcome back, Ada" })).toBeVisible();
+    await expect(account.locator("span")).toHaveText("Signed in as Ada");
+    assert.equal(await page.evaluate(() => document.cookie), "", "the session cookie is invisible to page scripts");
+    assert.equal((await context.cookies(origin)).find((cookie) => cookie.name === "session")?.httpOnly, true);
+    await account.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    failNextMe = true;
+    await page.reload();
+    await expect(page.getByRole("alert")).toHaveText("Could not check your session: GET /api/me: HTTP 500");
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 
     activeDist = join(tutorial, "dist");
     await page.goto(origin);
@@ -514,7 +567,7 @@ try {
     );
     assert.deepEqual(errors, []);
     console.log(
-      `PASS ${name}: documented bindings, route-to-template mapping, typed context, child replacement, keyed rows, cleanup, loading/error/retry, disposal and coherent publication`,
+      `PASS ${name}: documented bindings, route-to-template mapping, typed context, cookie-backed user sessions, child replacement, keyed rows, cleanup, loading/error/retry, disposal and coherent publication`,
     );
     await context.close();
     await browser.close();

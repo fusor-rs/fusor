@@ -140,7 +140,7 @@ owner active.
 
 Lookup itself is untracked; put a `Signal` in the service for reactive changes.
 
-- [Run the complete provider/consumer lesson](/docs/ownership#context)
+- [Run the complete provider/consumer lesson](/docs/context)
 
 ## Mount a compiled component from Rust {#rust-mount}
 

@@ -97,45 +97,9 @@ A hidden attribute only hides pixels; `rust:if` on a mount removes the component
 
 - [See this cancel a request](/docs/async-data#cancel)
 
-## Try typed context in your generated app {#context}
+## Share values with context {#context}
 
-Constructor arguments are the simplest way to pass direct inputs. Context is useful when
-many descendants need the same service.
+An owner can also provide a value that every component inside it can read, such as the
+signed-in user or a theme. Context has its own page, with a complete lesson.
 
-This optional, complete lesson starts from the generated my-app: replace `src/app.rs` and
-`web/index.html` with the two files below. Keep its other generated files, including
-`lib.rs` and `build.rs`. It uses the existing fusor and `wasm-bindgen` dependencies.
-
-`Theme` is a typed key; `App` provides one signal, and `Badge` retrieves the nearest `Theme`
-provider.
-
-```rust source=tutorial/lessons/context/app.rs title=src/app.rs · complete optional context lesson
-```
-
-> `Rc` is Rust’s reference-counted shared pointer: cloning it hands out another reference to
-> one value. Context stores the provided value behind an `Rc`, so the child’s
-> `Rc<Signal<String>>` follows the same signal its parent provided.
->
-> A missing provider is an explicit error; providing a context is not itself a reactive
-> operation.
-
-- [Try shared context in a live app](/docs/showcase/context)
-
-## Mount the provider and consumer {#provide-context}
-
-Both constructors above return `Result<Self, JsValue>`. The `<App>` state expression uses ?;
-`Badge::from_inputs` forwards its constructor’s Result. The root receives the app owner;
-`Badge` receives a child owner whose context lookup reaches `App`.
-
-The same entry HTML contains both the `App` root and `Badge` template, associated with this
-Rust module by `template!("web/index.html")`.
-
-Run `fusor dev --port 8090` in my-app: the badge says “Theme: dark”. Click Use light theme:
-its text and `data-theme` attribute become light.
-
-```html source=tutorial/lessons/context/index.html title=web/index.html · complete optional context lesson
-```
-
-> Use `App::new(owner)`? when your constructor is fallible. Use `App::new(owner)` for one
-> returning `App` directly. This is ordinary Rust error propagation, not a different
-> component API.
+- [Context](/docs/context)
