@@ -1,45 +1,52 @@
-use fusor::{ContextKey, OwnerHandle, Signal, signal};
+use fusor::prelude::*;
+use fusor::{ContextKey, OwnerHandle};
 use std::rc::Rc;
 use wasm_bindgen::JsValue;
 
-struct Theme;
-impl ContextKey for Theme {
+/// The context key: it names the shared value and fixes its type.
+struct CurrentUser;
+impl ContextKey for CurrentUser {
     type Value = Signal<String>;
 }
 
 struct App {
-    theme: Signal<String>,
+    user: Signal<String>,
 }
 
 impl App {
     fn new(owner: OwnerHandle) -> Result<Self, JsValue> {
-        let theme = signal("dark".into());
+        let user = signal("Ada".to_owned());
         owner
-            .provide::<Theme>(theme.clone())
+            .provide::<CurrentUser>(user.clone())
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        Ok(Self { theme })
+        Ok(Self { user })
     }
 }
 
-struct Badge {
-    theme: Rc<Signal<String>>,
+/// A layout component. It knows nothing about the user.
+#[derive(FromInputs)]
+struct Sidebar {}
+
+/// Two levels below App, it reads the user from context.
+struct UserBadge {
+    user: Rc<Signal<String>>,
 }
 
-impl Badge {
+impl UserBadge {
     fn new(owner: OwnerHandle) -> Result<Self, JsValue> {
-        let theme = owner
-            .context::<Theme>()
-            .ok_or_else(|| JsValue::from_str("missing Theme provider"))?;
-        Ok(Self { theme })
+        let user = owner
+            .context::<CurrentUser>()
+            .ok_or_else(|| JsValue::from_str("UserBadge needs a CurrentUser provider"))?;
+        Ok(Self { user })
     }
 }
 
 fusor::template!("web/index.html");
 
-struct BadgeInputs {}
-impl fusor::dom::FromInputs for Badge {
+struct UserBadgeInputs {}
+impl fusor::dom::FromInputs for UserBadge {
     type Error = fusor::dom::JsValue;
-    type Inputs = BadgeInputs;
+    type Inputs = UserBadgeInputs;
     fn from_inputs(
         _inputs: Self::Inputs,
         owner: fusor::OwnerHandle,

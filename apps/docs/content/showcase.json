@@ -154,7 +154,7 @@
     "description": "Change a workspace accent and let nested components read it from their nearest owner.",
     "try_it": "Pick Forest or Violet. The nested preview reads the same signal from context. This changes the demo's accent, independently of the documentation's color theme.",
     "explanation": "The parent provides a signal under the Accent context key. A nested child retrieves that exact type from its owner without an accent argument. Context lookup supplies the handle; reading the signal makes the HTML reactive.",
-    "guide": "/docs/ownership#context",
+    "guide": "/docs/context",
     "guide_label": "Typed context in an app",
     "preview_title": "APP → PANEL → BADGE",
     "preview_value": "Forest",
