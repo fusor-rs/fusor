@@ -81,7 +81,7 @@ fn css_string(text: &str) -> String {
 /// Tailwind always colors its errors and frames them with box drawing, and
 /// prints its banner first. Keep only the message lines.
 fn diagnostic(stderr: &str) -> String {
-    let plain = strip_ansi(stderr);
+    let plain = toolchain::tailwind::strip_ansi(stderr);
     let lines: Vec<&str> = plain
         .lines()
         .map(|line| line.trim_start_matches(['│', '┌', '└']).trim())
@@ -92,20 +92,6 @@ fn diagnostic(stderr: &str) -> String {
     } else {
         lines.join("\n")
     }
-}
-
-/// Removes `ESC [ … letter` color sequences.
-fn strip_ansi(text: &str) -> String {
-    let mut plain = String::with_capacity(text.len());
-    let mut characters = text.chars();
-    while let Some(character) = characters.next() {
-        if character == '\u{1b}' {
-            characters.by_ref().find(|c| c.is_ascii_alphabetic());
-        } else {
-            plain.push(character);
-        }
-    }
-    plain
 }
 
 #[cfg(test)]

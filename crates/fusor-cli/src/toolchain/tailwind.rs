@@ -104,16 +104,53 @@ pub(crate) fn install(cx: &Context) -> Result {
     )
 }
 
-/// `--help` opens with `≈ tailwindcss v<version>`.
 fn reports_expected_version(binary: &Path) -> bool {
-    let expected = format!("tailwindcss v{}", layout::TAILWIND_VERSION);
     Command::new(binary)
         .arg("--help")
         .output()
         .is_ok_and(|output| {
-            output.status.success()
-                && String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .any(|line| line.trim_end().ends_with(&expected))
+            output.status.success() && is_expected_version(&String::from_utf8_lossy(&output.stdout))
         })
+}
+
+/// `--help` opens with `≈ tailwindcss v<version>`, colored when `CI` is set.
+fn is_expected_version(help: &str) -> bool {
+    let expected = format!("tailwindcss v{}", layout::TAILWIND_VERSION);
+    strip_ansi(help)
+        .lines()
+        .any(|line| line.trim_end().ends_with(&expected))
+}
+
+/// Removes `ESC [ … letter` color sequences.
+pub(crate) fn strip_ansi(text: &str) -> String {
+    let mut plain = String::with_capacity(text.len());
+    let mut characters = text.chars();
+    while let Some(character) = characters.next() {
+        if character == '\u{1b}' {
+            characters.by_ref().find(|c| c.is_ascii_alphabetic());
+        } else {
+            plain.push(character);
+        }
+    }
+    plain
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_version_banner_is_recognized_with_or_without_color() {
+        for (help, expected) in [
+            ("≈ tailwindcss v4.3.3\n\nUsage:\n", true),
+            (
+                "\u{1b}[3m\u{1b}[1m\u{1b}[34m≈\u{1b}[39m\u{1b}[22m\u{1b}[23m tailwindcss \u{1b}[34mv4.3.3\u{1b}[39m\n",
+                true,
+            ),
+            ("≈ tailwindcss v4.3.30\n", false),
+            ("≈ tailwindcss v4.1.0\n", false),
+        ] {
+            assert_eq!(is_expected_version(help), expected, "{help:?}");
+        }
+    }
 }
