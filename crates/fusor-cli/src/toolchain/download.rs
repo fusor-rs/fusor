@@ -38,19 +38,20 @@ pub(super) fn staging(root: &Path) -> Result<(PathBuf, Staging)> {
     Ok((staging.clone(), Staging(staging)))
 }
 
-/// Streams `url` into `file`, failing past `limit` bytes or on a checksum
-/// mismatch.
-pub(super) fn fetch(tool: &str, url: &str, checksum: &str, limit: u64, file: &Path) -> Result {
-    let response = ureq::AgentBuilder::new()
+pub(crate) fn agent() -> ureq::Agent {
+    ureq::AgentBuilder::new()
         .timeout_connect(CONNECT_TIMEOUT)
         .timeout_read(READ_TIMEOUT)
         .build()
-        .get(url)
-        .call()
-        .map_err(|error| {
-            Error::tooling(format!("could not download {url}: {error}"))
-                .remedy("retry `fusor install`; no project files were changed")
-        })?;
+}
+
+/// Streams `url` into `file`, failing past `limit` bytes or on a checksum
+/// mismatch.
+pub(super) fn fetch(tool: &str, url: &str, checksum: &str, limit: u64, file: &Path) -> Result {
+    let response = agent().get(url).call().map_err(|error| {
+        Error::tooling(format!("could not download {url}: {error}"))
+            .remedy("retry `fusor install`; no project files were changed")
+    })?;
     let mut reader = response.into_reader().take(limit + 1);
     let mut output = fs::File::create_new(file)?;
     let mut hasher = Sha256::new();

@@ -8,6 +8,7 @@ pub(crate) mod install;
 pub(crate) mod new;
 pub(crate) mod preview;
 pub(crate) mod repo;
+pub(crate) mod upgrade;
 
 use crate::{
     cli::{Action, RepoAction},
@@ -42,6 +43,7 @@ pub(crate) fn dispatch(cx: &Context, action: Action) -> Result {
             open,
         } => preview::run(cx, directory.as_deref(), port, open),
         Action::Doctor => doctor::run(cx),
+        Action::Upgrade => upgrade::run(cx),
         Action::Add {
             capability,
             dry_run,

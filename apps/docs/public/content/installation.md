@@ -46,6 +46,23 @@ irm https://fusor.build/install.ps1 | iex
 > The installer adds its bin directory to your user PATH. Open a new PowerShell window after
 > installation so the commands are available.
 
+## Upgrade fusor {#upgrade}
+
+Run this to replace fusor with the latest stable release:
+
+```sh title=Terminal
+fusor upgrade
+```
+
+If you're already on the latest release, nothing changes. fusor upgrades the way you
+installed it: with the installer above, or with `cargo install` if you installed it that way.
+
+Each application pins the exact fusor version it was created with. After upgrading, change
+the `fusor-*` versions in each application's `Cargo.toml` to the new release. `fusor doctor`
+lists any that don't match.
+
+- [What fusor upgrade checks](/docs/cli#upgrade)
+
 ## Generate an application {#create}
 
 In the directory where you keep your projects, create an application named `my-app`. The CLI

@@ -21,6 +21,7 @@ fusor build --site    # build a workspace's applications as one site
 fusor dev             # build, watch, serve and refresh
 fusor preview         # serve an existing build
 fusor expand          # print the Rust generated from HTML
+fusor upgrade         # replace fusor with the latest release
 ```
 
 ## Create an application {#new}
@@ -164,6 +165,28 @@ output = "dist"
 > `--site` builds every mounted application, so it cannot be combined with `--package`.
 
 - [How a site is built and laid out](/docs/sites)
+
+## Upgrade fusor {#upgrade}
+
+`fusor upgrade` replaces the running fusor with the latest stable release from GitHub. It
+installs the new version the same way the current one was installed:
+
+| How fusor was installed | How it upgrades |
+| --- | --- |
+| `install.sh` or `install.ps1` | Runs that release's installer, which verifies the download's checksum |
+| `cargo install fusor-cli` | Runs `cargo install fusor-cli --locked --version <new version>` |
+
+It skips drafts and pre-releases. An installer upgrade also waits until the release has
+attached the download for your system. After installing, it runs the new fusor to confirm the
+version.
+
+A fusor that isn't in an installer's or Cargo's `bin` directory, such as a copy built inside
+the framework repository, is not replaced. `--offline` is refused, because an upgrade
+downloads the release.
+
+```sh title=Terminal
+fusor upgrade
+```
 
 ## Read the generated Rust {#expand}
 

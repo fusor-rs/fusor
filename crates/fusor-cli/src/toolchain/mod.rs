@@ -2,7 +2,7 @@
 //! `build` and `check` never prepare; `install`, `new` and `dev` do, and may
 //! use the network.
 pub(crate) mod bindgen;
-mod download;
+pub(crate) mod download;
 pub(crate) mod node;
 pub(crate) mod rust;
 pub(crate) mod tailwind;
