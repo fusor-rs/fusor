@@ -29,13 +29,16 @@ struct Release {
 impl Release {
     fn new() -> Self {
         static NEXT: AtomicU32 = AtomicU32::new(0);
-        let root = std::env::temp_dir().join(format!(
+        let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
             "fusor-upgrade-test-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir_all(root.join("installation/bin")).unwrap();
-        fs::copy(env!("CARGO_BIN_EXE_fusor"), executable(&root)).unwrap();
+        // A copy is open for writing while it is made, and Linux refuses to run
+        // it while a process another test forks meanwhile still holds that
+        // handle ("Text file busy"). A hard link never opens it for writing.
+        fs::hard_link(env!("CARGO_BIN_EXE_fusor"), executable(&root)).unwrap();
         let files = Files::default();
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
@@ -216,11 +219,10 @@ fn a_cargo_installation_upgrades_through_cargo() {
     let output = server.upgrade().output().unwrap();
     assert_eq!(output.status.code(), Some(TOOLING));
     assert!(
-        stderr(&output).contains("failed with exit status"),
+        stderr(&output).contains("if the release was published moments ago"),
         "{}",
         stderr(&output)
     );
-    assert!(!stderr(&output).contains("still being published"));
     assert_eq!(server.installed_version(), format!("fusor {CURRENT}"));
 }
 
