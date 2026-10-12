@@ -102,6 +102,9 @@ pub(crate) enum Action {
         /// Develop every application in [workspace.metadata.fusor.site] together
         #[arg(long, conflicts_with = "package")]
         site: bool,
+        /// Forward a URL prefix to a backend HTTP origin; repeat for more prefixes
+        #[arg(long, value_name = "PREFIX=URL")]
+        proxy: Vec<crate::dev::proxy::Rule>,
     },
     /// Preview existing production output locally, without Cargo or installation
     #[command(visible_alias = "serve")]

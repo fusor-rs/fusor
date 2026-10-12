@@ -65,3 +65,40 @@ impl Default for App {
         }
     }
 }
+
+struct BranchRouters {
+    signed_in: fusor::Signal<bool>,
+    fail: fusor::Signal<bool>,
+}
+
+impl BranchRouters {
+    fn new() -> Self {
+        Self {
+            signed_in: fusor::signal(false),
+            fail: fusor::signal(false),
+        }
+    }
+}
+
+fusor::template!("web/components/branch-routers.html");
+
+#[wasm_bindgen]
+pub fn start_branch_routers() -> Result<(), JsValue> {
+    use fusor::dom::{Component, document};
+    fusor::dom::application::mount_scope(|| {
+        let mut scope =
+            BranchRouters::prepare_component(None, Box::new(|_| Ok(BranchRouters::new())))?;
+        let main = document()?
+            .query_selector("main")?
+            .ok_or_else(|| JsValue::from_str("missing application container"))?;
+        scope.attach(&main)?;
+        Ok(scope)
+    })
+}
+
+#[wasm_bindgen]
+pub fn probe_competing_router() -> Result<(), JsValue> {
+    use fusor::dom::Component;
+    let _scope = BranchRouters::mount_with(|_| BranchRouters::new())?;
+    Ok(())
+}

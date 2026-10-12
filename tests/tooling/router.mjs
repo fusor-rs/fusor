@@ -4,6 +4,74 @@ import { readFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { chromium, firefox, webkit, expect } from '@playwright/test';
 import { buildPackage } from '../../scripts/build.mjs';
+
+async function branchRouters(page, origin) {
+  await page.evaluate(url => history.replaceState({ application: "sessions" }, "", url), origin);
+  await page.evaluate(() => window.client.start_branch_routers());
+  await expect(page.locator("#door")).toHaveText("Door");
+  const retired = await page.locator("#sign-in").elementHandle();
+  const length = await page.evaluate(() => history.length);
+  await retired.click();
+  await expect(page.locator("#home")).toHaveText("Home");
+  await expect(page.locator("#door")).toHaveCount(0);
+  assert.equal(await page.evaluate(() => history.length), length);
+  assert.equal(await page.evaluate(() => history.state.application), "sessions");
+  for (const [root, detail] of [["home", "home-detail"], ["door", "door-detail"]]) {
+    await page.getByRole("link", { name: "Session detail", exact: true }).click();
+    await expect(page.locator(`#${detail}`)).toBeVisible();
+    await page.goBack();
+    await expect(page.locator(`#${root}`)).toBeVisible();
+    await page.goForward();
+    await expect(page.locator(`#${detail}`)).toBeVisible();
+    await page.getByRole("link", { name: "Session root", exact: true }).click();
+    await expect(page.locator(`#${root}`)).toBeVisible();
+    await page.locator("#switch-session").click();
+  }
+  await page.locator("#switch-session").click();
+  await expect(page.locator("#door")).toHaveText("Door");
+  await retired.evaluate(element => element.click());
+  await expect(page.locator("#door")).toHaveText("Door");
+  await preservesRouterAfterFailedMounts(page);
+  await page.getByRole("link", { name: "Session detail", exact: true }).click();
+  await expect(page.locator("#home-detail")).toBeVisible();
+  await page.evaluate(() => window.client.stop());
+  await expect(page.locator("#branch-routers")).toHaveCount(0);
+}
+
+async function preservesRouterAfterFailedMounts(page) {
+  const original = await page.evaluate(() => {
+    window.door = document.querySelector("#door");
+    return { href: location.href, state: history.state };
+  });
+  await page.locator("#fail-session").click();
+  const failure = page.waitForEvent("console", {
+    predicate: message => message.type() === "error"
+      && message.text().includes("expected page setup failure"),
+  });
+  await page.locator("#switch-session").click();
+  await failure;
+  assert.equal(await page.locator("#door").evaluate(element => element === window.door), true);
+  assert.deepEqual(
+    await page.evaluate(() => ({ href: location.href, state: history.state })), original,
+  );
+  await page.locator("#switch-session").click();
+  await page.locator("#fail-session").click();
+  await page.locator("#switch-session").click();
+  await expect(page.locator("#home")).toHaveText("Home");
+  const competing = await page.evaluate(() => {
+    const state = JSON.stringify(history.state);
+    let message;
+    try {
+      window.client.probe_competing_router();
+    } catch (error) {
+      message = String(error);
+    }
+    return { message, unchanged: JSON.stringify(history.state) === state };
+  });
+  assert.match(competing.message, /only one fusor router may own browser history/);
+  assert.equal(competing.unchanged, true);
+}
+
 await buildPackage('fusor-router-example');
 const root=resolve('examples/router/dist');
 const server=createServer(async(req,res)=>{
@@ -98,7 +166,9 @@ try {
   await expect(page.locator('h1')).toHaveText('Page not found');
   await page.evaluate(async()=>{const boot=document.querySelector('script[type="module"]').src;window.client=await import(new URL('./pkg/app.js',boot).href);window.client.stop();});
   await expect(page.locator('main h1')).toHaveCount(0);
-  assert.deepEqual(errors,['expected page setup failure','expected page setup failure']);
+  await branchRouters(page, origin);
+  assert.deepEqual(errors,Array(3).fill('expected page setup failure'));
+  console.log(`PASS ${name}: exclusive root router handoff, history traversal, self-removal, rollback and competing-root rejection`);
   console.log(`PASS ${name}: nested routers across files, deep links, preserved parent identity, query reactivity, scoped fallbacks, decoding and Back/Forward`);
   await browser.close();browser=null;
  }

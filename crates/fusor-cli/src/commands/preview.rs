@@ -2,7 +2,7 @@
 //! and history fallback come from the output manifest, not from Cargo.
 use crate::{
     context::Context,
-    dev::{http, server},
+    dev::{http, proxy::Rules, server},
     error::{Error, Result},
     pipeline::{
         manifest::OutputManifest,
@@ -31,19 +31,24 @@ pub(crate) fn run(cx: &Context, directory: Option<&Path>, port: u16, open: bool)
         .field("Local", server::url(port, &output.base_path));
     cx.reporter.blank();
     server::ready(cx, port, &output.base_path, open, READY)?;
-    server::serve(cx, listener, move |method, url, accept| {
-        http::respond(
-            method,
-            url,
-            accept,
-            http::Route {
-                directory: &directory,
-                base: &output.base_path,
-                history_fallback: &output.history_fallback,
-            },
-            http::Serving::Preview,
-        )
-    })
+    server::serve(
+        cx,
+        listener,
+        Rules::default(),
+        move |method, url, accept| {
+            http::respond(
+                method,
+                url,
+                accept,
+                http::Route {
+                    directory: &directory,
+                    base: &output.base_path,
+                    history_fallback: &output.history_fallback,
+                },
+                http::Serving::Preview,
+            )
+        },
+    )
 }
 
 /// Each request goes to the application with the longest matching base path,
@@ -74,8 +79,11 @@ fn serve_site(cx: &Context, root: &Path, site: &SiteManifest, port: u16, open: b
     );
     cx.reporter.blank();
     server::ready(cx, port, base, open, READY)?;
-    server::serve(cx, listener, move |method, url, accept| {
-        match route(&mounts, url) {
+    server::serve(
+        cx,
+        listener,
+        Rules::default(),
+        move |method, url, accept| match route(&mounts, url) {
             Some((directory, output)) => http::respond(
                 method,
                 url,
@@ -88,8 +96,8 @@ fn serve_site(cx: &Context, root: &Path, site: &SiteManifest, port: u16, open: b
                 http::Serving::Preview,
             ),
             None => http::build_response(404, "text/plain", b"Not found".to_vec(), false),
-        }
-    })
+        },
+    )
 }
 
 /// A host with no Cargo.toml at all uses the default application output.

@@ -1,6 +1,10 @@
 //! Loopback only. The path policy lives in [`http`].
-use super::http::{self, Body};
+use super::{
+    http::{self, Body},
+    proxy::{Rule, Rules},
+};
 use crate::{
+    commands::dev::Options,
     context::Context,
     error::{Error, Result},
     layout,
@@ -8,8 +12,12 @@ use crate::{
     reporter::elapsed_text,
     workspace::Project,
 };
-use http_body_util::Full;
-use hyper::{Method, Request, body::Bytes, service::service_fn};
+use http_body_util::{BodyExt, Full, combinators::UnsyncBoxBody};
+use hyper::{
+    Method, Request,
+    body::{Bytes, Incoming},
+    service::service_fn,
+};
 use hyper_util::rt::{TokioIo, TokioTimer};
 use std::time::Instant;
 use std::{
@@ -31,13 +39,13 @@ pub(crate) struct DevApp {
 pub(crate) fn dev(
     cx: &Context,
     apps: Vec<DevApp>,
-    port: u16,
-    open: bool,
+    options: &Options,
     started: Instant,
+    proxy: Rules,
 ) -> Result {
     validate_apps(&apps)?;
 
-    let server = bind(port)?;
+    let server = bind(options.port)?;
     let mut routes = Vec::new();
     let mut watchers = Vec::new();
     for DevApp { cx, project } in apps {
@@ -54,9 +62,9 @@ pub(crate) fn dev(
         .to_owned();
     ready(
         cx,
-        port,
+        options.port,
         &base,
-        open,
+        options.open,
         &format!(
             "Ready in {}, watching for changes. Press Ctrl+C to stop.",
             elapsed_text(started.elapsed())
@@ -64,7 +72,7 @@ pub(crate) fn dev(
     )?;
     cx.reporter.blank();
 
-    serve(cx, server, move |method, url, accept| {
+    serve(cx, server, proxy, move |method, url, accept| {
         let Some((cx, state)) = route(&routes, url) else {
             return http::build_response(404, "text/plain", b"Not found".to_vec(), false);
         };
@@ -149,6 +157,7 @@ pub(crate) fn ready(cx: &Context, port: u16, base: &str, open: bool, message: &s
 pub(crate) fn serve(
     cx: &Context,
     server: TcpListener,
+    proxy: Rules,
     answer: impl Fn(&Method, &str, &str) -> Body + 'static,
 ) -> Result {
     server.set_nonblocking(true)?;
@@ -157,13 +166,19 @@ pub(crate) fn serve(
         .build()?;
     let cx = Rc::new(cx.clone());
     let answer = Rc::new(answer);
+    let proxy = Rc::new(proxy);
     // Keep idle and speculative browser connections off a blocking worker pool:
     // a burst must not strand a script request behind another keep-alive socket.
     tokio::task::LocalSet::new().block_on(&runtime, async move {
         let listener = tokio::net::TcpListener::from_std(server)?;
         loop {
             let (stream, _) = listener.accept().await?;
-            tokio::task::spawn_local(serve_connection(cx.clone(), stream, answer.clone()));
+            tokio::task::spawn_local(serve_connection(
+                cx.clone(),
+                stream,
+                proxy.clone(),
+                answer.clone(),
+            ));
         }
     })
 }
@@ -171,10 +186,11 @@ pub(crate) fn serve(
 async fn serve_connection(
     cx: Rc<Context>,
     stream: tokio::net::TcpStream,
+    proxy: Rc<Rules>,
     answer: Rc<impl Fn(&Method, &str, &str) -> Body>,
 ) {
-    let service = service_fn(|request| {
-        std::future::ready(Ok::<_, Infallible>(answer_request(&cx, &*answer, request)))
+    let service = service_fn(|request| async {
+        Ok::<_, Infallible>(answer_request(&cx, &proxy, &*answer, request).await)
     });
     if let Err(error) = hyper::server::conn::http1::Builder::new()
         .timer(TokioTimer::new())
@@ -185,38 +201,65 @@ async fn serve_connection(
     }
 }
 
-fn answer_request(
+type ServerResponse = hyper::Response<UnsyncBoxBody<Bytes, hyper::Error>>;
+
+async fn answer_request(
     cx: &Context,
+    proxy: &Rules,
     answer: &impl Fn(&Method, &str, &str) -> Body,
-    request: Request<hyper::body::Incoming>,
-) -> hyper::Response<Full<Bytes>> {
+    request: Request<Incoming>,
+) -> ServerResponse {
     let started = Instant::now();
-    let url = request
-        .uri()
-        .path_and_query()
-        .map_or("/", |value| value.as_str());
-    // A non-text Accept header cannot authorize the HTML history fallback.
-    let accept = request
-        .headers()
-        .get("Accept")
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default();
-    let response = answer(request.method(), url, accept);
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let url = uri.path_and_query().map_or("/", |value| value.as_str());
+    let response = match proxy.matching(uri.path()) {
+        Some(rule) => forward(cx, rule, request).await,
+        None => {
+            // A non-text Accept header cannot authorize the HTML history fallback.
+            let accept = request
+                .headers()
+                .get("Accept")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default();
+            full_response(answer(&method, url, accept))
+        }
+    };
     let status = response.status().as_u16();
     if logged(cx, url, &response, status) {
-        cx.reporter.request(
-            request.method().as_str(),
-            request.uri().path(),
-            status,
-            started.elapsed(),
-        );
+        cx.reporter
+            .request(method.as_str(), uri.path(), status, started.elapsed());
     }
-    response.map(|body| Full::new(Bytes::from(body)))
+    response
+}
+
+/// A backend that cannot answer is a bad gateway, reported in the terminal too.
+async fn forward(cx: &Context, rule: &Rule, request: Request<Incoming>) -> ServerResponse {
+    match rule.forward(request, cx.reporter.clone()).await {
+        Ok(response) => response.map(BodyExt::boxed_unsync),
+        Err(error) => {
+            cx.reporter.note(format!("Proxy: {error}"));
+            full_response(http::build_response(
+                502,
+                "text/plain",
+                error.to_string().into_bytes(),
+                false,
+            ))
+        }
+    }
+}
+
+fn full_response(response: Body) -> ServerResponse {
+    response.map(|body| {
+        Full::new(Bytes::from(body))
+            .map_err(|never| match never {})
+            .boxed_unsync()
+    })
 }
 
 /// Page loads and errors, like a framework dev server: not every script, image
 /// and stylesheet a page pulls in, and never the refresh client's polling.
-fn logged(cx: &Context, url: &str, response: &Body, status: u16) -> bool {
+fn logged(cx: &Context, url: &str, response: &ServerResponse, status: u16) -> bool {
     let path = url.split('?').next().unwrap_or("");
     if ["version", "update"]
         .iter()

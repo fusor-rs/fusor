@@ -4,8 +4,15 @@ use super::{JsValue, Scope};
 use crate::{ContextKey, OwnerHandle};
 use std::cell::RefCell;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Stage {
+    Preparation,
+    Activation,
+}
+
 struct Action {
     owner: OwnerHandle,
+    stage: Stage,
     setup: Box<dyn FnOnce() -> Result<(), JsValue>>,
 }
 
@@ -16,6 +23,25 @@ impl CommitQueue {
     /// No scope sharing this queue has setup left to finish.
     pub(super) fn is_idle(&self) -> bool {
         self.0.borrow().is_empty()
+    }
+
+    fn run(&self, owner: &OwnerHandle, stage: Stage) -> Result<(), JsValue> {
+        let pending = self.0.take();
+        let (ready, waiting): (Vec<_>, Vec<_>) = pending
+            .into_iter()
+            .filter(|action| !action.owner.is_disposed())
+            .partition(|action| {
+                action.stage == stage
+                    && action.owner.is_within(owner)
+                    && action.owner.is_mount_ready()
+            });
+        self.0.borrow_mut().extend(waiting);
+        for action in ready {
+            if !action.owner.is_disposed() {
+                (action.setup)()?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -51,6 +77,26 @@ impl Scope {
         &mut self,
         setup: impl FnOnce() -> Result<(), JsValue> + 'static,
     ) -> Result<(), JsValue> {
+        self.enqueue_setup(Stage::Preparation, setup)
+    }
+
+    /// Acquire an exclusive browser resource after the previous view retires,
+    /// before this subtree activates. Failure cannot restore the retired view;
+    /// register fallible validation with `before_commit` instead. The callback
+    /// must arrange rollback on owner disposal if later activation setup fails.
+    #[doc(hidden)]
+    pub fn before_activate(
+        &mut self,
+        setup: impl FnOnce() -> Result<(), JsValue> + 'static,
+    ) -> Result<(), JsValue> {
+        self.enqueue_setup(Stage::Activation, setup)
+    }
+
+    fn enqueue_setup(
+        &mut self,
+        stage: Stage,
+        setup: impl FnOnce() -> Result<(), JsValue> + 'static,
+    ) -> Result<(), JsValue> {
         if self.owner.is_disposed() {
             return Err(JsValue::from_str("cannot initialize a disposed component"));
         }
@@ -60,6 +106,7 @@ impl Scope {
         let queue = self.mount_queue.as_ref().expect("prepared component queue");
         queue.0.borrow_mut().push(Action {
             owner: self.owner(),
+            stage,
             setup: Box::new(setup),
         });
         Ok(())
@@ -92,20 +139,7 @@ impl Scope {
         }
         self.owner.mark_mount_ready();
         if let Some(queue) = &self.mount_queue {
-            let pending = queue.0.take();
-            let owner = self.owner();
-            let (ready, waiting): (Vec<_>, Vec<_>) = pending
-                .into_iter()
-                .filter(|action| !action.owner.is_disposed())
-                .partition(|action| {
-                    action.owner.is_within(&owner) && action.owner.is_mount_ready()
-                });
-            queue.0.borrow_mut().extend(waiting);
-            for action in ready {
-                if !action.owner.is_disposed() {
-                    (action.setup)()?;
-                }
-            }
+            queue.run(&self.owner(), Stage::Preparation)?;
         }
         if self.owner.is_disposed() {
             return Err(JsValue::from_str(
@@ -130,6 +164,15 @@ impl Scope {
             return Ok(());
         }
         self.finish_prepare()?;
+        if self
+            .mount_parent
+            .as_ref()
+            .is_none_or(|parent| parent.is_active())
+        {
+            if let Some(queue) = &self.mount_queue {
+                queue.run(&self.owner(), Stage::Activation)?;
+            }
+        }
         self.owner.commit();
         if self.owner.is_disposed() {
             return Err(JsValue::from_str("component disposed during activation"));

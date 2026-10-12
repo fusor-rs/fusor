@@ -12,23 +12,18 @@ thread_local! {
 }
 
 /// Browser history has one owner at a time.
-pub(super) struct Lease(Cell<bool>);
+pub(super) struct Lease(());
 impl Lease {
     pub(super) fn acquire() -> Result<Self, JsValue> {
         if TAKEN.replace(true) {
             return Err(error("only one fusor router may own browser history"));
         }
-        Ok(Self(Cell::new(true)))
-    }
-    pub(super) fn release(&self) {
-        if self.0.replace(false) {
-            TAKEN.set(false);
-        }
+        Ok(Self(()))
     }
 }
 impl Drop for Lease {
     fn drop(&mut self) {
-        self.release();
+        TAKEN.set(false);
     }
 }
 

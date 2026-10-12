@@ -3,6 +3,7 @@ import { root, env as buildEnv, startProcess, stopProcess, waitFor as waitUntil,
 import assert from "node:assert/strict";
 import { readFile, writeFile, rename, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { createServer, request } from "node:http";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
 
@@ -12,6 +13,103 @@ const port = await reservePort();
 const base = `http://127.0.0.1:${port}`;
 let server;
 let browser;
+let pendingApi;
+const apiStatuses = new Map([["/api/failure", 403], ["/api/redirect", 302]]);
+const backend = createServer(async (incoming, response) => {
+  if (incoming.url === "/api/pending") {
+    pendingApi = response;
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.write("first");
+    return;
+  }
+  const chunks = [];
+  for await (const chunk of incoming) chunks.push(chunk);
+  const body = Buffer.concat(chunks);
+  response.writeHead(apiStatuses.get(incoming.url) ?? 201, {
+    "content-type": "application/octet-stream",
+    "set-cookie": ["session=hello; HttpOnly; SameSite=Strict; Path=/", "second=world; Path=/"],
+    "x-method": incoming.method,
+    "x-path": incoming.url,
+    "x-cookie": incoming.headers.cookie || "",
+    "x-origin": incoming.headers.origin || "",
+    "x-host": incoming.headers.host,
+    "x-removed": incoming.headers["x-request-hop"] || "",
+    "x-repeated": incoming.headers["x-repeat"] || "",
+    "location": "/api/session",
+    "connection": "x-response-hop",
+    "x-response-hop": "remove me",
+  });
+  response.end(body);
+});
+
+async function proxyRequests() {
+  const body = Buffer.from([0, 255, 1, 128]);
+  for (const path of ["/api/echo?name=a%2Fb", "/rpc/echo", "/configured/echo", "/api/failure"]) {
+    const response = await new Promise((resolve, reject) => {
+      const outgoing = request(base + path, {
+        method: "POST",
+        headers: {
+          cookie: "session=original",
+          origin: base,
+          connection: "x-request-hop",
+          "x-request-hop": "remove me",
+          "content-type": "application/octet-stream",
+          "x-repeat": ["one", "two"],
+        },
+      }, resolve);
+      outgoing.on("error", reject);
+      outgoing.end(body);
+    });
+    assert.equal(response.statusCode, path === "/api/failure" ? 403 : 201);
+    assert.equal(response.headers["x-path"], path);
+    assert.equal(response.headers["x-method"], "POST");
+    assert.equal(response.headers["x-cookie"], "session=original");
+    assert.equal(response.headers["x-origin"], base);
+    assert.equal(response.headers["x-host"], `127.0.0.1:${backend.address().port}`);
+    assert.equal(response.headers["x-removed"], "");
+    assert.equal(response.headers["x-repeated"], "one, two");
+    assert.equal(response.headers["x-response-hop"], undefined);
+    assert.deepEqual(response.headers["set-cookie"], [
+      "session=hello; HttpOnly; SameSite=Strict; Path=/", "second=world; Path=/",
+    ]);
+    const chunks = [];
+    for await (const chunk of response) chunks.push(chunk);
+    assert.deepEqual(Buffer.concat(chunks), body);
+  }
+  assert.equal((await fetch(base + "/apiary")).status, 404);
+  assert.equal((await fetch(base + "/api/__fusor/version")).status, 404);
+  assert.equal((await fetch(base + "/api/special/echo")).status, 502);
+  assert.equal((await fetch(base + "/offline/echo")).status, 502);
+  const redirect = await fetch(base + "/api/redirect", { redirect: "manual" });
+  assert.equal(redirect.status, 302);
+  assert.equal(redirect.headers.get("location"), "/api/session");
+  await streamingProxy();
+  console.log("PASS: dev proxy preserves methods, binary bodies, queries, cookies and statuses; respects prefixes, redirects and overrides");
+}
+
+async function streamingProxy() {
+  const pending = await fetch(base + "/api/pending", { signal: AbortSignal.timeout(10_000) });
+  const reader = pending.body.getReader();
+  const first = [];
+  let length = 0;
+  while (length < "first".length) {
+    const chunk = await reader.read();
+    assert.equal(chunk.done, false);
+    first.push(chunk.value);
+    length += chunk.value.length;
+  }
+  assert.equal(Buffer.concat(first).toString(), "first");
+  assert.equal((await fetch(base + "/__fusor/version")).status, 200);
+  pendingApi.end("second");
+  const chunks = [];
+  for (;;) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    chunks.push(chunk.value);
+  }
+  assert.equal(Buffer.concat(chunks).toString(), "second");
+  console.log("PASS: streaming dev proxy delivers data before the backend finishes and keeps refresh responsive");
+}
 
 const waitFor = (predicate, description) => waitUntil(predicate, description, { timeout: 60_000, interval: 150, process: server });
 
@@ -22,6 +120,9 @@ const hashWasm = async () => {
 };
 
 try {
+  await new Promise(resolve => backend.listen(0, "127.0.0.1", resolve));
+  const backendUrl = `http://127.0.0.1:${backend.address().port}`;
+  const unusedBackend = `http://127.0.0.1:${await reservePort()}`;
   for (const path of ["Cargo.toml", "Cargo.lock", ".cargo", "crates", "examples", "apps", "benchmarks/workloads"]) {
     await copyProject(join(root, path), join(scratch, path));
   }
@@ -29,17 +130,28 @@ try {
   const manifest = join(application, "Cargo.toml");
   await writeFile(manifest, (await readFile(manifest, "utf8")).replace(
     "[package.metadata.fusor]",
-    '[package.metadata.fusor]\nassets-build = ["node", "asset-hook.mjs"]',
+    `[package.metadata.fusor]
+assets-build = ["node", "asset-hook.mjs"]
+dev.proxy."/api" = "${unusedBackend}"
+dev.proxy."/configured" = "${backendUrl}"
+dev.proxy."/api/special" = "${unusedBackend}"`,
   ));
   await copyProject(join(root, "tests/fixtures/asset-hook.mjs"), join(application, "asset-hook.mjs"));
   const hookRuns = async () => Number(await readFile(join(application, ".fusor/asset-hook-count"), "utf8"));
-  server = startProcess("cargo", ["run", "--locked", "-p", "fusor-cli", "--bin", "fusor", "--", "dev", "-p", "fusor-playground", "--offline", "--port", String(port)], {
+  server = startProcess("cargo", [
+    "run", "--locked", "-p", "fusor-cli", "--bin", "fusor", "--",
+    "dev", "-p", "fusor-playground", "--offline", "--port", String(port),
+    "--proxy", `/api=${backendUrl}`,
+    "--proxy", `/rpc=${backendUrl}`,
+    "--proxy", `/offline=${unusedBackend}`,
+  ], {
     cwd: scratch,
     env,
   });
 
   await waitUntil(() => server.output.includes("watching for changes"), "initial build from HTML", { timeout: 180_000, interval: 150, process: server });
   assert.equal(await hookRuns(), 1);
+  await proxyRequests();
   browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || undefined });
   const page = await browser.newPage();
   // Bindings are empty until the Wasm mounts, and a click before then is lost.
@@ -62,6 +174,13 @@ try {
   });
   await waitForPublishedPage();
   await page.waitForSelector('[data-ready="true"]');
+  const cookie = await page.evaluate(async () => {
+    await fetch("/api/session");
+    return (await fetch("/api/session")).headers.get("x-cookie");
+  });
+  assert.match(cookie, /session=hello/);
+  assert.match(cookie, /second=world/);
+  console.log("PASS: same-origin dev proxy accepts HttpOnly SameSite=Strict sessions in a real browser");
   assert.equal(await page.locator("#count").textContent(), "0");
   const polledVersion = await page.waitForResponse(response =>
     new URL(response.url()).pathname === "/__fusor/version" && response.ok());
@@ -244,5 +363,8 @@ struct Counter {
 } finally {
   if (browser) await browser.close();
   await stopProcess(server);
+  pendingApi?.destroy();
+  backend.closeAllConnections();
+  await new Promise((resolve, reject) => backend.close(error => error ? reject(error) : resolve()));
   await rm(scratch, { recursive: true, force: true });
 }
