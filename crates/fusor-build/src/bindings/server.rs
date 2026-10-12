@@ -393,9 +393,10 @@ impl<'a> ServerRender<'a> {
             // Text, classes and structural anchors are emitted separately.
             | Binding::Text { .. } | Binding::Class { .. } | Binding::Branch { .. }
             | Binding::Children { .. } | Binding::Invocation { .. }
-            // Events intentionally have no server effect; these browser-only
-            // operations are rejected by template validation where applicable.
-            | Binding::Event { .. } | Binding::Property { .. } | Binding::Region { .. }
+            // Events and element access intentionally have no server effect; these
+            // browser-only operations are rejected by template validation where applicable.
+            | Binding::Event { .. } | Binding::Element { .. } | Binding::Property { .. }
+            | Binding::Region { .. }
             | Binding::Router { .. } | Binding::Slot { .. } => quote! {},
         }
     }

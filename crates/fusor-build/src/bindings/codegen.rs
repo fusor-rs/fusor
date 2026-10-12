@@ -309,6 +309,7 @@ fn coherent_rejection(binding: &Binding) -> Option<&'static str> {
         | Binding::Slot { .. } => Some(
             "editable controls, widgets, outlets and opaque content must remain outside coherent regions",
         ),
+        Binding::Element { .. } => Some("rust:element must remain outside coherent regions"),
         _ => None,
     }
 }

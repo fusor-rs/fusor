@@ -242,6 +242,22 @@ writes in the handler update dependent bindings.
 - [Expressions, events, and Rust closure syntax](/docs/html-and-rust)
 - [Events: browser handlers and custom messages](/docs/events)
 
+## rust:element — hand the mounted element to Rust {#element}
+
+Runs its Rust expression once, after the element is in the document. The expression
+receives `state` and `element`, a `web_sys::Element`, so Rust can measure the element,
+focus it, or keep it for later. Work started there ends when the component is dropped if
+the value that holds it lives in `state`.
+
+```html title=HTML
+<div class="canvas" rust:element="state.rows.attach(element)"></div>
+```
+
+> Browser only: server rendering ignores it, external backends reject it, and it cannot sit
+> inside a coherent `rust:async` region.
+
+- [Mount only the rows near the viewport](/docs/components/virtual-rows)
+
 ## class:name — toggle one CSS class {#classes}
 
 A boolean expression controlling one CSS class. Combine multiple `class:name` bindings with

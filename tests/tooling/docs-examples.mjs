@@ -164,7 +164,7 @@ try {
     await frameworkCli(["build", "--manifest-path", join(app, "Cargo.toml")]);
     console.log(`PASS build: copied ${lesson} guide in a standalone application`);
   }
-  for (const lesson of ["basics", "forms", "routing", "context", "mounting", "foreach", "app", "control-flow", "session"]) {
+  for (const lesson of ["basics", "forms", "routing", "context", "mounting", "foreach", "virtual-rows", "app", "control-flow", "session"]) {
     const app = join(scratch, lesson);
     await frameworkCli(["new", app, "--framework-path", root, "--skip-install"]);
     const files =

@@ -1,8 +1,16 @@
 use fusor::prelude::*;
+use fusor_components::{Scroller, VirtualRows};
 #[derive(Clone, PartialEq)]
 struct Item {
     id: u32,
     title: String,
+}
+fn numbered(ids: std::ops::Range<u32>) -> Vec<Item> {
+    ids.map(|id| Item {
+        id,
+        title: format!("Row {id}"),
+    })
+    .collect()
 }
 #[derive(Clone, PartialEq)]
 struct Group {
@@ -14,10 +22,27 @@ struct ViewState {
     items: Signal<Vec<Item>>,
     groups: Signal<Vec<Group>>,
     live: Signal<i32>,
+    long: Signal<Vec<Item>>,
+    rows: VirtualRows<Item>,
+    page_rows: VirtualRows<Item>,
 }
 impl ViewState {
     fn new() -> Self {
+        let long = signal(numbered(0..1000));
+        let rows = VirtualRows::new(
+            {
+                let long = long.clone();
+                move || long.get()
+            },
+            |item| if item.id % 5 == 0 { 40.0 } else { 20.0 },
+            Scroller::Container,
+            2,
+        );
+        let page_rows = VirtualRows::new(|| numbered(0..300), |_| 30.0, Scroller::Page, 2);
         Self {
+            long,
+            rows,
+            page_rows,
             live: signal(0),
             groups: signal(vec![
                 Group {
@@ -71,6 +96,15 @@ impl ViewState {
             if let Some(item) = v.iter_mut().find(|i| i.id == 1) {
                 item.title = "Ada Lovelace".into()
             }
+        });
+    }
+    fn jump(&self) {
+        self.rows.scroll_to(500);
+    }
+    fn grow(&self) {
+        self.long.update(|items| {
+            let next = u32::try_from(items.len()).expect("the example list stays small");
+            items.extend(numbered(next..next + 5));
         });
     }
 }

@@ -41,7 +41,8 @@ impl Lexical<'_> {
             | Binding::Boolean { value, .. }
             | Binding::Checked { value, .. }
             | Binding::Class { value, .. }
-            | Binding::Event { handler: value, .. } => self.wrap(value),
+            | Binding::Event { handler: value, .. }
+            | Binding::Element { handler: value, .. } => self.wrap(value),
             Binding::Bind { value, control, .. } => {
                 self.wrap(value);
                 if let Some(choice) = control.choice_mut() {

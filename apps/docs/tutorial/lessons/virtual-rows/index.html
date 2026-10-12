@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo library</title>
+  <link rel="icon" href="data:,">
+  <style>
+    .canvas { position: relative; }
+    .day { position: absolute; left: 0; right: 0; }
+    .day h2 { margin: 0; height: 40px; line-height: 40px; }
+    .photos { display: flex; flex-wrap: wrap; width: 680px; }
+    .photos img { width: 160px; height: 160px; object-fit: cover; margin: 0 10px 10px 0; }
+  </style>
+</head>
+<body>
+  <App state="{{ App::new() }}">
+    <main>
+      <h1>Photo library</h1>
+      <button on:click="state.jump_to(&quot;2023-06&quot;)">June 2023</button>
+      <div class="canvas" rust:element="state.rows.attach(element)"
+           style="height: {{ state.rows.total_size() }}px">
+        <ForEach items="{{ state.rows.visible() }}" key="{{ |row| row.item.date.clone() }}" item="row">
+          <section class="day" style="top: {{ row.get().offset }}px; height: {{ row.get().size }}px">
+            <h2>{{ row.get().item.date }}</h2>
+            <div class="photos">
+              <ForEach items="{{ row.get().item.photos }}" key="{{ |photo| photo.clone() }}" item="photo">
+                <img src="{{ photo.get() }}" alt="">
+              </ForEach>
+            </div>
+          </section>
+        </ForEach>
+      </div>
+    </main>
+  </App>
+</body>
+</html>

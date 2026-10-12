@@ -59,6 +59,36 @@ try {
   await expect(page.locator('#groups .nested')).toHaveText(['0.0 Nested Ada','1.0 Nested Grace']);
   await page.getByRole('button',{name:'Reverse groups',exact:true}).click();
   await expect(page.locator('#groups .nested')).toHaveText(['0.0 Nested Grace','1.0 Nested Ada']);
+  // Virtual rows: 1000 rows of 20px, every fifth 40px, in a 200px scroller
+  // with an overscan of 2; 300 rows of 30px scrolled by the page.
+  const scroller=page.locator('#scroller');
+  const mounted=page.locator('#scroller .row');
+  const indexes=async()=>(await mounted.evaluateAll(rows=>rows.map(row=>Number(row.dataset.index))));
+  await expect(page.locator('#scroller .canvas')).toHaveCSS('height','24000px');
+  await expect(mounted.first()).toHaveAttribute('data-index','0');
+  await expect(mounted).toHaveCount(10);
+  await expect(mounted.last()).toHaveAttribute('data-index','9');
+  await scroller.evaluate(node=>{node.scrollTop=12000;});
+  await expect(mounted.first()).toHaveAttribute('data-index','498');
+  await expect(page.locator('#scroller .row[data-index="500"]')).toHaveCSS('top','12000px');
+  await expect(page.locator('#scroller .row[data-index="500"]')).toHaveCSS('height','40px');
+  assert((await indexes()).every((index,position,all)=>position===0||index===all[position-1]+1));
+  await scroller.evaluate(node=>{node.scrollTop=0;});
+  await expect(mounted.first()).toHaveAttribute('data-index','0');
+  await page.getByRole('button',{name:'Jump',exact:true}).click();
+  assert.equal(await scroller.evaluate(node=>node.scrollTop),12000);
+  await expect(mounted.first()).toHaveAttribute('data-index','498');
+  await page.getByRole('button',{name:'Grow',exact:true}).click();
+  await expect(page.locator('#scroller .canvas')).toHaveCSS('height','24120px');
+  const pageRows=page.locator('#page .row');
+  await expect(page.locator('#page')).toHaveCSS('height','9000px');
+  await expect(pageRows.first()).toHaveAttribute('data-index','0');
+  assert((await pageRows.count())<300);
+  const pageTop=await page.locator('#page').evaluate(node=>node.getBoundingClientRect().top+window.scrollY);
+  await page.evaluate(top=>window.scrollTo(0,top+3000),pageTop);
+  await expect(pageRows.first()).toHaveAttribute('data-index','98');
+  await page.evaluate(()=>window.scrollTo(0,0));
+  await expect(pageRows.first()).toHaveAttribute('data-index','0');
   await expect(page.locator('foreach')).toHaveCount(0);
   await expect(page.locator('app')).toHaveCount(0);
   await page.evaluate(async () => { window.appApi = await import(new URL('./pkg/app.js', document.querySelector('script[type=module]').src).href); });
@@ -81,5 +111,5 @@ try {
   await expect(page.locator('#live')).toHaveText('2');
   assert.equal(await page.evaluate(() => appApi.constructions()), 3);
   assert.deepEqual(errors,[]);
-  console.log('PASS App: inferred state, duplicate-start guard, disposal, failure and retry; ForEach: inline HTML, insertion, deletion, value updates, reactive positions, nested scopes, component cleanup and keyed DOM/input preservation');
+  console.log('PASS App: inferred state, duplicate-start guard, disposal, failure and retry; ForEach: inline HTML, insertion, deletion, value updates, reactive positions, nested scopes, component cleanup and keyed DOM/input preservation; VirtualRows: windowed container and page scrolling, scroll_to and relayout');
 } finally {await browser?.close();server.closeAllConnections();await new Promise(r=>server.close(r));}

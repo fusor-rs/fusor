@@ -56,6 +56,8 @@ enum Directive<'a> {
     Slot,
     Property(&'a str),
     Event(&'a str),
+    /// `rust:element` hands the mounted element to a Rust expression.
+    Element,
     Bind,
     Class(&'a str),
     UnknownRust,
@@ -70,6 +72,7 @@ impl<'a> Directive<'a> {
             "hydrate:target" => Self::ActivationTarget,
             "rust:async" | "rust:await" => Self::Region,
             "rust:key" | "rust:slot" | "rust:if" => Self::Slot,
+            "rust:element" => Self::Element,
             "bind" => Self::Bind,
             _ if name == "hydrate" || name.starts_with("hydrate:") => Self::Hydrate,
             _ => {
@@ -213,6 +216,7 @@ fn lower_attribute(
         }
         Directive::Property(property) => Some(property_binding(native, property, value, offset)?),
         Directive::Event(event) => Some(event_binding(native, event, value, offset)?),
+        Directive::Element => Some(element_binding(native, value, offset)?),
         Directive::Bind => Some(bind::parse(
             source,
             bind::ControlElement {
@@ -257,6 +261,20 @@ fn event_binding(
     Ok(Binding::Event {
         node: native.context.node,
         name: event.to_owned(),
+        handler: Rust::parse(native.source, value, offset)?,
+    })
+}
+
+fn element_binding(native: &Native, value: &str, offset: usize) -> Result<Binding, ExtractError> {
+    if value.trim().is_empty() {
+        return Err(error(
+            native.source,
+            offset,
+            "rust:element requires a Rust expression receiving `element`",
+        ));
+    }
+    Ok(Binding::Element {
+        node: native.context.node,
         handler: Rust::parse(native.source, value, offset)?,
     })
 }

@@ -1,4 +1,9 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><title>ForEach</title></head><body>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>ForEach</title>
+<style>
+#scroller { height: 200px; overflow: auto; }
+.canvas { position: relative; }
+.canvas > .row { position: absolute; left: 0; right: 0; }
+</style></head><body>
 <App state="{{ create_view(owner)? }}">
   <main>
   <h1>Keyed inline HTML</h1>
@@ -14,6 +19,17 @@
   <li><h2>{{ group.get().title }}</h2><ul><ForEach items="{{ group.get().items }}" key="{{ |item| item.id }}">
   <li class="nested">{{ group_index.get() }}.{{ index.get() }} {{ item.get().title }}</li>
   </ForEach></ul></li></ForEach></ul>
+  <button on:click="state.jump()">Jump</button><button on:click="state.grow()">Grow</button>
+  <div id="scroller"><div class="canvas" rust:element="state.rows.attach(element)" style="height: {{ state.rows.total_size() }}px">
+    <ForEach items="{{ state.rows.visible() }}" key="{{ |row| row.item.id }}" item="row">
+      <div class="row" data-index="{{ row.get().index }}" style="top: {{ row.get().offset }}px; height: {{ row.get().size }}px">{{ row.get().item.title }}</div>
+    </ForEach>
+  </div></div>
+  <div id="page" class="canvas" rust:element="state.page_rows.attach(element)" style="height: {{ state.page_rows.total_size() }}px">
+    <ForEach items="{{ state.page_rows.visible() }}" key="{{ |row| row.item.id }}" item="row">
+      <div class="row" data-index="{{ row.get().index }}" style="top: {{ row.get().offset }}px; height: {{ row.get().size }}px">{{ row.get().item.title }}</div>
+    </ForEach>
+  </div>
   </main>
 </App>
 <template rust:component="ForwardedRow"><li data-id="{{ state.item.get().id }}"><span class="forwarded-title">{{ state.item.get().title }}</span><button on:click="state.clicks.update(|n| *n+=1)">Count</button><output>{{ state.clicks.get() }}</output></li></template>

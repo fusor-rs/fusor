@@ -99,6 +99,7 @@ name = "fusor-components"
 version = "0.1.6"
 dependencies = [
  "fusor-core",
+ "web-sys",
 ]
 
 [[package]]

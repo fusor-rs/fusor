@@ -3,7 +3,7 @@ use super::{
 };
 use crate::{Effect, effect};
 use std::{cell::RefCell, rc::Rc};
-use web_sys::{Event, Text};
+use web_sys::{Element, Event, Text};
 
 impl Scope {
     pub(super) fn bind(
@@ -203,6 +203,19 @@ impl Scope {
     ) -> Result<(), JsValue> {
         let target = ListenerTarget::Node(target.resolve(self)?.into());
         self.listen(target, event, handler)
+    }
+
+    /// Hand the resolved element to `attach` once this scope is active, so the
+    /// element is in the document and can be measured. Runs at most once.
+    pub fn element(
+        &mut self,
+        target: impl ElementTarget,
+        attach: impl FnOnce(Element) + 'static,
+    ) -> Result<(), JsValue> {
+        let element = target.resolve(self)?;
+        let registration = self.owner().on_activate(move || attach(element));
+        self.retain(registration);
+        Ok(())
     }
 
     /// Listen on a validated binding bundle entry, without fetching its node.

@@ -497,6 +497,13 @@ fn capability<'a>(source: &str, binding: &'a Binding) -> Result<Capability<'a>, 
         Binding::Children { .. } => Capability::Children,
         Binding::Router { .. } => Capability::Router,
         Binding::Region { .. } => Capability::Async,
+        Binding::Element { .. } => {
+            return Err(error(
+                source,
+                binding.origin().offset,
+                "external backends have no DOM elements; rust:element is browser-only",
+            ));
+        }
         _ => {
             return Err(error(
                 source,

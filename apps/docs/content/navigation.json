@@ -50,6 +50,11 @@
     "parent": "components"
   },
   {
+    "slug": "components/virtual-rows",
+    "group": "Core concepts",
+    "parent": "components"
+  },
+  {
     "slug": "control-flow",
     "group": "Core concepts"
   },

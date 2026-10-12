@@ -38,7 +38,7 @@ Note: the crate `fusor-core` has library name `fusor` (the crates.io name was
 taken), so code says `use fusor::prelude::*`.
 
 Template syntax at a glance: `{{ expr }}`, `on:event`, `class:name`, `bind`,
-`prop:name`, `rust:if`, `rust:key`, `rust:render`, `hydrate*`, plus the built-in
+`prop:name`, `rust:if`, `rust:key`, `rust:render`, `rust:element`, `hydrate*`, plus the built-in
 tags `App`, `If`/`Else`, `Match`/`Case`, `ForEach`, `Children`, `Async`, `Await`,
 `Router`/`Route`. The full reference is in `apps/docs/public/content/html-and-rust/attributes.md`
 and `apps/docs/public/content/html-and-rust/built-in-components.md`.

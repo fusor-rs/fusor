@@ -128,6 +128,10 @@ fn value_binding(binding: &Binding) -> TokenStream {
             control,
             value,
         } => control_binding(*node, control, value, ControlMode::Install),
+        Binding::Element { node, handler } => {
+            let node = element(*node);
+            quote_spanned! {span=> __fusor_scope.element(&#node, move |#[allow(unused_variables, reason = "attachments may ignore the element")] element| { #handler })?; }
+        }
         _ => unreachable!("ordinary value binding"),
     }
 }

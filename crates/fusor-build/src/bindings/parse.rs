@@ -1866,10 +1866,12 @@ impl Parser<'_> {
         }
         if (async_attr.is_some() || enclosing)
             && (name.contains('-')
-                || tag
-                    .attributes
-                    .keys()
-                    .any(|key| matches!(key.as_ref(), b"is" | b"bind" | b"rust:slot")))
+                || tag.attributes.keys().any(|key| {
+                    matches!(
+                        key.as_ref(),
+                        b"is" | b"bind" | b"rust:slot" | b"rust:element"
+                    )
+                }))
         {
             return Err(error(
                 source,
