@@ -1,0 +1,30 @@
+<template rust:component="BranchRouters">
+  <section id="branch-routers">
+    <button id="switch-session" on:click="state.signed_in.update(|value| *value = !*value)">
+      Toggle session
+    </button>
+    <button id="fail-session" on:click="state.fail.update(|value| *value = !*value)">
+      Toggle failure
+    </button>
+    <Match value="{{ state.signed_in.get() }}">
+      <Case pattern="false">
+        <Router>
+          <Route path="/">
+            <p id="door">Door</p>
+            <button id="sign-in" on:click="state.signed_in.set(true)">Sign in</button>
+          </Route>
+          <Route path="/detail"><p id="door-detail">Door detail</p></Route>
+        </Router>
+      </Case>
+      <Case pattern="true">
+        <Router>
+          <Route path="/"><p id="home">Home</p></Route>
+          <Route path="/detail"><p id="home-detail">Home detail</p></Route>
+        </Router>
+        <If condition="{{ state.fail.get() }}"><Broken></Broken></If>
+      </Case>
+    </Match>
+    <a data-fusor-link href="/nested/">Session root</a>
+    <a data-fusor-link href="/nested/detail">Session detail</a>
+  </section>
+</template>

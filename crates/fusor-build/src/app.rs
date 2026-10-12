@@ -15,7 +15,8 @@ pub use artifact::{
 pub(crate) use artifact::{HTML_FILE, MANIFEST_FILE, MODULE_FILE};
 pub use assets::{AssetFiles, AssetPattern, AssetSource, SuffixedAssets};
 pub use config::{
-    AppConfig, DeliveryConfig, DeliveryMode, DeliveryUnit, Source, SourceKind, valid_module_name,
+    AppConfig, DeliveryConfig, DeliveryMode, DeliveryUnit, DevConfig, Source, SourceKind,
+    valid_module_name,
 };
 pub use error::SourceError;
 pub use generate::generate;

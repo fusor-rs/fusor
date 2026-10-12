@@ -247,6 +247,11 @@ fn configuration_rejects_typos_invalid_modules_and_overlapping_output() {
         ),
         valid.replace("entry =", "assets-build = [\"\"]\nentry ="),
         valid.replace("entry =", "dev-refresh = \"false\"\nentry ="),
+        valid.replace(
+            "entry =",
+            "dev = { proxy = \"http://localhost:8080\" }\nentry =",
+        ),
+        valid.replace("entry =", "dev = { unknown = true }\nentry ="),
         valid.replace("entry =", "tailwind = \"../app.css\"\nentry ="),
         valid.replace("entry =", "tailwind = \"dist/app.css\"\nentry ="),
     ] {
@@ -304,11 +309,19 @@ fn optional_asset_command_and_refresh_policy_are_explicit_configuration() {
     let path = dir.path().join("Cargo.toml");
     assert!(AppConfig::load(&path).unwrap().dev_refresh);
     fs::create_dir(dir.path().join("public")).unwrap();
-    let source = fs::read_to_string(&path).unwrap().replace("entry =", "assets = { \"/\" = \"public\" }\nassets-build = [\"node\", \"build-assets.mjs\"]\ndev-refresh = false\nentry =");
+    let source = fs::read_to_string(&path).unwrap().replace(
+        "entry =",
+        r#"assets = { "/" = "public" }
+assets-build = ["node", "build-assets.mjs"]
+dev-refresh = false
+dev = { proxy = { "/api" = "http://localhost:8080" } }
+entry ="#,
+    );
     fs::write(&path, &source).unwrap();
     let config = AppConfig::load(&path).unwrap();
     assert!(!config.dev_refresh);
     assert_eq!(config.assets_build, ["node", "build-assets.mjs"]);
+    assert_eq!(config.dev.proxy["/api"], "http://localhost:8080");
     fs::write(
         &path,
         source.replace(

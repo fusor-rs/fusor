@@ -97,6 +97,11 @@ to routers inside its mounted children.
 `Dashboard` is an ordinary component imported into `src/app.rs`. It can live in its own Rust
 module and HTML file. The root router is still the only browser-history owner.
 
+Separate root routers can also live in mutually exclusive `<Match>` cases or `<If>`
+branches. A branch switch prepares the new view, disposes the previous branch, then
+transfers browser-history ownership to the new root router. Two live root routers are
+rejected; nested routers share their root's history.
+
 ```html title=web/index.html · add inside Router
 <Route path="/dashboard/*">
   <Dashboard></Dashboard>

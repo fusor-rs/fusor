@@ -49,6 +49,8 @@ pub struct AppConfig {
     pub tailwind: Option<PathBuf>,
     /// Disable compatible refresh when custom build logic reads HTML/assets.
     pub dev_refresh: bool,
+    /// Development-server forwarding. Ignored by production publication.
+    pub dev: DevConfig,
     pub output: PathBuf,
     pub base_path: String,
     /// Application-relative prefixes allowed to receive index.html on an HTML
@@ -69,6 +71,7 @@ impl Default for AppConfig {
             assets_build: Vec::new(),
             tailwind: None,
             dev_refresh: true,
+            dev: DevConfig::default(),
             output: "dist".into(),
             base_path: "/".into(),
             history_fallback: Vec::new(),
@@ -76,6 +79,15 @@ impl Default for AppConfig {
             templates: vec!["web/components".into()],
         }
     }
+}
+
+/// `[package.metadata.fusor.dev]` settings used by `fusor dev`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DevConfig {
+    /// Browser URL prefixes mapped to backend HTTP origins. Paths and queries
+    /// are forwarded unchanged; command-line rules override matching prefixes.
+    pub proxy: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

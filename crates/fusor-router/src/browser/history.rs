@@ -32,7 +32,7 @@ impl Drop for Recovery {
 
 pub(super) struct Browser {
     owner: Owner,
-    lease: Lease,
+    lease: Cell<Option<Lease>>,
     window: Window,
     history: History,
     pub(super) base: BasePath,
@@ -66,7 +66,6 @@ impl Browser {
         if parent.is_disposed() {
             return Err(error("router parent is disposed"));
         }
-        let lease = Lease::acquire()?;
         let base = BasePath::new(base)?;
         let window = web_sys::window().ok_or_else(|| error("router requires a browser"))?;
         let history = window.history()?;
@@ -74,7 +73,7 @@ impl Browser {
         let location = relative(&base, &url)?;
         Ok(Rc::new(Self {
             owner: Owner::child(parent),
-            lease,
+            lease: Cell::new(None),
             window,
             history,
             base,
@@ -98,7 +97,7 @@ impl Browser {
     /// Finish mounting when `scope` commits, after its whole subtree prepared.
     pub(super) fn finish_on_commit(self: &Rc<Self>, scope: &mut Scope) -> Result<(), JsValue> {
         let weak = Rc::downgrade(self);
-        scope.before_commit(move || {
+        scope.before_activate(move || {
             if let Some(browser) = weak.upgrade().filter(|browser| !browser.disposed.get()) {
                 browser.finish_mount()?;
             }
@@ -111,6 +110,7 @@ impl Browser {
         if self.disposed.get() {
             return Err(error(INACTIVE));
         }
+        self.lease.set(Some(Lease::acquire()?));
         self.listen(self.window.clone().into(), "popstate", |browser, _| {
             browser.pop()
         })?;
@@ -418,7 +418,7 @@ impl Browser {
         if let Err(error) = self.restore_original_state() {
             web_sys::console::error_1(&error);
         }
-        self.lease.release();
+        drop(self.lease.take());
     }
     fn restore_original_state(&self) -> Result<(), JsValue> {
         let Some(original) = self.original_state.take() else {

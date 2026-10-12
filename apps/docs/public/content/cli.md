@@ -131,6 +131,39 @@ fusor dev --site
 
 > Set `dev-refresh = false` when custom build logic reads your HTML or assets.
 
+### Forward API requests to a backend {#dev-proxy}
+
+Use a repeatable `--proxy PREFIX=URL` rule to keep the UI, API requests and cookies on the
+development server's origin while a separate backend handles the API.
+
+```sh title=Terminal
+fusor dev --proxy /api=http://127.0.0.1:8080
+fusor dev --proxy /api=http://127.0.0.1:8080 --proxy /rpc=http://127.0.0.1:8090
+```
+
+Or declare the rules in the application's manifest:
+
+```toml title=Cargo.toml
+[package.metadata.fusor.dev]
+proxy = { "/api" = "http://127.0.0.1:8080" }
+```
+
+Prefixes are absolute browser paths: `/api` matches `/api` and `/api/...`, including query
+strings, and does not match `/apiary`. The longest matching prefix wins. Command-line rules
+override manifest rules with the same prefix. `--site` combines the applications' rules;
+conflicting backends for the same prefix need a command-line override.
+
+The backend must be an HTTP origin without a path, query or credentials. The proxy keeps
+the request path and query unchanged, streams request and response bodies, preserves
+methods, statuses, `Cookie`, `Origin` and separate `Set-Cookie` headers, and returns
+redirects to the browser without following them. `Host` addresses the backend;
+connection-specific headers are removed. An unavailable backend returns 502.
+
+Other requests retain normal asset serving and HTML history fallback. Fusor's generated
+files and refresh endpoints remain local even with a `/` proxy. Forwarding applies only
+to `dev`; HTTPS backends and WebSocket upgrades are unsupported. Restart the development
+server after changing proxy rules.
+
 ## Preview a build {#preview}
 
 `fusor preview` serves an existing build with no Cargo, Rust or npm. It uses the base path

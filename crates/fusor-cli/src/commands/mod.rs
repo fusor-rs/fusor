@@ -71,18 +71,16 @@ pub(crate) fn dispatch(cx: &Context, action: Action) -> Result {
         Action::Dev {
             port,
             open,
-            site: true,
+            site,
+            proxy,
         } => {
-            toolchain::rust::preflight(cx, Path::new("."), true)?;
-            dev::site(cx, port, open)
-        }
-        Action::Dev {
-            port,
-            open,
-            site: false,
-        } => {
+            let options = dev::Options { port, open, proxy };
+            if site {
+                toolchain::rust::preflight(cx, Path::new("."), true)?;
+                return dev::site(cx, options);
+            }
             let project = application(cx, Prepare::Toolchain)?;
-            dev::run(cx, project, port, open)
+            dev::run(cx, project, options)
         }
     }
 }

@@ -33,7 +33,7 @@ sha2 = "=0.10.9"
 flate2 = "=1.1.10"
 tar = "=0.4.46"
 http-body-util = "0.1"
-hyper = { version = "1", features = ["http1", "server"] }
+hyper = { version = "1", features = ["http1", "server", "client"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 tokio = { version = "1", features = ["net", "rt", "time"] }
 proc-macro2 = { version = "=1.0.107", default-features = false, features = ["span-locations"] }
