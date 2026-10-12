@@ -115,7 +115,9 @@ The pattern binds a `User` in Rust. Inside the `<Case>` HTML, the compiler expos
 reactive handle; it does not copy the current user.
 
 Captures must implement `Clone + PartialEq + 'static`, and cannot borrow temporary values.
-This is the same read-only handle used for `<ForEach>` items.
+References such as `&'static str` are supported; an `Option<&'static str>` matched with
+`Some(text)` exposes `text: Memo<&'static str>`. This is the same read-only handle used for
+`<ForEach>` items.
 
 ```html title=HTML
 <!-- Reactive input: Dashboard stores Memo<User>. -->

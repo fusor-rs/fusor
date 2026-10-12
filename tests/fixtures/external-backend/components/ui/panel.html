@@ -5,8 +5,21 @@
     <input id="number" type="text" bind="state.number" on:input="state.observed.set(state.number.get())">
     <input id="checked" type="checkbox" bind="state.checked">
     <Frame title="Receiver"><span id="projected">{{ state.title }}</span><template slot="footer"><span id="named-number">{{ state.number.get() }}</span></template></Frame>
-    <Match value="{{ Some(state.number.get()) }}">
-      <Case pattern="Some(number)"><span id="payload">{{ number.get() }}</span></Case>
+    <Match value='{{ Some((
+      state.number.get(),
+      if state.number.get() > 10 { "large" } else { "small" },
+      state.title.clone(),
+    )) }}'>
+      <Case pattern="Some((number, text, title))">
+        <span id="payload">{{ number.get() }}</span>
+        <span id="reference-payload">{{ text.get() }}</span>
+        <span id="owned-payload">{{ title.get() }}</span>
+        <Match value="{{ Reading::Current { text: text.get() } }}">
+          <Case pattern="Reading::Current { text: updated }">
+            <span id="struct-payload">{{ updated.get() }}</span>
+          </Case>
+        </Match>
+      </Case>
       <Case pattern="None"><span>Absent</span></Case>
     </Match>
     <If condition="{{ state.visible.get() }}">

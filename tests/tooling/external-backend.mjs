@@ -73,6 +73,13 @@ fusor::template!("web/index.html");
     await page.locator("#increment").click();
     await expect(page.locator("#increment")).toHaveText("Library: 1");
     await expect(page.locator("#projected")).toHaveText("Library");
+    await expect(page.locator("#reference-payload")).toHaveText("small");
+    await expect(page.locator("#struct-payload")).toHaveText("small");
+    await expect(page.locator("#owned-payload")).toHaveText("Library");
+    await page.locator("#number").fill("12");
+    await expect(page.locator("#reference-payload")).toHaveText("large");
+    await expect(page.locator("#struct-payload")).toHaveText("large");
+    await expect(page.locator("#owned-payload")).toHaveText("Library");
     await page.locator(".child button:not(.remove)").click();
     await expect(page.locator(".child button:not(.remove)")).toHaveText("Library clicks 1");
     await page.locator(".child .remove").click();
@@ -147,6 +154,7 @@ try {
     ['key="{{ |row| row.id }}"', 'key="{{ |row| row.missing_id }}"', "E0609"],
     ['<Frame title="Receiver">', '<Frame nonexistent="Receiver">', "E0560"],
     ["{{ number.get() }}", "{{ number.get().missing_field }}", "E0610"],
+    ["{{ updated.get() }}", "{{ updated.get().missing_method() }}", "E0599"],
     ['bind="state.number"', 'bind="state.rows"', "E0277"],
     ['state.title, team.team, member.id', 'state.title, team.team, member.missing_id', "E0609"],
     ['state.prefix, result.as_str(), again.as_str()', 'state.prefix, result.missing_method(), again.as_str()', "E0599"],
