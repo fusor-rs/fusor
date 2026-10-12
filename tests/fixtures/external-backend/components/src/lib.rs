@@ -1,3 +1,5 @@
+#![deny(noop_method_call)]
+
 use fusor::coherence::AsyncBoundary;
 use fusor::{Effect, FromInputs, Memo, OwnerHandle, Registration, Signal, effect, signal};
 use fusor_async::AsyncValue;
@@ -8,6 +10,10 @@ pub struct Row {
     pub id: u32,
     pub label: String,
     pub children: Vec<u32>,
+}
+
+enum Reading {
+    Current { text: &'static str },
 }
 
 #[derive(FromInputs)]

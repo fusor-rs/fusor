@@ -86,7 +86,9 @@ pub(super) fn projections(
                 let __fusor_data = __fusor_data.clone();
                 ::fusor::memo(move || __fusor_data.with(|__fusor_data| {
                     #[allow(clippy::clone_on_copy, reason = "pattern captures have inferred types and may not be Copy")]
-                    __fusor_data.0 #variant .as_ref().expect("active branch data") #field .clone()
+                    ::std::clone::Clone::clone(
+                        &__fusor_data.0 #variant .as_ref().expect("active branch data") #field
+                    )
                 }))
             };
         }

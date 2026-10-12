@@ -61,6 +61,11 @@ fn main() {
     assert_eq!(named.text(), "3");
     let payload = root.find("payload").unwrap();
     assert_eq!(payload.text(), "3");
+    let reference = root.find("reference-payload").unwrap();
+    let structured = root.find("struct-payload").unwrap();
+    assert_eq!(reference.text(), "small");
+    assert_eq!(structured.text(), "small");
+    assert_eq!(root.find("owned-payload").unwrap().text(), "Shared");
     let increment = root.find("increment").unwrap();
     increment.dispatch("click");
     assert!(
@@ -74,6 +79,11 @@ fn main() {
     let input = root.find("number").unwrap();
     input.edit("12");
     assert_eq!(number.get(), 12);
+    assert_eq!(root.find("reference-payload").unwrap().id(), reference.id());
+    assert_eq!(root.find("struct-payload").unwrap().id(), structured.id());
+    assert_eq!(reference.text(), "large");
+    assert_eq!(structured.text(), "large");
+    assert_eq!(root.find("owned-payload").unwrap().text(), "Shared");
     assert_eq!(root.find("named-number").unwrap().id(), named.id());
     assert_eq!(named.text(), "12");
     assert_eq!(
