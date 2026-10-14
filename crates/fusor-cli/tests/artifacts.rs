@@ -1,8 +1,18 @@
 //! Serving published output on a host with no Cargo and no Rust.
 mod support;
 
-use std::fs;
+use std::{fs, process::Child};
 use support::{Fixture, failure};
+
+/// A running server, stopped even when an assertion fails.
+struct Server(Child);
+impl Drop for Server {
+    fn drop(&mut self) {
+        // Also kills a stopped child if setup or an assertion fails.
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
 
 /// The manifest a build writes, with whatever fields a test needs to vary.
 fn write_manifest(directory: &std::path::Path, base_path: &str) {
@@ -41,6 +51,66 @@ fn an_occupied_port_fails_with_the_flag_that_changes_it() {
     assert!(error.contains("--port"), "{error}");
 }
 
+/// Browsers resolve `localhost` to either loopback address, and passkeys and
+/// `localhost` cookies only work when the page is opened at `localhost`.
+#[test]
+fn preview_prints_localhost_and_answers_on_both_loopback_addresses() {
+    use std::{
+        io::{BufRead, BufReader, Read, Write},
+        net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener, TcpStream},
+        process::Stdio,
+        time::Duration,
+    };
+
+    let fixture = Fixture::new();
+    let directory = fixture.root.join("dist");
+    write_manifest(&directory, "/");
+    fs::write(directory.join("index.html"), "ready").unwrap();
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+        .expect("supported test hosts permit loopback listening");
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let mut server = Server(
+        fixture
+            .cli(
+                &fixture.root,
+                &["preview", "dist", "--port", &port.to_string()],
+            )
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    // Printed once the server listens.
+    let mut address = String::new();
+    BufReader::new(server.0.stdout.take().unwrap())
+        .read_line(&mut address)
+        .unwrap();
+    assert_eq!(address.trim_end(), format!("http://localhost:{port}/"));
+    for loopback in [
+        IpAddr::from(Ipv4Addr::LOCALHOST),
+        Ipv6Addr::LOCALHOST.into(),
+    ] {
+        let mut stream = TcpStream::connect((loopback, port)).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        stream
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        assert!(
+            response.starts_with("HTTP/1.1 200 "),
+            "{loopback}: {response}"
+        );
+        assert!(
+            response.ends_with("\r\n\r\nready"),
+            "{loopback}: {response}"
+        );
+    }
+}
+
 /// Recreate a browser opening new connections after closing its previous page.
 /// Queue the burst while the server is stopped so the test does not depend on
 /// how quickly the client can connect relative to the server's accept loop.
@@ -50,19 +120,10 @@ fn connection_bursts_do_not_wait_for_other_keep_alive_sockets_to_close() {
     use std::{
         io::{BufRead, BufReader, Read, Write},
         net::{Ipv4Addr, TcpListener, TcpStream},
-        process::{Child, Command, Stdio},
+        process::{Command, Stdio},
         thread,
         time::{Duration, Instant},
     };
-
-    struct Server(Child);
-    impl Drop for Server {
-        fn drop(&mut self) {
-            // Also kills a stopped child if setup or an assertion fails.
-            let _ = self.0.kill();
-            let _ = self.0.wait();
-        }
-    }
 
     fn request(stream: &mut BufReader<TcpStream>) {
         stream

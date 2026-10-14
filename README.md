@@ -82,7 +82,7 @@ cd my-app
 fusor dev
 ```
 
-Open the URL printed by `fusor dev` (normally `http://127.0.0.1:4173`). The starter has a working counter component. Edit its HTML or Rust and the dev server rebuilds the app. Run `fusor check` for compiler errors or `fusor build` for a static build in `dist/`. The [installation guide](https://fusor.build/docs/installation) covers requirements and troubleshooting in more detail.
+Open the URL printed by `fusor dev` (normally `http://localhost:4173`). The starter has a working counter component. Edit its HTML or Rust and the dev server rebuilds the app. Run `fusor check` for compiler errors or `fusor build` for a static build in `dist/`. The [installation guide](https://fusor.build/docs/installation) covers requirements and troubleshooting in more detail.
 
 The [documentation app](apps/docs/) contains the installation walkthrough and authoring guides. To run it from a repository checkout:
 
