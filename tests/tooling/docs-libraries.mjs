@@ -42,7 +42,7 @@ web-sys = { version = "=0.3.94", features = ["HtmlInputElement"] }
 fusor-build = { path = ${rustPath("fusor-build")} }
 [package.metadata.fusor]
 templates = ["web/demos"]
-assets = "public"
+assets = { "/" = "public" }
 `);
   await writeFile(join(scratch, "build.rs"), 'fn main() -> Result<(), fusor_build::BuildError> { fusor_build::compile_app() }\n');
   await writeFile(join(scratch, "src/lib.rs"), `mod app;
