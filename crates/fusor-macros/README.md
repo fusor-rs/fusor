@@ -3,7 +3,8 @@
 Derive macros for fusor components.
 
 `#[derive(FromInputs)]` turns a component's `#[input]` and `#[local]` fields
-into its typed constructor inputs; `#[input(default)]` makes an input optional.
+into its typed constructor inputs; `Option<T>` inputs and `#[input(default)]`
+inputs are optional.
 `#[derive(Inputs)]` lets component tags build a hand-written inputs struct.
 `#[derive(JsInputs)]` exposes the values a component passes to its JavaScript
 module.

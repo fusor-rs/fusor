@@ -92,10 +92,17 @@ fn local_expressions_run_once_in_declaration_order() {
 struct Button {
     #[input]
     label: &'static str,
-    #[input(default)]
+    #[input]
     icon: Option<char>,
+    #[input(default)]
+    pressed: bool,
     #[input(default = next())]
     order: u32,
+    #[input(default = Self::SIZE)]
+    size: u8,
+}
+impl Button {
+    const SIZE: u8 = 2;
 }
 
 #[test]
@@ -104,18 +111,30 @@ fn omitted_inputs_take_defaults_that_run_only_when_omitted() {
     let inputs = <ButtonInputs as Inputs>::builder().label("Save").build();
     let omitted = Button::from_inputs(inputs, Owner::new().handle()).unwrap();
     assert_eq!(
-        (omitted.label, omitted.icon, omitted.order),
-        ("Save", None, 1)
+        (
+            omitted.label,
+            omitted.icon,
+            omitted.pressed,
+            omitted.order,
+            omitted.size
+        ),
+        ("Save", None, false, 1, 2)
     );
     let inputs = <ButtonInputs as Inputs>::builder()
         .order(7)
         .icon(Some('+'))
+        .pressed(true)
         .label("Add")
         .build();
     let supplied = Button::from_inputs(inputs, Owner::new().handle()).unwrap();
     assert_eq!(
-        (supplied.label, supplied.icon, supplied.order),
-        ("Add", Some('+'), 7)
+        (
+            supplied.label,
+            supplied.icon,
+            supplied.pressed,
+            supplied.order
+        ),
+        ("Add", Some('+'), true, 7)
     );
     assert_eq!(CALLS.with(Cell::get), 1);
 }
@@ -125,15 +144,22 @@ struct ListInputs<'a, T: Copy, const LIMIT: usize = 2> {
     items: &'a [T],
     #[input(default = LIMIT)]
     limit: usize,
+    caption: std::option::Option<&'static str>,
+    #[input(required)]
+    selected: Option<usize>,
 }
 
 #[test]
 fn hand_written_generic_inputs_build_with_defaults() {
     let items = [1, 2, 3];
     let inputs = <ListInputs<'_, i32> as Inputs>::builder()
+        .selected(Some(1))
         .items(&items)
         .build();
-    assert_eq!((inputs.items, inputs.limit), (&items[..], 2));
+    assert_eq!(
+        (inputs.items, inputs.limit, inputs.caption, inputs.selected),
+        (&items[..], 2, None, Some(1))
+    );
 }
 
 #[test]

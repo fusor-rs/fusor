@@ -189,7 +189,7 @@ fn field_kind(field: &syn::Field, component: &syn::Ident) -> Result<InputKind> {
             ));
         }
         kind = Some(if attr.path().is_ident("input") {
-            InputKind::Input(inputs::default_value(attr, component)?.map(Box::new))
+            InputKind::Input(inputs::default_value(Some(attr), &field.ty, component)?.map(Box::new))
         } else {
             InputKind::Local(Box::new(local_initializer(attr)?))
         });

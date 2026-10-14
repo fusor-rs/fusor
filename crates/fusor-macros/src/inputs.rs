@@ -25,34 +25,76 @@ pub(crate) struct InputsStruct<'a> {
     pub fields: Vec<InputField>,
 }
 
-/// `#[input]` is required; `#[input(default)]` and `#[input(default = expression)]`
-/// let the parent omit it. `Self` in the expression names `owner`, not the builder
-/// that evaluates it.
-pub(crate) fn default_value(attr: &Attribute, owner: &Ident) -> Result<Option<Expr>> {
-    if matches!(attr.meta, Meta::Path(_)) {
-        return Ok(None);
-    }
-    let mut default = None;
+/// The spellings of `Option` the derives recognize; an alias of it stays required.
+const OPTION_PATHS: [&[&str]; 3] = [
+    &["Option"],
+    &["std", "option", "Option"],
+    &["core", "option", "Option"],
+];
+
+enum Marker {
+    Required,
+    Default(Box<Expr>),
+}
+
+/// The default of an input the parent may omit, or `None` when it is required.
+/// An `Option` input defaults to `None` unless marked `#[input(required)]`;
+/// `#[input(default)]` and `#[input(default = expression)]` give any input a
+/// default. `Self` in an expression names `owner`, not the builder evaluating it.
+pub(crate) fn default_value(
+    attr: Option<&Attribute>,
+    ty: &Type,
+    owner: &Ident,
+) -> Result<Option<Expr>> {
+    let Some(attr) = attr.filter(|attr| !matches!(attr.meta, Meta::Path(_))) else {
+        return Ok(
+            is_option(ty).then(|| parse_quote_spanned!(ty.span()=> ::core::option::Option::None))
+        );
+    };
+    let mut marker = None;
     attr.parse_nested_meta(|meta| {
-        if !meta.path.is_ident("default") {
-            return Err(meta.error("expected `default` or `default = expression`"));
+        if !meta.path.is_ident("required") && !meta.path.is_ident("default") {
+            return Err(meta.error("expected `default`, `default = expression` or `required`"));
         }
-        if default.is_some() {
-            return Err(meta.error("duplicate input default"));
+        if marker.is_some() {
+            return Err(meta.error("choose one of `default`, `default = expression` or `required`"));
         }
-        default = Some(if meta.input.peek(syn::Token![=]) {
-            crate::ComponentSelf(owner.clone()).fold_expr(meta.value()?.parse()?)
+        marker = Some(if meta.path.is_ident("required") {
+            Marker::Required
         } else {
-            parse_quote_spanned!(meta.path.span()=> ::core::default::Default::default())
+            let default = if meta.input.peek(syn::Token![=]) {
+                crate::ComponentSelf(owner.clone()).fold_expr(meta.value()?.parse()?)
+            } else {
+                parse_quote_spanned!(meta.path.span()=> ::core::default::Default::default())
+            };
+            Marker::Default(Box::new(default))
         });
         Ok(())
     })?;
-    default.map(Some).ok_or_else(|| {
-        Error::new_spanned(
+    match marker {
+        Some(Marker::Required) => Ok(None),
+        Some(Marker::Default(default)) => Ok(Some(*default)),
+        None => Err(Error::new_spanned(
             attr,
-            "expected #[input(default)] or #[input(default = expression)]",
-        )
-    })
+            "expected #[input(default)], #[input(default = expression)] or #[input(required)]",
+        )),
+    }
+}
+
+fn is_option(ty: &Type) -> bool {
+    let Type::Path(path) = ty else {
+        return false;
+    };
+    let segments: Vec<String> = path
+        .path
+        .segments
+        .iter()
+        .map(|segment| segment.ident.to_string())
+        .collect();
+    path.qself.is_none()
+        && OPTION_PATHS
+            .iter()
+            .any(|option| segments.iter().eq(option.iter()))
 }
 
 /// `#[derive(Inputs)]` on a hand-written inputs struct: every field is an input.
@@ -78,8 +120,7 @@ pub(crate) fn expand(input: DeriveInput) -> Result<TokenStream> {
             (_, Some(extra)) => {
                 return Err(Error::new_spanned(extra, "use one #[input(...)] per field"));
             }
-            (Some(attr), None) => default_value(attr, &input.ident)?,
-            (None, None) => None,
+            (attr, None) => default_value(attr, &field.ty, &input.ident)?,
         };
         fields.push(InputField {
             name: field.ident.clone().expect("unnamed fields were rejected"),

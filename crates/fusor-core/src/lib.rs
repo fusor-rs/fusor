@@ -48,12 +48,12 @@ pub use reactive::{
 /// not itself defer ordinary effects or activate the owner.
 ///
 /// Simple concrete components can use `#[derive(fusor::FromInputs)]`:
-/// mark every field `#[input]` (required from the parent), `#[input(default)]` or
-/// `#[input(default = expression)]` (optional, see [`Inputs`]), or
-/// `#[local(init = expression)]` (initialized once per instance). The derive
-/// generates a `TypeNameInputs` struct with the component's visibility and
-/// public input fields, plus this trait implementation. Original field
-/// visibility is unchanged. Unit and all-local components get unit Inputs.
+/// mark every field `#[input]` (from the parent; optional when it has a default,
+/// see [`Inputs`]) or `#[local(init = expression)]` (initialized once per
+/// instance). The derive generates a `TypeNameInputs` struct with the
+/// component's visibility and public input fields, plus this trait
+/// implementation. Original field visibility is unchanged. Unit and all-local
+/// components get unit Inputs.
 ///
 /// Local expressions execute in declaration order in the generated constructor.
 /// In local and default expressions, `Self` refers to the component. They have
@@ -86,10 +86,13 @@ pub trait FromInputs: Sized {
 /// keep each field's visibility and exact Rust type. An omitted input takes its
 /// default; omitting a required input is a compile error that names the input.
 ///
-/// Use `#[derive(fusor::Inputs)]` on a hand-written inputs struct. Fields are
-/// required unless marked `#[input(default)]`, which uses `Default::default()`, or
-/// `#[input(default = expression)]`. Defaults are evaluated by `build()`, only for
-/// omitted inputs, in field declaration order. A field cannot be named `build`.
+/// Use `#[derive(fusor::Inputs)]` on a hand-written inputs struct. A field whose
+/// type is written as `Option<T>` (or `std::option::Option<T>`) defaults to `None`
+/// unless marked `#[input(required)]`; an alias of `Option` stays required. Other
+/// fields are required unless marked `#[input(default)]`, which uses
+/// `Default::default()`, or `#[input(default = expression)]`. Defaults are
+/// evaluated by `build()`, only for omitted inputs, in field declaration order.
+/// A field cannot be named `build`.
 /// `#[derive(FromInputs)]` implements this trait for the struct it generates.
 /// Use `#[inputs(crate = ::alias)]` when renaming the runtime dependency.
 pub trait Inputs: Sized {

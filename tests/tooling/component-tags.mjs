@@ -43,12 +43,14 @@ try {
   // or scans these annotations. Check actual rustc failures, not expansion text.
   const widgets = join(scratch, "src/widgets.rs");
   const widgetSource = await readFile(widgets, "utf8");
-  for (const [replacement, diagnostic] of [
-    ["count: Signal<i32>,", /field needs #\[input\] or #\[local/],
-    ["#[input] #[local(init = signal(0))] count: Signal<i32>,", /choose exactly one/],
-    ["#[local(init = 42_u32)] count: Signal<i32>,", /mismatched types/],
+  const count = "#[input]\n    count: Signal<i32>,";
+  for (const [before, after, diagnostic] of [
+    [count, "count: Signal<i32>,", /field needs #\[input\] or #\[local/],
+    [count, "#[input] #[local(init = signal(0))] count: Signal<i32>,", /choose exactly one/],
+    [count, "#[local(init = 42_u32)] count: Signal<i32>,", /mismatched types/],
+    ["#[input]\n    badge:", "#[input(required)]\n    badge:", /missing required input `badge` of `CellsInputs`/],
   ]) {
-    await writeFile(widgets, widgetSource.replace("#[input]\n    count: Signal<i32>,", replacement));
+    await writeFile(widgets, widgetSource.replace(before, after));
     await assert.rejects(run(["check", "--offline", "--locked"]), error => {
       assert.match(error.stderr, diagnostic);
       assert.match(error.stderr, /src[\/]widgets\.rs:/);

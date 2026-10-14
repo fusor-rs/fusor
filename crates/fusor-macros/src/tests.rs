@@ -26,11 +26,15 @@ fn rejects_ambiguous_or_incomplete_field_contracts() {
         ),
         (
             "struct Bad { #[input(other)] value: u32 }",
-            "expected `default` or `default = expression`",
+            "expected `default`, `default = expression` or `required`",
         ),
         (
             "struct Bad { #[input(default, default = 1)] value: u32 }",
-            "duplicate input default",
+            "choose one of",
+        ),
+        (
+            "struct Bad { #[input(required, default)] value: Option<u32> }",
+            "choose one of",
         ),
         (
             "struct Bad { #[input()] value: u32 }",
@@ -90,6 +94,7 @@ fn expansion_is_valid_rust_for_all_supported_shapes() {
         "struct Local { #[local(init = Vec::new())] values: Vec<u32> }",
         "pub struct Public { #[input] value: u32 }",
         "pub struct Optional { #[input] a: u32, #[input(default)] b: u32, #[input(default = 3)] c: u32 }",
+        "struct Options { #[input] a: Option<u32>, #[input(required)] b: core::option::Option<u32> }",
         "#[from_inputs(crate = ::renamed)] pub(crate) struct Named { #[input] r#type: String, #[local(init = 0)] count: u32 }",
     ] {
         let expanded = expand(syn::parse_str(source).unwrap()).unwrap();

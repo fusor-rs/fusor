@@ -104,6 +104,8 @@ pub struct Cells {
     count: Signal<i32>,
     #[input(default = "In stock")]
     stock: &'static str,
+    #[input]
+    badge: Option<&'static str>,
 }
 
 #[derive(FromInputs)]
