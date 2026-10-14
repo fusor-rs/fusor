@@ -1,4 +1,4 @@
-import { root, env as buildEnv, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject } from "../../scripts/build.mjs";
+import { root, copyEnv, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject } from "../../scripts/build.mjs";
 // Compile edits made inside HTML and verify the development loop in isolation.
 import assert from "node:assert/strict";
 import { readFile, writeFile, rename, rm } from "node:fs/promises";
@@ -7,7 +7,7 @@ import { createServer, request } from "node:http";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
 
-const env = { ...buildEnv, CARGO_NET_OFFLINE: "true", CARGO_TARGET_DIR: join(root, "target/dev-tests") };
+const env = { ...copyEnv, CARGO_NET_OFFLINE: "true" };
 const scratch = await temporaryDirectory("fusor-html-");
 const port = await reservePort();
 const base = `http://127.0.0.1:${port}`;

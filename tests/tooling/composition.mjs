@@ -1,4 +1,4 @@
-import { root, env as buildEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject } from "../../scripts/build.mjs";
+import { root, suiteEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject } from "../../scripts/build.mjs";
 // The example becomes an independent consumer: no generated code or private API.
 import assert from "node:assert/strict";
 import { readFile, writeFile, rm } from "node:fs/promises";
@@ -8,9 +8,8 @@ import { chromium, firefox, webkit, expect } from "@playwright/test";
 const scratch = await temporaryDirectory("fusor-composition-");
 const executable = join(root, "target/debug", `fusor${process.platform === "win32" ? ".exe" : ""}`);
 const env = {
-  ...buildEnv,
+  ...suiteEnv,
   CARGO_NET_OFFLINE: "true",
-  CARGO_TARGET_DIR: join(root, "target/composition-tests"),
 };
 let server, browser;
 const cli = args => exec(executable, args, { cwd: scratch, env, timeout: 180_000, maxBuffer: 8 * 1024 * 1024 });

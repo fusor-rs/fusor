@@ -3,13 +3,13 @@ import {readFile, cp, mkdir} from 'node:fs/promises';
 import {resolve, extname, sep} from 'node:path';
 import assert from 'node:assert/strict';
 import {chromium, firefox, webkit} from '@playwright/test';
-import {command} from '../../scripts/build.mjs';
+import {command, suiteEnv} from '../../scripts/build.mjs';
 import {checkWorkerDiagnostics} from '../../scripts/worker-compile.mjs';
 if (!process.env.FUSOR_TEST_POOL) await checkWorkerDiagnostics();
 const fixture = resolve('tests/fixtures/worker');
 await mkdir(resolve(fixture, 'node_modules'), {recursive: true});
 for (const name of ['esbuild', '@esbuild']) await cp(resolve('examples/npm/node_modules', name), resolve(fixture, 'node_modules', name), {recursive: true, force: true});
-await command('cargo', ['run', '-p', 'fusor-cli', '--bin', 'fusor', '--locked', '--offline', '--', 'build', '--manifest-path', resolve(fixture, 'Cargo.toml'), '--offline', ...(process.env.FUSOR_TEST_POOL ? ['--features', 'pool'] : [])]);
+await command('cargo', ['run', '-p', 'fusor-cli', '--bin', 'fusor', '--locked', '--offline', '--', 'build', '--manifest-path', resolve(fixture, 'Cargo.toml'), '--offline', ...(process.env.FUSOR_TEST_POOL ? ['--features', 'pool'] : [])], {env: suiteEnv});
 const root = resolve(fixture, 'dist');
 const loadFixture = page => page.evaluate(async () => {
   const boot = document.querySelector('script[type="module"][src]').src;

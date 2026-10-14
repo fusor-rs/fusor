@@ -8,14 +8,13 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { chromium, firefox, webkit, expect } from "@playwright/test";
-import { reservePort, startProcess, stopProcess, waitFor } from "../../scripts/build.mjs";
+import { reservePort, startProcess, stopProcess, copyEnv as env, waitFor } from "../../scripts/build.mjs";
 
 const exec = promisify(execFile);
 const root = process.cwd();
 const fixture = join(root, "tests/fixtures/external-backend");
 const scratch = await mkdtemp(join(tmpdir(), "fusor-external-backend-"));
 const cargo = process.env.CARGO || "cargo";
-const env = { ...process.env, CARGO_TARGET_DIR: join(root, "target/external-backend-tests") };
 const manifest = join(scratch, "Cargo.toml");
 let server, browser;
 

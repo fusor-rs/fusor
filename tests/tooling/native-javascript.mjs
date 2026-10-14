@@ -3,7 +3,7 @@ import {readFile,cp,mkdir} from 'node:fs/promises';
 import {resolve, extname, sep} from 'node:path';
 import assert from 'node:assert/strict';
 import {chromium, expect} from '@playwright/test';
-import {command,env} from '../../scripts/build.mjs';
+import {command,suiteEnv} from '../../scripts/build.mjs';
 
 const fixture = resolve('tests/fixtures/native-javascript');
 // Reuse installed, lock-checked tools. The test and Cargo build never download
@@ -12,8 +12,7 @@ await mkdir(resolve(fixture,'node_modules'),{recursive:true});
 for (const packageName of ['esbuild','@esbuild']) {
   await cp(resolve('examples/npm/node_modules',packageName),resolve(fixture,'node_modules',packageName),{recursive:true,force:true});
 }
-env.CARGO_TARGET_DIR = resolve('target');
-await command('cargo',['run','-p','fusor-cli','--bin','fusor','--locked','--offline','--','build','--manifest-path',resolve(fixture,'Cargo.toml'),'--offline']);
+await command('cargo',['run','-p','fusor-cli','--bin','fusor','--locked','--offline','--','build','--manifest-path',resolve(fixture,'Cargo.toml'),'--offline'],{env:suiteEnv});
 const declaration = await readFile(resolve(fixture, '.fusor/types/web-index-html-Probe.d.ts'), 'utf8');
 assert.match(declaration, /readonly value: ReadonlyInput<number>/);
 const empty = await readFile(resolve(fixture, '.fusor/types/web-index-html-NoInputs.d.ts'), 'utf8');

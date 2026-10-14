@@ -3,3 +3,9 @@ fusor = "run --locked -p fusor-cli --bin fusor --"
 
 [resolver]
 incompatible-rust-versions = "fallback"
+
+# Full debug info roughly doubles every build directory, and on macOS it stays
+# in object files next to each artifact. Line tables keep backtraces readable.
+# scripts/build.mjs repeats this for test projects outside the checkout.
+[profile.dev]
+debug = "line-tables-only"

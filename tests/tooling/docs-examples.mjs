@@ -7,14 +7,13 @@ import { createServer } from "node:http";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve, join, extname, sep } from "node:path";
 import { chromium, firefox, webkit, expect } from "@playwright/test";
-import { env as buildEnv, root } from "../../scripts/build.mjs";
+import { env as buildEnv, root, suiteEnv } from "../../scripts/build.mjs";
 
 import { readGuides } from "../../scripts/docs-content.mjs";
 
 const exec = promisify(execFile);
 const env = {
-  ...buildEnv, RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN || "stable",
-  CARGO_TARGET_DIR: resolve(root, "target/docs-examples"),
+  ...suiteEnv, RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN || "stable",
 };
 const tutorial = resolve(root, "apps/docs/tutorial");
 const guides = await readGuides();

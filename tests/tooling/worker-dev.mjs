@@ -2,19 +2,19 @@ import assert from 'node:assert/strict';
 import {readFile, writeFile, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {chromium} from '@playwright/test';
-import {root, env, exec, temporaryDirectory, copyProject, independentManifest, reservePort, startProcess, stopProcess, waitFor} from '../../scripts/build.mjs';
+import {root, env, suiteEnv, exec, temporaryDirectory, copyProject, independentManifest, reservePort, startProcess, stopProcess, waitFor} from '../../scripts/build.mjs';
 
 const directory = await temporaryDirectory('fusor-worker-dev-');
 const executable = join(root, 'target/debug', process.platform === 'win32' ? 'fusor.exe' : 'fusor');
 let server, browser;
 try {
-  await exec('cargo', ['build', '-p', 'fusor-cli', '--offline', '--locked'], {env: {...env, CARGO_TARGET_DIR: join(root, 'target')}, timeout: 180000});
+  await exec('cargo', ['build', '-p', 'fusor-cli', '--offline', '--locked'], {env: suiteEnv, timeout: 180000});
   await copyProject(join(root, 'examples/workers'), directory);
   const manifest = join(directory, 'Cargo.toml');
   await writeFile(manifest, await independentManifest((await readFile(manifest, 'utf8')).replace('[lints]\nworkspace = true', '[lints.rust]\nunsafe_code = "forbid"')));
   await exec('cargo', ['generate-lockfile', '--offline', '--manifest-path', manifest], {env});
   const port = await reservePort();
-  server = startProcess(executable, ['dev', '--manifest-path', manifest, '--offline', '--port', String(port)], {env: {...env, CARGO_TARGET_DIR: join(root, 'target')}});
+  server = startProcess(executable, ['dev', '--manifest-path', manifest, '--offline', '--port', String(port)], {env: suiteEnv});
   await waitFor(() => server.output.includes('watching for changes'), 'worker dev startup', {process: server, timeout: 180000});
   browser = await chromium.launch();
   const page = await browser.newPage();

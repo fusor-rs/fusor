@@ -6,6 +6,20 @@ import { join, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 export const root = fileURLToPath(new URL("..", import.meta.url));
 export const env = { ...process.env };
+// Suites build into the workspace target directory so separate projects reuse
+// its dependency builds. Cargo keeps another copy of every crate for each debug
+// setting, and projects outside the checkout don't read .cargo/config.toml.
+// Incremental caches only help crates being edited between builds.
+export const suiteEnv = {
+  ...env,
+  CARGO_TARGET_DIR: join(root, "target"),
+  CARGO_PROFILE_DEV_DEBUG: "line-tables-only",
+  CARGO_INCREMENTAL: "0",
+};
+// Cargo names a crate's builds by its path relative to the workspace root, which
+// a copy shares with its original, and a copy's files are newer. Copies build
+// apart so an unchanged original never reuses the build of an edited copy.
+export const copyEnv = { ...suiteEnv, CARGO_TARGET_DIR: join(root, "target/copies") };
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
