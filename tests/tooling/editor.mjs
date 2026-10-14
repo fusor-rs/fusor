@@ -1,4 +1,4 @@
-import { root, env as buildEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject, independentManifest } from "../../scripts/build.mjs";
+import { root, suiteEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject, independentManifest } from "../../scripts/build.mjs";
 // Independent Cargo consumer + controlled HTTP backend + real browser controls.
 import assert from "node:assert/strict";
 import { once } from "node:events";
@@ -10,7 +10,7 @@ import { projectBackend } from "../../examples/editor/backend.mjs";
 
 const scratch = await temporaryDirectory("fusor-editor-");
 const executable = join(root, "target/debug", `fusor${process.platform === "win32" ? ".exe" : ""}`);
-const env = { ...buildEnv, CARGO_NET_OFFLINE:"true", CARGO_TARGET_DIR:join(root,"target/editor-tests"), };
+const env = { ...suiteEnv, CARGO_NET_OFFLINE:"true", };
 const cli = args => exec(executable, args, { cwd:scratch, env, timeout:180_000, maxBuffer:16 * 1024 * 1024 });
 const backend = projectBackend({ controlled:true });
 let server, proxy, browser;

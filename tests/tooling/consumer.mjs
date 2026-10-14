@@ -6,6 +6,7 @@ import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
+import { copyEnv } from "../../scripts/build.mjs";
 
 const exec = promisify(execFile);
 const root = process.cwd();
@@ -19,7 +20,7 @@ async function compile() {
   let result;
   try {
     result = await exec(cargo, args, {
-      env: { ...process.env, CARGO_TARGET_DIR: join(root, "target/consumer-tests") },
+      env: copyEnv,
       timeout: 120_000,
       maxBuffer: 8 * 1024 * 1024,
     });

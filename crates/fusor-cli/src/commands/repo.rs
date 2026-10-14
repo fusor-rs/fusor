@@ -53,20 +53,18 @@ const ISOLATED_STD_FEATURES: &[&str] = &[
     "routing,browser",
 ];
 
-/// Built outside the workspace, to prove the crates work on their own.
-const CONSUMER_FIXTURES: [(&str, &str); 2] = [
-    (
-        "tests/fixtures/consumer/Cargo.toml",
-        "target/consumer-tests",
-    ),
-    (
-        "tests/fixtures/application/Cargo.toml",
-        "target/application-tests",
-    ),
+/// Built outside the workspace, to prove the crates work on their own. They use
+/// the workspace target directory to reuse its dependency builds.
+const CONSUMER_FIXTURES: [&str; 2] = [
+    "tests/fixtures/consumer/Cargo.toml",
+    "tests/fixtures/application/Cargo.toml",
 ];
 
 fn check_workspace(cx: &Context, root: &Path) -> Result {
     let run = |command: &mut Command| {
+        // Incremental caches only help crates edited between builds; here they
+        // add a cache for every feature combination the gate compiles.
+        command.env("CARGO_INCREMENTAL", "0");
         if cx.offline {
             command.env("CARGO_NET_OFFLINE", "true");
         }
@@ -106,7 +104,7 @@ fn check_backend_consumer(run: &impl Fn(&mut Command) -> Result, root: &Path) ->
         .args(["test", "--workspace", "--locked", "--manifest-path"])
         .arg(&manifest)
         .arg("--target-dir")
-        .arg(root.join("target/external-backend-tests")))
+        .arg(root.join("target")))
 }
 
 fn check_feature_isolation(run: &impl Fn(&mut Command) -> Result) -> Result {
@@ -132,12 +130,12 @@ fn check_feature_isolation(run: &impl Fn(&mut Command) -> Result) -> Result {
 }
 
 fn check_consumers(run: &impl Fn(&mut Command) -> Result, root: &Path) -> Result {
-    for (manifest, target) in CONSUMER_FIXTURES {
+    for manifest in CONSUMER_FIXTURES {
         run(cargo()
             .args(["check", "--locked", "--manifest-path"])
             .arg(root.join(manifest))
             .arg("--target-dir")
-            .arg(root.join(target)))
+            .arg(root.join("target")))
         .map_err(|error| {
             error.remedy("if its lockfile is stale, run `just lock` and commit the result")
         })?;

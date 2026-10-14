@@ -6,11 +6,11 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
+import { suiteEnv as env } from '../../scripts/build.mjs';
 import { chromium, firefox, webkit } from 'playwright';
 const exec = promisify(execFile), root = process.cwd();
 const scratch = await mkdtemp(join(tmpdir(), 'fusor-bundle-bindings-'));
 const suffix = process.platform === 'win32' ? '.exe' : '';
-const env = { ...process.env, CARGO_TARGET_DIR: join(root, 'target/bundle-binding-tests') };
 const run = (program, args, cwd = scratch) => exec(program, args, { cwd, env, timeout: 240000, maxBuffer: 8e6 });
 let browser, server;
 try {

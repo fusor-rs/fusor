@@ -8,13 +8,14 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
 import { chromium, firefox, webkit, expect } from "@playwright/test";
+import { suiteEnv } from "../../scripts/build.mjs";
 
 const exec = promisify(execFile);
 const root = process.cwd();
 const scratch = await mkdtemp(join(tmpdir(), "fusor-docs-libraries-"));
 const suffix = process.platform === "win32" ? ".exe" : "";
 const cli = join(root, `target/debug/fusor${suffix}`);
-const env = { ...process.env, CARGO_NET_OFFLINE: "true", CARGO_TARGET_DIR: join(root, "target") };
+const env = { ...suiteEnv, CARGO_NET_OFFLINE: "true" };
 let browser, server;
 try {
   for (const folder of ["src/demos", "web/demos", "public"]) await mkdir(join(scratch, folder), { recursive: true });

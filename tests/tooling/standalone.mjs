@@ -1,4 +1,4 @@
-import { root, env as buildEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject } from "../../scripts/build.mjs";
+import { root, copyEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject } from "../../scripts/build.mjs";
 // Exercise the installed-style executable against independent Cargo workspaces.
 // Browser checks cover observable ownership, retained identity and failed mounts.
 import assert from "node:assert/strict";
@@ -9,9 +9,8 @@ import { chromium, firefox, webkit } from "@playwright/test";
 const scratch = await temporaryDirectory("fusor-standalone-");
 const executable = join(root, "target/debug", `fusor${process.platform === "win32" ? ".exe" : ""}`);
 const env = {
-  ...buildEnv, RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN || "stable",
+  ...copyEnv, RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN || "stable",
   CARGO_NET_OFFLINE: "true",
-  CARGO_TARGET_DIR: join(root, "target/standalone-tests"),
 };
 let server;
 let browser;

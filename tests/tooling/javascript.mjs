@@ -3,10 +3,9 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { chromium, expect } from '@playwright/test';
-import { command, env } from '../../scripts/build.mjs';
+import { command, suiteEnv } from '../../scripts/build.mjs';
 
-env.CARGO_TARGET_DIR = resolve('target');
-await command('cargo', ['run','-p','fusor-cli','--bin','fusor','--locked','--offline','--','build','--manifest-path','examples/npm/Cargo.toml','--offline']);
+await command('cargo', ['run','-p','fusor-cli','--bin','fusor','--locked','--offline','--','build','--manifest-path','examples/npm/Cargo.toml','--offline'], { env: suiteEnv });
 await command('npm', ['run', 'typecheck', '--prefix', 'examples/npm']);
 const root = resolve('examples/npm/dist');
 const server = createServer(async (req,res) => {

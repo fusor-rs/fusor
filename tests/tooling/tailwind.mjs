@@ -1,4 +1,4 @@
-import { root, env as buildEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory } from "../../scripts/build.mjs";
+import { root, suiteEnv as env, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory } from "../../scripts/build.mjs";
 import assert from "node:assert/strict";
 import { readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -8,7 +8,6 @@ const scratch = await realpath(await temporaryDirectory("fusor-tailwind-"));
 const app = join(scratch, "tailwind-app");
 const manifest = join(app, "Cargo.toml");
 const executable = join(root, "target/debug", process.platform === "win32" ? "fusor.exe" : "fusor");
-const env = { ...buildEnv, CARGO_TARGET_DIR: join(root, "target") };
 const offline = { ...env, CARGO_NET_OFFLINE: "true" };
 const cli = (args, options = {}) => exec(executable, args, { cwd: app, env: offline, timeout: 300_000, ...options });
 const brand = "rgb(79, 70, 229)", idle = "rgb(100, 116, 139)", ring = "rgb(244, 63, 94)";

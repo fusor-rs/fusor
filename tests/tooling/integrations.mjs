@@ -1,4 +1,4 @@
-import { root, env as buildEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject, independentManifest } from "../../scripts/build.mjs";
+import { root, suiteEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject, independentManifest } from "../../scripts/build.mjs";
 // Independent consumer: real CodeMirror/Chart.js, shared reads, and development rebuilds.
 import assert from "node:assert/strict";
 import { readFile, writeFile, rm } from "node:fs/promises";
@@ -7,7 +7,7 @@ import { chromium, firefox, webkit, expect } from "@playwright/test";
 
 const scratch = await temporaryDirectory("fusor-integrations-");
 const executable = join(root, "target/debug", `fusor${process.platform === "win32" ? ".exe" : ""}`);
-const env = { ...buildEnv, CARGO_NET_OFFLINE: "true", npm_config_cache: join(root, "target/npm-cache"), CARGO_TARGET_DIR: join(root, "target/integration-tests"), };
+const env = { ...suiteEnv, CARGO_NET_OFFLINE: "true", npm_config_cache: join(root, "target/npm-cache"), };
 let server, browser, url;
 const cli = args => exec(executable, args, { cwd: scratch, env, timeout: 180_000, maxBuffer: 8 * 1024 * 1024 });
 const waitFor = (predicate, description) => waitUntil(predicate, description, { timeout: 120_000, interval: 30, process: server });

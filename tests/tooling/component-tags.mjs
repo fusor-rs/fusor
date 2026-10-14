@@ -1,4 +1,4 @@
-import { root, env as buildEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject } from "../../scripts/build.mjs";
+import { root, copyEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory, copyProject } from "../../scripts/build.mjs";
 // Native input contracts, explicit content projection, and wrapper-free lifetime
 // behavior in an independent consumer. The legacy authoring suite runs separately.
 import assert from "node:assert/strict";
@@ -8,7 +8,7 @@ import { chromium, firefox, webkit, expect } from "@playwright/test";
 
 const scratch = await temporaryDirectory("fusor-component-tags-");
 const cli = join(root, "target/debug", `fusor${process.platform === "win32" ? ".exe" : ""}`);
-const env = { ...buildEnv, CARGO_NET_OFFLINE: "true", CARGO_TARGET_DIR: join(root, "tests/fixtures/component-tags/target"), };
+const env = { ...copyEnv, CARGO_NET_OFFLINE: "true", };
 const run = args => exec(cli, args, { cwd: scratch, env, timeout: 180_000, maxBuffer: 8 * 1024 * 1024 });
 let server, browser;
 const waitFor = (predicate, description) => waitUntil(predicate, description, { timeout: 30_000, interval: 40, process: server });

@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { suiteEnv } from "../../scripts/build.mjs";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -121,10 +122,7 @@ struct Example {value:Signal<u32>,text:Signal<String>}
     ["build", "--offline"],
     {
       cwd: scratch,
-      env: {
-        ...process.env,
-        CARGO_TARGET_DIR: join(root, "target/template-cache-tests"),
-      },
+      env: suiteEnv,
       timeout: 240000,
       maxBuffer: 8e6,
     },

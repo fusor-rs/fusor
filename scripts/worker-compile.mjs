@@ -1,7 +1,7 @@
 import {mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises';
 import {resolve, join} from 'node:path';
 import assert from 'node:assert/strict';
-import {command, exec, env} from './build.mjs';
+import {command, exec, suiteEnv} from './build.mjs';
 
 export async function checkWorkerDiagnostics() {
   await mkdir(resolve('target'), {recursive: true});
@@ -22,11 +22,11 @@ export async function checkWorkerDiagnostics() {
     ];
     for (const [source, expected] of cases) {
       await writeFile(join(root, 'src/lib.rs'), `use fusor_worker::*;\n${source}\n`);
-      const result = await exec('cargo', ['check', '--offline', '--manifest-path', join(root, 'Cargo.toml')], {env: {...env, CARGO_TARGET_DIR: resolve('target/worker-diagnostics')}, timeout: 120000}).then(() => null, error => error);
+      const result = await exec('cargo', ['check', '--offline', '--manifest-path', join(root, 'Cargo.toml')], {env: suiteEnv, timeout: 120000}).then(() => null, error => error);
       assert(result, `invalid declaration compiled: ${source}`);
       assert(result.stderr.includes(expected), result.stderr);
       assert(result.stderr.includes('src/lib.rs'), 'diagnostic must identify authored source');
     }
-    await command('cargo', ['test', '--offline', '--manifest-path', resolve('tests/fixtures/worker/Cargo.toml'), '--lib'], {capture: true});
+    await command('cargo', ['test', '--offline', '--manifest-path', resolve('tests/fixtures/worker/Cargo.toml'), '--lib'], {capture: true, env: suiteEnv});
   } finally { await rm(root, {recursive: true, force: true}); }
 }

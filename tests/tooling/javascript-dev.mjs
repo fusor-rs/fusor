@@ -1,4 +1,4 @@
-import { root, env as buildEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory } from "../../scripts/build.mjs";
+import { root, suiteEnv, exec, startProcess, stopProcess, waitFor as waitUntil, reservePort, temporaryDirectory } from "../../scripts/build.mjs";
 import assert from 'node:assert/strict';
 import { mkdir, readFile, realpath, readdir, writeFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -8,7 +8,7 @@ const repository = root;
 const scratch = await realpath(await temporaryDirectory('fusor-javascript-dev-'));
 const app = join(scratch, 'native-module-watch');
 const executable = join(repository, 'target/debug', process.platform === 'win32' ? 'fusor.exe' : 'fusor');
-const env = { ...buildEnv, RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN || "stable", CARGO_NET_OFFLINE: 'true', npm_config_cache: join(root, 'target/npm-cache'), CARGO_TARGET_DIR: join(repository, 'target') };
+const env = { ...suiteEnv, RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN || "stable", CARGO_NET_OFFLINE: 'true', npm_config_cache: join(root, 'target/npm-cache') };
 let server, browser;
 const cli = (args, options = {}) => exec(executable, args, { cwd: scratch, env, timeout: 180_000, maxBuffer: 8 * 1024 * 1024, ...options });
 const waitFor = (predicate, description) => waitUntil(predicate, description, { timeout: 120_000, interval: 100, process: server });

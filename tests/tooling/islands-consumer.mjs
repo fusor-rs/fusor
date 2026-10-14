@@ -5,13 +5,13 @@ import { basename, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { suiteEnv } from "../../scripts/build.mjs";
 const exec = promisify(execFile),
   root = process.cwd(),
   scratch = await mkdtemp(join(tmpdir(), "fusor-islands-consumer-"));
 const env = {
-  ...process.env,
+  ...suiteEnv,
   CARGO_NET_OFFLINE: "true",
-  CARGO_TARGET_DIR: resolve("target/islands-consumer"),
 };
 const run = (program, args) =>
   exec(program, args, {

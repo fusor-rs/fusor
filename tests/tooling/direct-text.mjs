@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
+import { suiteEnv as env } from '../../scripts/build.mjs';
 import { chromium, firefox, webkit } from 'playwright';
 
 const exec = promisify(execFile);
@@ -17,10 +18,6 @@ const suffix = process.platform === 'win32' ? '.exe' : '';
 const largePairs = 256;
 const largeMarkup = Array.from({ length: largePairs }, (_, index) =>
   `<output id="large-direct-${index}" title="{{ state.value.get() }}">{{ format!("${index}:{}", state.value.get()) }}</output><p id="large-anchored-${index}">[{{ format!("${index}:{}", state.empty.get()) }}]</p>`).join('');
-const env = {
-  ...process.env,
-  CARGO_TARGET_DIR: join(root, 'target/direct-text-tests'),
-};
 const run = (program, args, cwd = scratch) => exec(program, args, {
   cwd, env, timeout: 240000, maxBuffer: 8e6,
 });

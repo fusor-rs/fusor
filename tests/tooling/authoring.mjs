@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { suiteEnv } from "../../scripts/build.mjs";
 
 const exec = promisify(execFile);
 const root = process.cwd();
@@ -14,7 +15,7 @@ const scratch = await mkdtemp(join(tmpdir(), "fusor-authoring-"));
 const app = join(scratch, "native-app");
 const cli = join(root, "target/debug", `fusor${process.platform === "win32" ? ".exe" : ""}`);
 const env = {
-  ...process.env, RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN || "stable", CARGO_NET_OFFLINE: "true", CARGO_TARGET_DIR: join(root, "target/authoring-tests"),
+  ...suiteEnv, RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN || "stable", CARGO_NET_OFFLINE: "true",
 };
 const run = (args) => exec(cli, args, { cwd: app, env, timeout: 180_000, maxBuffer: 8 * 1024 * 1024 });
 let analyzer;
