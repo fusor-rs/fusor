@@ -177,6 +177,8 @@ fusor preview dist --port 8092
 ```
 
 > Servers use port 4173 unless you pass `--port`. A busy port fails before any build starts.
+> They listen on both loopback addresses, 127.0.0.1 and ::1, and print a `localhost` address,
+> where passkeys and `localhost` cookies work.
 
 ## Publish several applications as one site {#site}
 

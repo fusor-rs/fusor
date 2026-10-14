@@ -22,9 +22,11 @@ use hyper_util::rt::{TokioIo, TokioTimer};
 use std::time::Instant;
 use std::{
     convert::Infallible,
-    net::TcpListener,
+    io,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener},
     rc::Rc,
     sync::{Arc, RwLock},
+    task::Poll,
 };
 
 /// One application in a dev session: the settings it builds with, and the
@@ -45,7 +47,7 @@ pub(crate) fn dev(
 ) -> Result {
     validate_apps(&apps)?;
 
-    let server = bind(options.port)?;
+    let listeners = bind(options.port)?;
     let mut routes = Vec::new();
     let mut watchers = Vec::new();
     for DevApp { cx, project } in apps {
@@ -72,7 +74,7 @@ pub(crate) fn dev(
     )?;
     cx.reporter.blank();
 
-    serve(cx, server, proxy, move |method, url, accept| {
+    serve(cx, listeners, proxy, move |method, url, accept| {
         let Some((cx, state)) = route(&routes, url) else {
             return http::build_response(404, "text/plain", b"Not found".to_vec(), false);
         };
@@ -127,20 +129,32 @@ fn validate_apps(apps: &[DevApp]) -> Result {
 }
 
 pub(crate) fn check_port(port: u16) -> Result {
-    std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).map_err(|error| {
-        Error::project(format!("cannot listen on 127.0.0.1:{port}: {error}"))
-            .remedy("stop the process using that port, or pass --port PORT")
-    })?;
-    Ok(())
+    bind(port).map(drop)
 }
 
-pub(crate) fn bind(port: u16) -> Result<TcpListener> {
-    TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
-        .map_err(|error| Error::project(format!("cannot serve on 127.0.0.1:{port}: {error}")))
+/// Both loopback addresses, since `localhost` may resolve to either.
+pub(crate) fn bind(port: u16) -> Result<Vec<TcpListener>> {
+    let ipv4 = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    let ipv6 = SocketAddr::from((Ipv6Addr::LOCALHOST, port));
+    let ipv4_listener = TcpListener::bind(ipv4).map_err(|error| cannot_listen(ipv4, error))?;
+    match TcpListener::bind(ipv6) {
+        Ok(ipv6_listener) => Ok(vec![ipv4_listener, ipv6_listener]),
+        // Another server there would answer `localhost` in place of this one.
+        Err(error) if error.kind() == io::ErrorKind::AddrInUse => Err(cannot_listen(ipv6, error)),
+        // A host without IPv6 has no `::1`, so its `localhost` is 127.0.0.1.
+        Err(_) => Ok(vec![ipv4_listener]),
+    }
 }
 
+fn cannot_listen(address: SocketAddr, error: io::Error) -> Error {
+    Error::project(format!("cannot listen on {address}: {error}"))
+        .remedy("stop the process using that port, or pass --port PORT")
+}
+
+/// `localhost`, not 127.0.0.1: browsers treat them as different sites, and
+/// passkeys reject an IP address.
 pub(crate) fn url(port: u16, base: &str) -> String {
-    format!("http://127.0.0.1:{port}{base}")
+    format!("http://localhost:{port}{base}")
 }
 
 /// The server is listening: say so, give scripts the address, and open it.
@@ -156,11 +170,10 @@ pub(crate) fn ready(cx: &Context, port: u16, base: &str, open: bool, message: &s
 
 pub(crate) fn serve(
     cx: &Context,
-    server: TcpListener,
+    listeners: Vec<TcpListener>,
     proxy: Rules,
     answer: impl Fn(&Method, &str, &str) -> Body + 'static,
 ) -> Result {
-    server.set_nonblocking(true)?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
@@ -170,9 +183,15 @@ pub(crate) fn serve(
     // Keep idle and speculative browser connections off a blocking worker pool:
     // a burst must not strand a script request behind another keep-alive socket.
     tokio::task::LocalSet::new().block_on(&runtime, async move {
-        let listener = tokio::net::TcpListener::from_std(server)?;
+        let listeners = listeners
+            .into_iter()
+            .map(|listener| {
+                listener.set_nonblocking(true)?;
+                tokio::net::TcpListener::from_std(listener)
+            })
+            .collect::<io::Result<Vec<_>>>()?;
         loop {
-            let (stream, _) = listener.accept().await?;
+            let stream = accept(&listeners).await?;
             tokio::task::spawn_local(serve_connection(
                 cx.clone(),
                 stream,
@@ -181,6 +200,19 @@ pub(crate) fn serve(
             ));
         }
     })
+}
+
+/// The next connection on any of the listeners.
+async fn accept(listeners: &[tokio::net::TcpListener]) -> io::Result<tokio::net::TcpStream> {
+    let (stream, _) = std::future::poll_fn(|context| {
+        listeners
+            .iter()
+            .map(|listener| listener.poll_accept(context))
+            .find(Poll::is_ready)
+            .unwrap_or(Poll::Pending)
+    })
+    .await?;
+    Ok(stream)
 }
 
 async fn serve_connection(

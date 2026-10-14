@@ -24,7 +24,7 @@ pub(crate) fn run(cx: &Context, directory: Option<&Path>, port: u16, open: bool)
     }
     let output = OutputManifest::read(&directory)?;
     server::check_port(port)?;
-    let listener = server::bind(port)?;
+    let listeners = server::bind(port)?;
     cx.reporter
         .banner(format!("preview of {}", shown(&directory)));
     cx.reporter
@@ -33,7 +33,7 @@ pub(crate) fn run(cx: &Context, directory: Option<&Path>, port: u16, open: bool)
     server::ready(cx, port, &output.base_path, open, READY)?;
     server::serve(
         cx,
-        listener,
+        listeners,
         Rules::default(),
         move |method, url, accept| {
             http::respond(
@@ -60,7 +60,7 @@ fn serve_site(cx: &Context, root: &Path, site: &SiteManifest, port: u16, open: b
         .map(|(directory, output)| (output.base_path.clone(), (directory, output)))
         .collect();
     server::check_port(port)?;
-    let listener = server::bind(port)?;
+    let listeners = server::bind(port)?;
     let base = mounts
         .iter()
         .map(|(base, _)| base.as_str())
@@ -81,7 +81,7 @@ fn serve_site(cx: &Context, root: &Path, site: &SiteManifest, port: u16, open: b
     server::ready(cx, port, base, open, READY)?;
     server::serve(
         cx,
-        listener,
+        listeners,
         Rules::default(),
         move |method, url, accept| match route(&mounts, url) {
             Some((directory, output)) => http::respond(

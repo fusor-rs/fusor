@@ -84,7 +84,7 @@ fusor::template!("web/index.html");
 
   const previewPort = await reservePort();
   server = startProcess(executable, ["preview", "--manifest-path", manifest, "--port", String(previewPort)], { cwd: app, env: offline });
-  await waitUntil(() => server.output.includes(`127.0.0.1:${previewPort}`), "preview startup", { timeout: 60_000, process: server });
+  await waitUntil(() => server.output.includes(`localhost:${previewPort}`), "preview startup", { timeout: 60_000, process: server });
   browser = await chromium.launch(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {});
   const tab = await browser.newPage({ viewport: { width: 1024, height: 768 } });
   const errors = [];

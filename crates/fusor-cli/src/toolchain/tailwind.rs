@@ -15,16 +15,25 @@ use std::{
 /// Far above the real size (~110 MB), so a wrong URL cannot stream forever.
 const DOWNLOAD_LIMIT: u64 = 256 * 1024 * 1024;
 
-/// The release asset's platform suffix for this CLI's host.
+/// The dynamic loaders that Tailwind's glibc builds start with, fixed by each
+/// architecture's ABI.
+const GLIBC_LOADER_X64: &str = "/lib64/ld-linux-x86-64.so.2";
+const GLIBC_LOADER_ARM64: &str = "/lib/ld-linux-aarch64.so.1";
+
+/// The release asset's platform suffix for this host. On Linux the C library
+/// comes from the host, not from the CLI's target: release CLIs are static musl
+/// binaries that also run on glibc hosts, but each Tailwind build needs its own
+/// C library's loader.
 fn platform() -> Option<&'static str> {
-    Some(match env!("FUSOR_HOST") {
-        "aarch64-apple-darwin" => "macos-arm64",
-        "x86_64-apple-darwin" => "macos-x64",
-        "aarch64-unknown-linux-gnu" => "linux-arm64",
-        "x86_64-unknown-linux-gnu" => "linux-x64",
-        "aarch64-unknown-linux-musl" => "linux-arm64-musl",
-        "x86_64-unknown-linux-musl" => "linux-x64-musl",
-        "x86_64-pc-windows-msvc" => "windows-x64.exe",
+    let glibc = |loader: &str| Path::new(loader).exists();
+    Some(match (env::consts::OS, env::consts::ARCH) {
+        ("macos", "aarch64") => "macos-arm64",
+        ("macos", "x86_64") => "macos-x64",
+        ("linux", "aarch64") if glibc(GLIBC_LOADER_ARM64) => "linux-arm64",
+        ("linux", "x86_64") if glibc(GLIBC_LOADER_X64) => "linux-x64",
+        ("linux", "aarch64") => "linux-arm64-musl",
+        ("linux", "x86_64") => "linux-x64-musl",
+        ("windows", "x86_64") => "windows-x64.exe",
         _ => return None,
     })
 }
@@ -87,9 +96,8 @@ pub(crate) fn install(cx: &Context) -> Result {
         layout::TAILWIND_VERSION
     );
     cx.reporter.step(format!(
-        "Downloading Tailwind CSS {} for {} ...",
-        layout::TAILWIND_VERSION,
-        env!("FUSOR_HOST")
+        "Downloading Tailwind CSS {} for {platform} ...",
+        layout::TAILWIND_VERSION
     ));
     let root = root()?;
     let (staging, _cleanup) = download::staging(&root)?;
