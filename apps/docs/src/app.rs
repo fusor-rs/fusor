@@ -56,6 +56,7 @@ struct DocRoute {
     extras: ArticleExtras,
 }
 
+#[derive(fusor::Inputs)]
 pub struct DocRouteInputs {
     pub navigation: Navigation,
 }

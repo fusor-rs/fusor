@@ -22,6 +22,7 @@ impl Panel {
     }
 }
 
+#[derive(fusor::Inputs)]
 pub struct PanelInputs {
     pub client: QueryClient<u32, String, FetchError>,
     pub selected: Signal<u32>,

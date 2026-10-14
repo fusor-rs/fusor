@@ -43,6 +43,7 @@ impl UserBadge {
 
 fusor::template!("web/index.html");
 
+#[derive(fusor::Inputs)]
 struct UserBadgeInputs {}
 impl fusor::dom::FromInputs for UserBadge {
     type Error = fusor::dom::JsValue;

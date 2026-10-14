@@ -16,6 +16,7 @@ struct IssueField {
     field: &'static str,
 }
 
+#[derive(fusor::Inputs)]
 pub struct IssueFieldInputs {
     pub issue: Signal<u32>,
     pub field: &'static str,

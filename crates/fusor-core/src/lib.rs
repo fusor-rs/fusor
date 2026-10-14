@@ -37,9 +37,10 @@ pub use reactive::{
 
 /// The explicit input contract for compiler-resolved component tags.
 ///
-/// `Inputs` is a named-field struct (or a unit struct for empty tags). The
-/// compiler builds it with an ordinary struct literal: rustc checks every field,
-/// its visibility, and its type. Input expressions and this constructor run once
+/// `Inputs` is a named-field struct (or a unit struct for empty tags) that
+/// implements [`Inputs`]. The compiler builds it through that trait's builder:
+/// rustc checks every supplied input, its visibility, and its type, and rejects a
+/// missing required input by name. Input expressions and this constructor run once
 /// per mounted identity, untracked. Pass signals or memos for live shared inputs.
 /// Construction is separate from rendering: browser mounts require `Component`.
 /// `owner` is the new child's prepared owner. The caller owns preparation,
@@ -47,17 +48,19 @@ pub use reactive::{
 /// not itself defer ordinary effects or activate the owner.
 ///
 /// Simple concrete components can use `#[derive(fusor::FromInputs)]`:
-/// mark every field `#[input]` (required from the parent) or
+/// mark every field `#[input]` (required from the parent), `#[input(default)]` or
+/// `#[input(default = expression)]` (optional, see [`Inputs`]), or
 /// `#[local(init = expression)]` (initialized once per instance). The derive
 /// generates a `TypeNameInputs` struct with the component's visibility and
 /// public input fields, plus this trait implementation. Original field
 /// visibility is unchanged. Unit and all-local components get unit Inputs.
 ///
-/// Local expressions execute in declaration order in the generated constructor;
-/// `Self` refers to the component. They have no implicit `inputs`/`owner` names
-/// and cannot access other instance fields. Implement this trait manually for
-/// input-dependent initialization, owner-aware setup, or generic components.
-/// The derive creates neither a `new` method nor a template association.
+/// Local expressions execute in declaration order in the generated constructor.
+/// In local and default expressions, `Self` refers to the component. They have
+/// no implicit `inputs`/`owner` names and cannot access other instance fields.
+/// Implement this trait manually for input-dependent initialization, owner-aware
+/// setup, or generic components, and derive [`Inputs`] on the hand-written inputs
+/// struct. The derive creates neither a `new` method nor a template association.
 /// Use `#[from_inputs(crate = ::alias)]` when renaming the runtime dependency.
 /// Enable the `derive` feature to use the derive without any browser dependencies;
 /// `dom` also enables it. The derived error type is `std::convert::Infallible`.
@@ -71,16 +74,35 @@ pub use reactive::{
 /// `String`, and `&str`. Implement it for custom browser errors; there is no
 /// blanket `Display` conversion.
 pub trait FromInputs: Sized {
-    type Inputs;
+    type Inputs: Inputs;
     type Error;
     fn from_inputs(inputs: Self::Inputs, owner: OwnerHandle) -> Result<Self, Self::Error>;
+}
+
+/// How the compiler builds [`FromInputs::Inputs`] from a component tag.
+///
+/// Generated code starts from [`Inputs::builder`], calls one setter per supplied
+/// attribute, named after its field, then calls the builder's `build()`. Setters
+/// keep each field's visibility and exact Rust type. An omitted input takes its
+/// default; omitting a required input is a compile error that names the input.
+///
+/// Use `#[derive(fusor::Inputs)]` on a hand-written inputs struct. Fields are
+/// required unless marked `#[input(default)]`, which uses `Default::default()`, or
+/// `#[input(default = expression)]`. Defaults are evaluated by `build()`, only for
+/// omitted inputs, in field declaration order. A field cannot be named `build`.
+/// `#[derive(FromInputs)]` implements this trait for the struct it generates.
+/// Use `#[inputs(crate = ::alias)]` when renaming the runtime dependency.
+pub trait Inputs: Sized {
+    /// A builder with every input unset.
+    type Builder;
+    fn builder() -> Self::Builder;
 }
 
 #[cfg(feature = "dom")]
 pub mod dom;
 
 #[cfg(feature = "derive")]
-pub use fusor_macros::FromInputs;
+pub use fusor_macros::{FromInputs, Inputs};
 
 #[cfg(feature = "javascript")]
 pub mod js;
@@ -91,7 +113,6 @@ pub use js::JsInputs;
 
 /// The small set of types needed by a reactive application.
 pub mod prelude {
-    pub use crate::FromInputs;
     #[cfg(feature = "javascript")]
     pub use crate::JsInputs;
     #[cfg(feature = "dom")]
@@ -101,4 +122,5 @@ pub mod prelude {
     pub use crate::{
         Derived, Effect, Memo, Signal, batch, derived, effect, memo, memo_with_eq, signal, untrack,
     };
+    pub use crate::{FromInputs, Inputs};
 }

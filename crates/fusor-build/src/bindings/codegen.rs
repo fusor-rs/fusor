@@ -556,7 +556,7 @@ fn router(routes: &[RouteBranch], ctx: Ctx, locals: &[Rust]) -> OperationKind {
 
 /// Lower input structs and projected-content factories once for every target.
 fn construct_inputs(span: Span, ty: &Rust, inputs: &[Input], ctx: Ctx) -> TokenStream {
-    let fields = emit::fields(inputs, |value| match value {
+    let setters = emit::setters(inputs, |value| match value {
         InputValue::Content {
             component: index,
             origin,
@@ -573,7 +573,7 @@ fn construct_inputs(span: Span, ty: &Rust, inputs: &[Input], ctx: Ctx) -> TokenS
         }
         value => emit::braced(value),
     });
-    emit::construct_inputs(span, ty, fields, &ctx.runtime.convert_error)
+    emit::construct_inputs(span, ty, setters, &ctx.runtime.convert_error)
 }
 
 /// All recursive factories pass through the same backend as their parent.

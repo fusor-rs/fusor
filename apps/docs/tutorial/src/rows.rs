@@ -22,6 +22,7 @@ impl Row {
 
 fusor::bindings!(rows);
 
+#[derive(fusor::Inputs)]
 pub struct RowInputs {
     pub item: fusor::Memo<Item>,
 }

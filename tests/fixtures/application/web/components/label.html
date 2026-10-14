@@ -2,6 +2,7 @@
 use fusor::prelude::*;
 pub struct Label { pub text: Signal<String> }
 
+#[derive(fusor::Inputs)]
 pub struct LabelInputs {
     pub text: Signal<String>,
 }

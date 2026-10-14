@@ -82,7 +82,7 @@ try {
 
   for (const [before, after, errorCode] of [
     ['key="{{ |item| item.id }}"', 'key="{{ |item| item.missing_id }}"', "E0609"],
-    ['<Row item="{{ item.clone() }}">', '<Row nonexistent="{{ item.clone() }}">', "E0560"],
+    ['<Row item="{{ item.clone() }}">', '<Row nonexistent="{{ item.clone() }}">', "E0599"],
     ['{{ selected.get().name }}', '{{ selected.get().missing_name }}', "E0609"],
     ['{{ selected.get().name }}', '{{ { let unused_binding = 1; selected.get().name } }}', "unused_variables"],
     ['<input bind="state.name">', '<input bind="state.items">', "E0277"],

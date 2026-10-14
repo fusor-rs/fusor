@@ -87,6 +87,7 @@ impl AccountMenu {
 
 fusor::template!("web/index.html");
 
+#[derive(fusor::Inputs)]
 struct AccountMenuInputs {}
 impl fusor::dom::FromInputs for AccountMenu {
     type Error = fusor::dom::JsValue;

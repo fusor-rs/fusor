@@ -41,6 +41,7 @@ impl ThreeJs {
 
 fusor::template!("web/demos/threejs.html");
 
+#[derive(fusor::Inputs)]
 pub struct ThreeJsInputs {}
 
 impl fusor::dom::FromInputs for ThreeJs {

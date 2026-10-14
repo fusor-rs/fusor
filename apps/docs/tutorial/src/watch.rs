@@ -23,6 +23,7 @@ impl Watch {
 
 fusor::bindings!(watch);
 
+#[derive(fusor::Inputs)]
 pub struct WatchInputs {
     pub lifecycle: Signal<String>,
 }

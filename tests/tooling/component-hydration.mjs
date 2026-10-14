@@ -63,6 +63,7 @@ struct NamedPanel;
 #[derive(fusor::FromInputs)]
 struct NamedWrapper;
 struct Generated { draft: Signal<String> }
+#[derive(fusor::Inputs)]
 struct GeneratedInputs {}
 impl FromInputs for Generated {
     type Error = fusor::dom::JsValue;
@@ -73,6 +74,7 @@ impl FromInputs for Generated {
 }
 // A hand-written component builds its own root and ignores server DOM.
 struct Manual;
+#[derive(fusor::Inputs)]
 struct ManualInputs {}
 impl FromInputs for Manual {
     type Error = fusor::dom::JsValue;
@@ -109,6 +111,7 @@ struct FailureRoot { display: bool }
 #[cfg(not(target_arch = "wasm32"))]
 struct DisplayFailure;
 #[cfg(not(target_arch = "wasm32"))]
+#[derive(fusor::Inputs)]
 struct FailureInputs;
 #[cfg(not(target_arch = "wasm32"))]
 impl fusor::FromInputs for DisplayFailure {

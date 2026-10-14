@@ -18,10 +18,12 @@ pub struct Counter {
     _cleanup: CounterLifetime,
     _activation: Registration,
 }
+#[derive(fusor::Inputs)]
 pub struct CounterInputs {
     pub count: Signal<i32>,
     pub initial: i32,
     pub label: &'static str,
+    #[input(default)]
     pub fail: bool,
 }
 impl FromInputs for Counter {
@@ -54,6 +56,7 @@ pub struct Panel {
     body: Content,
     title: &'static str,
 }
+#[derive(fusor::Inputs)]
 pub struct PanelInputs {
     pub body: Content,
     pub title: &'static str,
@@ -75,6 +78,7 @@ impl FromInputs for Panel {
 pub struct Badge {
     theme: &'static str,
 }
+#[derive(fusor::Inputs)]
 pub struct BadgeInputs;
 impl FromInputs for Badge {
     type Error = &'static str;
@@ -98,6 +102,8 @@ pub struct Row {
 pub struct Cells {
     #[input]
     count: Signal<i32>,
+    #[input(default = "In stock")]
+    stock: &'static str,
 }
 
 #[derive(FromInputs)]

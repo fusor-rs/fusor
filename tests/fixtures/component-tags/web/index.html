@@ -4,7 +4,7 @@
   <main>
     <h1>Authored components</h1>
     <CounterAlias count="{{ state.count.clone() }}" initial="{{ state.count.get() }}" label="first" fail="{{ state.fail.get() }}" rust:if="state.visible.get()" rust:key="state.key.get()"></CounterAlias>
-    <crate::widgets::Counter count="{{ state.count.clone() }}" initial="{{ state.count.get() }}" label="second" fail="{{ false }}"></crate::widgets::Counter>
+    <crate::widgets::Counter count="{{ state.count.clone() }}" initial="{{ state.count.get() }}" label="second"></crate::widgets::Counter>
     <Panel title="outer" rust:if="state.visible.get()" rust:key="state.panel_key.get()">
       <template rust:content="body">
         <section class="projected">

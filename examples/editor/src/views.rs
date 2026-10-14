@@ -51,6 +51,7 @@ impl Editor {
 }
 fusor::bindings!(views);
 
+#[derive(fusor::Inputs)]
 pub struct EditorInputs {
     pub store: Rc<Store>,
     pub name: &'static str,
@@ -71,6 +72,7 @@ impl fusor::dom::FromInputs for Editor {
     }
 }
 
+#[derive(fusor::Inputs)]
 pub struct EmptyInputs {}
 impl fusor::dom::FromInputs for EditorPage {
     type Inputs = EmptyInputs;

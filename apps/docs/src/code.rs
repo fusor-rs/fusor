@@ -21,6 +21,7 @@ impl CodeBlock {
     }
 }
 
+#[derive(fusor::Inputs)]
 struct Token {
     item: fusor::Memo<CodeToken>,
 }
@@ -35,6 +36,7 @@ impl fusor::dom::FromInputs for Token {
     }
 }
 
+#[derive(fusor::Inputs)]
 pub struct CodeBlockInputs {
     pub data: CodeData,
 }

@@ -25,8 +25,20 @@ fn rejects_ambiguous_or_incomplete_field_contracts() {
             "duplicate local initializer",
         ),
         (
-            "struct Bad { #[input(default)] value: u32 }",
-            "takes no arguments",
+            "struct Bad { #[input(other)] value: u32 }",
+            "expected `default` or `default = expression`",
+        ),
+        (
+            "struct Bad { #[input(default, default = 1)] value: u32 }",
+            "duplicate input default",
+        ),
+        (
+            "struct Bad { #[input()] value: u32 }",
+            "expected #[input(default)]",
+        ),
+        (
+            "struct Bad { #[input] build: u32 }",
+            "`build` finishes the generated input builder",
         ),
         ("struct Bad(u32);", "requires named fields"),
         ("enum Bad { A }", "only be derived for a struct"),
@@ -77,10 +89,46 @@ fn expansion_is_valid_rust_for_all_supported_shapes() {
         "struct Empty {}",
         "struct Local { #[local(init = Vec::new())] values: Vec<u32> }",
         "pub struct Public { #[input] value: u32 }",
+        "pub struct Optional { #[input] a: u32, #[input(default)] b: u32, #[input(default = 3)] c: u32 }",
         "#[from_inputs(crate = ::renamed)] pub(crate) struct Named { #[input] r#type: String, #[local(init = 0)] count: u32 }",
     ] {
         let expanded = expand(syn::parse_str(source).unwrap()).unwrap();
         syn::parse2::<syn::File>(expanded).unwrap();
+    }
+}
+
+#[test]
+fn hand_written_inputs_expand_for_generic_structs() {
+    for source in [
+        "struct Unit;",
+        "pub struct Plain { pub value: u32, #[input(default)] pub open: bool }",
+        "struct Generic<'a, T: Clone = u32, const N: usize = 2> where T: 'a { items: &'a [T; N] }",
+        "#[inputs(crate = ::renamed)] struct Named { r#type: String }",
+    ] {
+        let expanded = inputs::expand(syn::parse_str(source).unwrap()).unwrap();
+        syn::parse2::<syn::File>(expanded).unwrap();
+    }
+}
+
+#[test]
+fn hand_written_inputs_reject_invalid_markers() {
+    for (source, message) in [
+        (
+            "struct Bad { #[input] #[input] value: u32 }",
+            "one #[input(...)]",
+        ),
+        (
+            "struct Bad { #[inputs(crate = ::rf)] value: u32 }",
+            "belongs on the struct",
+        ),
+        ("#[input] struct Bad;", "on a field"),
+        ("struct Bad { build: u32 }", "`build` finishes"),
+        ("struct Bad(u32);", "requires named fields"),
+    ] {
+        let error = inputs::expand(syn::parse_str(source).unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(message), "{source}: {error}");
     }
 }
 

@@ -8,7 +8,7 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib"]
 [dependencies]
-docs-base = { git = "https://github.com/fusor-rs/docs-base", rev = "78990c2b07d510abc76224e82ca933f89f423850" }
+docs-base = { git = "https://github.com/fusor-rs/docs-base", rev = "18fc1fb990b0e5af6e9b057ad95d047841965bdf" }
 fusor-components = { workspace = true, features = ["browser"] }
 fusor-core = { workspace = true, features = ["dom", "javascript"] }
 fusor-router = { workspace = true, features = ["browser"] }
@@ -23,7 +23,7 @@ wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
 web-sys = { workspace = true, features = ["Navigator", "Clipboard", "Element", "MouseEvent"] }
 [build-dependencies]
-docs-base-build = { git = "https://github.com/fusor-rs/docs-base", rev = "78990c2b07d510abc76224e82ca933f89f423850" }
+docs-base-build = { git = "https://github.com/fusor-rs/docs-base", rev = "18fc1fb990b0e5af6e9b057ad95d047841965bdf" }
 fusor-build.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

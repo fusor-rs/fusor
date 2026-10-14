@@ -29,6 +29,7 @@ impl fusor::ContextKey for Location {
     type Value = &'static str;
 }
 struct Panel;
+#[derive(fusor::Inputs)]
 struct PanelInputs {}
 impl FromInputs for Panel {
     type Inputs = PanelInputs;
@@ -56,6 +57,7 @@ struct Tracked {
     _activate: Registration,
     _cleanup: Registration,
 }
+#[derive(fusor::Inputs)]
 struct TrackedInputs {
     live: Signal<i32>,
 }

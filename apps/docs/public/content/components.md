@@ -152,9 +152,39 @@ construction.
 > requires `Signal<i32>`. Plain attributes pass static Rust strings; use `{{ ... }}` for
 > other Rust values.
 >
-> Input names match Rust field names exactly, such as `selected_id`. Even an `Option<T>`
-> input must be supplied: pass `{{ None }}` when it has no value. Local initializers run
+> Input names match Rust field names exactly, such as `selected_id`. Local initializers run
 > once, in field declaration order.
+
+## Make an input optional {#optional-inputs}
+
+A tag must supply every `#[input]` unless the input has a default. `#[input(default)]` uses
+the type's standard default: `None` for an `Option<T>`, `0`, `false`, or an empty `String`.
+`#[input(default = expression)]` uses a value you choose.
+
+```rust title=Rust · one required and two optional inputs
+#[derive(Clone, Copy)]
+pub enum Variant {
+    Primary,
+    Danger,
+}
+
+#[derive(FromInputs)]
+pub struct Button {
+    #[input]
+    label: &'static str,
+    #[input(default)]
+    icon: Option<&'static str>,
+    #[input(default = Variant::Primary)]
+    variant: Variant,
+}
+```
+
+`<Button label="Save"></Button>` has no icon and the primary variant. A tag can still set
+either one, such as `variant="{{ Variant::Danger }}"`. Leaving out `label` is a compiler
+error that names the missing input.
+
+> A default runs only when the tag leaves its input out, once per new instance, like a local
+> initializer. `#[input(default)]` requires the type to implement Rust's `Default` trait.
 
 ## What the derive generates {#derive-rules}
 
@@ -163,8 +193,9 @@ also implements `FromInputs`, the trait the framework calls to construct a compo
 trait is an interface: a set of functions a type promises to provide.
 
 The generated input struct has the same visibility as `Counter`. The original component
-fields stay private. Every field must have exactly one `#[input]` or `#[local(init = ...)]`
-annotation; missing or conflicting annotations produce a compiler error on that field.
+fields stay private. Every field must have exactly one `#[input]`, `#[input(default ...)]`,
+or `#[local(init = ...)]` annotation; missing or conflicting annotations produce a compiler
+error on that field.
 
 ```rust title=Rust · generated input contract, do not add this to your module
 pub struct CounterInputs {
@@ -189,7 +220,9 @@ yourself. The file below is the complete manual equivalent of the derive example
 only `src/counter.rs`; keep the same HTML and parent files. The application behaves
 identically.
 
-Use either this implementation or the derive, not both.
+Use either this implementation or the derive, not both. Put `#[derive(fusor::Inputs)]` on
+the inputs struct you write: it lets component tags fill the struct in by field name. Its
+fields are required unless marked `#[input(default)]` or `#[input(default = expression)]`.
 
 `FromInputs` is a renderer-independent construction trait. It has `Inputs` and `Error`
 associated types and is available without features. Existing manual browser implementations

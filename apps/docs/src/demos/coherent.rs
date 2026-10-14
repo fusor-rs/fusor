@@ -59,6 +59,7 @@ impl ProductRead {
 
 fusor::bindings!(coherent);
 
+#[derive(fusor::Inputs)]
 struct ProductReadInputs {
     pub product: Signal<String>,
     pub field: &'static str,

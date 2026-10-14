@@ -54,22 +54,38 @@ pub(super) fn clone_locals(locals: &[Rust]) -> TokenStream {
 }
 
 /// Preserve the typed construction contract while letting a renderer convert
-/// errors at its own mounting boundary.
+/// errors at its own mounting boundary. `build` carries the tag's span, so a
+/// missing required input is reported on the tag.
 pub(super) fn construct_inputs(
     span: Span,
     ty: &Rust,
-    fields: impl IntoIterator<Item = TokenStream>,
+    setters: impl IntoIterator<Item = TokenStream>,
     converter: impl quote::ToTokens,
 ) -> TokenStream {
-    let fields = fields.into_iter();
+    let setters = setters.into_iter();
     quote_spanned! {span=>
         type __FusorInputs = <#ty as ::fusor::FromInputs>::Inputs;
-        <#ty as ::fusor::FromInputs>::from_inputs(__FusorInputs { #(#fields),* }, owner)
-            .map_err(#converter)
+        let __fusor_inputs = <__FusorInputs as ::fusor::Inputs>::builder() #(#setters)* .build();
+        <#ty as ::fusor::FromInputs>::from_inputs(__fusor_inputs, owner).map_err(#converter)
     }
 }
 
-/// The `name: value` fields of a component's inputs struct; `value` lowers each input.
+/// One `.name(value)` builder call per supplied input; `value` lowers each input.
+pub(super) fn setters(
+    inputs: &[Input],
+    value: impl Fn(&InputValue) -> TokenStream,
+) -> Vec<TokenStream> {
+    inputs
+        .iter()
+        .map(|input| {
+            let name = &input.name;
+            let value = value(&input.value);
+            quote_spanned! {name.span()=> .#name(#value) }
+        })
+        .collect()
+}
+
+/// The `name: value` fields of an island's props struct; `value` lowers each input.
 pub(super) fn fields(
     inputs: &[Input],
     value: impl Fn(&InputValue) -> TokenStream,

@@ -7,8 +7,11 @@ use syn::{
     parse_quote, spanned::Spanned,
 };
 
+mod inputs;
+
 /// Generate a component's named input struct and `FromInputs` implementation.
-/// Each field must be `#[input]` or `#[local(init = expression)]`.
+/// Each field must be `#[input]`, `#[input(default)]`, `#[input(default = expression)]`
+/// or `#[local(init = expression)]`.
 /// See `fusor::FromInputs` for the application-facing documentation.
 #[proc_macro_derive(FromInputs, attributes(input, local, from_inputs))]
 pub fn derive_from_inputs(input: TokenStream) -> TokenStream {
@@ -17,7 +20,16 @@ pub fn derive_from_inputs(input: TokenStream) -> TokenStream {
         .into()
 }
 
-// Self in an input's type means the component, not the generated Inputs struct.
+/// Implement `Inputs` for a hand-written inputs struct.
+/// See `fusor::Inputs` for the application-facing documentation.
+#[proc_macro_derive(Inputs, attributes(input, inputs))]
+pub fn derive_inputs(input: TokenStream) -> TokenStream {
+    inputs::expand(parse_macro_input!(input as DeriveInput))
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
+}
+
+// Self in an input's type or default names this type, not the generated item using it.
 struct ComponentSelf(syn::Ident);
 impl Fold for ComponentSelf {
     fn fold_path(&mut self, mut path: Path) -> Path {
@@ -80,6 +92,10 @@ fn input_fields<'a>(input: &'a DeriveInput, derive: &str) -> Result<&'a Fields> 
             ),
         ));
     }
+    named_fields(input, derive)
+}
+
+fn named_fields<'a>(input: &'a DeriveInput, derive: &str) -> Result<&'a Fields> {
     let Data::Struct(data) = &input.data else {
         return Err(Error::new_spanned(
             &input.ident,
@@ -98,6 +114,7 @@ fn input_fields<'a>(input: &'a DeriveInput, derive: &str) -> Result<&'a Fields> 
 struct InputFields {
     declarations: Vec<proc_macro2::TokenStream>,
     initializers: Vec<proc_macro2::TokenStream>,
+    inputs: Vec<inputs::InputField>,
 }
 
 fn lower_fields(
@@ -107,12 +124,13 @@ fn lower_fields(
 ) -> Result<InputFields> {
     let mut inputs_fields = Vec::new();
     let mut values = Vec::new();
+    let mut inputs = Vec::new();
     let mut errors: Option<Error> = None;
     for field in fields {
         let field_name = field.ident.as_ref().expect("unnamed fields were rejected");
-        let parsed = field_kind(field);
+        let parsed = field_kind(field, name);
         match parsed {
-            Ok(InputKind::Input) => {
+            Ok(InputKind::Input(default)) => {
                 let ty = ComponentSelf(name.clone()).fold_type(field.ty.clone());
                 let docs = field
                     .attrs
@@ -120,6 +138,12 @@ fn lower_fields(
                     .filter(|attr| attr.path().is_ident("doc"));
                 inputs_fields.push(quote_spanned!(field.span()=> #(#docs)* pub #field_name: #ty));
                 values.push(quote_spanned!(field.span()=> #field_name: #inputs_var.#field_name));
+                inputs.push(inputs::InputField {
+                    name: field_name.clone(),
+                    ty,
+                    vis: parse_quote!(pub),
+                    default: default.map(|default| *default),
+                });
             }
             Ok(InputKind::Local(init)) => {
                 values.push(quote_spanned!(field.span()=> #field_name: { #init }))
@@ -136,15 +160,17 @@ fn lower_fields(
     Ok(InputFields {
         declarations: inputs_fields,
         initializers: values,
+        inputs,
     })
 }
 
 enum InputKind {
-    Input,
+    /// The default expression of an input the parent may omit.
+    Input(Option<Box<Expr>>),
     Local(Box<Expr>),
 }
 
-fn field_kind(field: &syn::Field) -> Result<InputKind> {
+fn field_kind(field: &syn::Field, component: &syn::Ident) -> Result<InputKind> {
     let mut kind = None;
     for attr in &field.attrs {
         if attr.path().is_ident("from_inputs") {
@@ -163,13 +189,7 @@ fn field_kind(field: &syn::Field) -> Result<InputKind> {
             ));
         }
         kind = Some(if attr.path().is_ident("input") {
-            if !matches!(attr.meta, Meta::Path(_)) {
-                return Err(Error::new_spanned(
-                    attr,
-                    "#[input] takes no arguments; inputs are required and keep their exact Rust type",
-                ));
-            }
-            InputKind::Input
+            InputKind::Input(inputs::default_value(attr, component)?.map(Box::new))
         } else {
             InputKind::Local(Box::new(local_initializer(attr)?))
         });
@@ -212,7 +232,17 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
     let InputFields {
         declarations: inputs_fields,
         initializers: values,
+        inputs,
     } = lower_fields(fields, name, &inputs_var)?;
+    let builder = inputs::builder(
+        &inputs::InputsStruct {
+            name: &inputs_name,
+            vis: visibility,
+            generics: &input.generics,
+            fields: inputs,
+        },
+        &runtime,
+    )?;
     let doc = format!("Parent-supplied inputs generated by `FromInputs` for `{name}`.");
     let declaration = if inputs_fields.is_empty() {
         quote!(#[doc = #doc] #visibility struct #inputs_name;)
@@ -226,6 +256,7 @@ fn expand(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
     };
     Ok(quote! {
         #declaration
+        #builder
         impl #runtime::FromInputs for #name {
             type Inputs = #inputs_name;
             type Error = ::core::convert::Infallible;

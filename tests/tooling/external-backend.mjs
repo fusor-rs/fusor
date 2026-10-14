@@ -151,7 +151,7 @@ try {
   for (const [before, after, code] of [
     ["{{ state.title }}: {{ state.count.get() }}", "{{ state.missing_title }}: {{ state.count.get() }}", "E0609"],
     ['key="{{ |row| row.id }}"', 'key="{{ |row| row.missing_id }}"', "E0609"],
-    ['<Frame title="Receiver">', '<Frame nonexistent="Receiver">', "E0560"],
+    ['<Frame title="Receiver">', '<Frame nonexistent="Receiver">', "E0599"],
     ["{{ number.get() }}", "{{ number.get().missing_field }}", "E0610"],
     ["{{ updated.get() }}", "{{ updated.get().missing_method() }}", "E0599"],
     ['bind="state.number"', 'bind="state.rows"', "E0277"],

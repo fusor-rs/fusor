@@ -75,6 +75,7 @@ impl ChartJs {
 
 fusor::template!("web/demos/chartjs.html");
 
+#[derive(fusor::Inputs)]
 pub struct ChartJsInputs {}
 
 impl fusor::dom::FromInputs for ChartJs {

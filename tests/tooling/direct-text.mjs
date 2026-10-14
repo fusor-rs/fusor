@@ -83,6 +83,7 @@ struct Large {
     value: Signal<String>,
     empty: Signal<String>,
 }
+#[derive(fusor::Inputs)]
 struct LargeInputs {
     value: Signal<String>,
     empty: Signal<String>,
@@ -95,6 +96,7 @@ impl fusor::dom::FromInputs for Large {
     }
 }
 struct Panel;
+#[derive(fusor::Inputs)]
 struct PanelInputs {}
 impl fusor::dom::FromInputs for Panel {
     type Error = fusor::dom::JsValue;

@@ -56,6 +56,7 @@ impl Stock {
 fusor::bindings!(app);
 include!(env!("FUSOR_MODULE"));
 
+#[derive(fusor::Inputs)]
 pub struct PriceInputs {
     pub selection: Signal<String>,
 }
@@ -70,6 +71,7 @@ impl fusor::dom::FromInputs for Price {
     }
 }
 
+#[derive(fusor::Inputs)]
 pub struct StockInputs {
     pub selection: Signal<String>,
 }

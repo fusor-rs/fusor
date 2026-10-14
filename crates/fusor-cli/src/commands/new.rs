@@ -295,10 +295,10 @@ Use `fusor check` to type-check and `fusor build` for a static site in `dist/`.
 
 Associate HTML with an ordinary Rust module using fusor::template!("web/index.html")
 or a path under web/components/. The build discovers these templates automatically.
-Derive FromInputs with #[input] for parent values and #[local(init = ...)] for
-per-instance state. The derive generates the typed input contract; manual FromInputs
-implementations support custom setup. The <App state=...> boundary constructs and
-retains the application.
+Derive FromInputs with #[input] for parent values, #[input(default)] for optional
+ones, and #[local(init = ...)] for per-instance state. The derive generates the
+typed input contract; manual FromInputs implementations support custom setup.
+The <App state=...> boundary constructs and retains the application.
 Pass signals to share reactive inputs; each component keeps its own local state.
 "#
     )
