@@ -132,6 +132,7 @@ fn value_binding(binding: &Binding, ctx: Ctx, locals: &[Rust]) -> TokenStream {
         | Binding::Value { .. }
         | Binding::Checked { .. }
         | Binding::Bind { .. }
+        | Binding::Element { .. }
         | Binding::Slot { .. }
         | Binding::Region { .. } => unreachable!("rejected coherent binding"),
     }

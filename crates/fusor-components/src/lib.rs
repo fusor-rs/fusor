@@ -6,7 +6,14 @@
 //! bindings are read-only reactive values; the collection remains application
 //! state. The HTML compiler connects these types to the existing owned list
 //! engine, including coherent publication and server rendering.
+//! [`VirtualRows`] windows a long collection so `<ForEach>` mounts only the
+//! rows near the viewport (`browser` feature).
 use fusor::{Memo, Signal, memo};
+
+#[cfg(feature = "browser")]
+mod virtual_rows;
+#[cfg(feature = "browser")]
+pub use virtual_rows::{Scroller, VirtualRow, VirtualRows};
 
 /// Version of the backend row/capture protocol: [`Entry`], [`Value`],
 /// [`RowValue`], [`Row`], [`ItemRow`], [`Captured`], and [`ForEach`]'s `entries`,

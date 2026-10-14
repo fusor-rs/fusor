@@ -11,10 +11,13 @@ categories = ["wasm", "web-programming", "gui"]
 
 [features]
 default = []
-browser = ["fusor-core/dom"]
+browser = ["fusor-core/dom", "dep:web-sys"]
 
 [dependencies]
 fusor-core.workspace = true
+web-sys = { workspace = true, optional = true, features = [
+  "Window", "Element", "Event", "EventTarget", "DomRect", "DomRectReadOnly",
+] }
 
 [lints]
 workspace = true

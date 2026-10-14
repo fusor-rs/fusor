@@ -133,3 +133,5 @@ native row root. SVG, MathML, and select controls are not supported in this vers
 > Inline rows work with coherent regions and server/shared templates. Pass resolved async
 > data through the `items` expression. `rust:key` separately controls the identity of a
 > component tag.
+
+- [Thousands of rows: mount only the ones near the viewport](/docs/components/virtual-rows)

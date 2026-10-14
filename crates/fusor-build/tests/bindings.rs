@@ -514,6 +514,29 @@ fn compiles_attributes_properties_events_and_two_way_bindings() {
 }
 
 #[test]
+fn rust_element_runs_its_expression_with_the_mounted_element() {
+    let page = extract(&format!(
+        r#"{STATE}<section rust:component="Counter"><div class="canvas" rust:element="state.rows.attach(element)"></div></section>"#
+    ))
+    .unwrap();
+    let rust = tokens(&page.rust);
+    assert!(rust.contains(&tokens("__fusor_scope.element")));
+    assert!(rust.contains(&tokens("element| { state.rows.attach(element) }")));
+    assert!(page.html.contains(r#"class="canvas""#));
+    assert!(!page.html.contains("rust:element"));
+    for markup in [
+        r#"<div rust:element=""></div>"#,
+        r#"<section rust:async="state.view"><div rust:element="state.rows.attach(element)"></div></section>"#,
+    ] {
+        let error = extract(&format!(
+            "{STATE}\n<section rust:component=\"Counter\">{markup}</section>"
+        ))
+        .expect_err(markup);
+        assert_eq!(error.line, 2, "{markup}: {error}");
+    }
+}
+
+#[test]
 fn foreach_inline_rows_use_native_typed_bindings() {
     let source = format!(
         r#"{STATE}
@@ -740,6 +763,7 @@ fn component_tag_contract_rejects_ambiguous_inputs() {
         r#"<Child Count="{{ value }}"></Child>"#,
         r#"<Child rust:slot="state.content"></Child>"#,
         r#"<Child on:click="handler()"></Child>"#,
+        r#"<Child rust:element="state.attach(element)"></Child>"#,
         r#"<Child />"#,
         r#"<Child></child>"#,
         r#"<Child body="{{ content }}"><template rust:content="body"><p></p></template></Child>"#,

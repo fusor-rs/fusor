@@ -370,6 +370,17 @@ fn async_supplies_coherent_operations_and_rejects_editable_regions() {
 }
 
 #[test]
+fn rejects_rust_element_because_backends_have_no_dom() {
+    let source = r#"<template rust:component="Panel"><div rust:element="state.attach(element)"></div></template>"#;
+    let error = fail(source, &RecordingBackend::default());
+    assert!(
+        error.message.contains("rust:element is browser-only"),
+        "{error}"
+    );
+    assert_eq!((error.line, error.column), location(source, "state.attach"));
+}
+
+#[test]
 fn nested_children_emit_one_factory_for_both_binding_modes() {
     let source = format!(
         "<template rust:component=\"Panel\"><div>{}<p>{{{{ state.leaf }}}}</p>{}</div></template>",

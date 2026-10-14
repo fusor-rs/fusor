@@ -160,6 +160,16 @@
     "label": "on:event · browser and custom events"
   },
   {
+    "token": "rust:element",
+    "href": "/docs/html-and-rust/attributes#element",
+    "label": "rust:element · the mounted element in Rust"
+  },
+  {
+    "token": "VirtualRows",
+    "href": "/docs/components/virtual-rows#rust",
+    "label": "VirtualRows · mount only the rows near the viewport"
+  },
+  {
     "token": "class:",
     "href": "/docs/html-and-rust/attributes#classes",
     "label": "class:name · conditional CSS class"

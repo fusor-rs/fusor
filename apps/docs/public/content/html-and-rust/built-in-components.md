@@ -133,6 +133,7 @@ or reusable component root.
 > single custom component instance.
 
 - [Build your first inline list](/docs/components/for-each)
+- [Mount only the rows near the viewport](/docs/components/virtual-rows)
 
 ## ForEach item and index bindings {#row}
 

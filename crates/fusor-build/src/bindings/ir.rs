@@ -404,6 +404,11 @@ pub(super) enum Binding {
         name: String,
         handler: Rust,
     },
+    /// `rust:element`: run `handler` with `element` once the node is in the document.
+    Element {
+        node: ElementId,
+        handler: Rust,
+    },
     Bind {
         node: ElementId,
         control: Control,
@@ -443,6 +448,7 @@ impl Binding {
             | Self::Checked { node, .. }
             | Self::Class { node, .. }
             | Self::Event { node, .. }
+            | Self::Element { node, .. }
             | Self::Bind { node, .. }
             | Self::Slot { node, .. } => Anchor::Element(*node),
         }
@@ -464,7 +470,7 @@ impl Binding {
             Self::ForEach { items, .. } => items,
             Self::Invocation { ty, .. } => ty,
             Self::Island { descriptor, .. } => descriptor,
-            Self::Event { handler, .. } => handler,
+            Self::Event { handler, .. } | Self::Element { handler, .. } => handler,
             Self::Slot { content, .. } => content,
             Self::Attribute { value, .. } | Self::Value { value, .. } => value
                 .expressions()
@@ -565,7 +571,7 @@ impl Binding {
                         .flat_map(InterpolatedString::expressions),
                 )
                 .collect(),
-            Self::Event { handler, .. } => vec![handler],
+            Self::Event { handler, .. } | Self::Element { handler, .. } => vec![handler],
             Self::Slot {
                 content: constructor,
                 condition,
