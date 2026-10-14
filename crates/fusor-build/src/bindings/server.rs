@@ -53,7 +53,7 @@ fn construct_child(
     components: &[Component],
     into: bool,
 ) -> TokenStream {
-    let fields = super::emit::fields(inputs, super::emit::braced);
+    let setters = super::emit::setters(inputs, super::emit::braced);
     let mut children = children
         .iter()
         .filter(|child| !components[child.body].empty)
@@ -83,7 +83,7 @@ fn construct_child(
         use ::fusor_server::InputErrorDiagnostic as _;
         ::fusor_server::InputError(error).diagnostic(stringify!(#ty))
     } };
-    let construct = super::emit::construct_inputs(ty.span(), ty, fields, convert);
+    let construct = super::emit::construct_inputs(ty.span(), ty, setters, convert);
     quote_spanned! {ty.span()=> __fusor_context.#method(|owner| {
         #construct
     }, #content #writer) }

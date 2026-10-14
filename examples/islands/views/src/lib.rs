@@ -55,6 +55,7 @@ impl Line {
 fusor::bindings!(app);
 include!(env!("FUSOR_MODULE"));
 
+#[derive(fusor::Inputs)]
 struct LineInputs {
     pub item: fusor::Memo<u32>,
 }
@@ -69,6 +70,7 @@ impl fusor::dom::FromInputs for Line {
     }
 }
 
+#[derive(fusor::Inputs)]
 struct NoteInputs {}
 impl fusor::dom::FromInputs for Note {
     type Inputs = NoteInputs;

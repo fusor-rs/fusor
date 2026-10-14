@@ -126,6 +126,7 @@ impl CoherentField {
 
 fusor::bindings!(comparison);
 
+#[derive(fusor::Inputs)]
 struct CoherentFieldInputs {
     pub selection: Signal<&'static str>,
     pub field: &'static str,

@@ -18,6 +18,7 @@ impl Gallery {
     }
 }
 
+#[derive(fusor::Inputs)]
 struct DemoCard {
     item: fusor::Memo<DemoData>,
 }
@@ -90,6 +91,7 @@ impl fusor::dom::FromInputs for DemoCard {
     }
 }
 
+#[derive(fusor::Inputs)]
 pub struct GalleryInputs {}
 impl fusor::dom::FromInputs for Gallery {
     type Inputs = GalleryInputs;
@@ -98,6 +100,7 @@ impl fusor::dom::FromInputs for Gallery {
         Ok(Self::new())
     }
 }
+#[derive(fusor::Inputs)]
 pub struct DemoPageInputs {
     pub index: usize,
 }

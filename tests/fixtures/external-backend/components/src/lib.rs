@@ -42,6 +42,7 @@ pub struct Child {
     clicks: Signal<u32>,
     _cleanup: Registration,
 }
+#[derive(fusor::Inputs)]
 pub struct ChildInputs {
     pub label: String,
     pub visible: Signal<bool>,
@@ -114,6 +115,7 @@ pub struct AsyncRow {
     _effect: Effect,
     _cleanup: Registration,
 }
+#[derive(fusor::Inputs)]
 pub struct AsyncRowInputs {
     pub row: Memo<Row>,
     pub make_read: ReadRow,

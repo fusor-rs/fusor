@@ -113,6 +113,7 @@ impl Article {
 
 fusor::bindings!(pages);
 
+#[derive(fusor::Inputs)]
 pub struct PreviewInputs {
     pub item: fusor::Memo<u32>,
 }
@@ -127,6 +128,7 @@ impl fusor::dom::FromInputs for Preview {
     }
 }
 
+#[derive(fusor::Inputs)]
 pub struct MetadataInputs {}
 impl fusor::dom::FromInputs for Metadata {
     type Inputs = MetadataInputs;
@@ -139,6 +141,7 @@ impl fusor::dom::FromInputs for Metadata {
     }
 }
 
+#[derive(fusor::Inputs)]
 pub struct EmptyInputs {}
 impl fusor::dom::FromInputs for Home {
     type Inputs = EmptyInputs;

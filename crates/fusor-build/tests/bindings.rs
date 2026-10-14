@@ -646,7 +646,7 @@ fn component_tags_replace_mount_constructors_in_every_render_target() {
         let page = extract(&format!(r#"{STATE}<section rust:component="Counter"{target}><crate::ui::Child value="{{{{ state.value.clone() }}}}" rust:if="state.visible.get()" rust:key="state.id.get()"></crate::ui::Child></section>"#)).unwrap();
         let rust = tokens(&page.rust);
         assert!(rust.contains(&tokens("FromInputs")));
-        assert!(rust.contains(&tokens("value: { state.value.clone() }")));
+        assert!(rust.contains(&tokens(".value({ state.value.clone() })")));
         if !target.is_empty() {
             assert!(rust.contains(&tokens("__fusor_context.try_child_into_with_children")));
         }
@@ -736,8 +736,8 @@ fn component_tags_lower_native_inputs_aliases_and_explicit_content() {
     assert!(rust.contains(&tokens(
         "<widgets::CounterAlias as ::fusor::FromInputs> ::Inputs"
     )),);
-    assert!(rust.contains(&tokens("count: { state.count.clone() }")));
-    assert!(rust.contains(&tokens("title: { \"literal & text\" }")));
+    assert!(rust.contains(&tokens(".count({ state.count.clone() })")));
+    assert!(rust.contains(&tokens(".title({ \"literal & text\" })")));
     assert!(rust.contains(&tokens("::fusor::dom::Content::from_prepared")));
     assert!(rust.contains(&tokens("let __fusor_capture = ::std::rc::Rc::clone(state)")));
     assert_eq!(

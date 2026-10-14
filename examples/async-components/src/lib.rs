@@ -32,6 +32,7 @@ struct ReadPanel {
     read: AsyncValue<String, String, FetchError>,
     clicked: Signal<String>,
 }
+#[derive(fusor::Inputs)]
 struct ReadPanelInputs {
     selected: Signal<String>,
     kind: &'static str,

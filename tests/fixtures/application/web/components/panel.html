@@ -12,6 +12,7 @@ impl Panel {
     }
 }
 
+#[derive(fusor::Inputs)]
 pub struct PanelInputs {
     pub count: Signal<i32>,
     pub fail: bool,

@@ -23,7 +23,7 @@ impl Backend for Memory {
         }
     }
     fn version(&self) -> u32 {
-        6
+        7
     }
     fn name(&self) -> &str {
         "memory fixture"

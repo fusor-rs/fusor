@@ -184,6 +184,7 @@ pub fn server_render(n: u32) -> fusor_server::Result<String> {
     .into_string())
 }
 
+#[derive(fusor::Inputs)]
 struct RowInputs {
     pub item: fusor::Memo<Item>,
     pub model: Rc<Model>,

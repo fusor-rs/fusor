@@ -328,6 +328,7 @@ impl Tasks {
     }
 }
 
+#[derive(fusor::Inputs)]
 struct TaskRow {
     task: fusor::Memo<Task>,
     tasks: Signal<Vec<Task>>,

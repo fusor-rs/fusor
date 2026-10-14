@@ -5,6 +5,7 @@ pub struct Counter {
     clicks: Signal<i32>,
 }
 
+#[derive(fusor::Inputs)]
 pub struct CounterInputs {
     pub count: Signal<i32>,
 }

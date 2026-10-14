@@ -38,6 +38,7 @@ impl Badge {
 
 fusor::bindings!(context);
 
+#[derive(fusor::Inputs)]
 struct PanelInputs {}
 impl fusor::dom::FromInputs for Panel {
     type Inputs = PanelInputs;
@@ -50,6 +51,7 @@ impl fusor::dom::FromInputs for Panel {
     }
 }
 
+#[derive(fusor::Inputs)]
 struct BadgeInputs {}
 impl fusor::dom::FromInputs for Badge {
     type Inputs = BadgeInputs;

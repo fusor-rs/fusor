@@ -20,6 +20,7 @@ impl Layout {
 }
 pub struct Footer;
 
+#[derive(fusor::Inputs)]
 pub struct LayoutInputs {
     pub title: &'static str,
     pub theme: Signal<String>,

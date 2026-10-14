@@ -21,6 +21,7 @@ impl Drop for Counter {
     fn drop(&mut self) { app::disposed(); }
 }
 
+#[derive(fusor::Inputs)]
 pub struct CounterInputs {
     pub count: Signal<i32>,
 }

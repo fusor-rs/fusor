@@ -21,13 +21,13 @@ try {
   const entry = join(scratch, "web/index.html"), source = await readFile(entry, "utf8");
   for (const [before, after, diagnostic] of [
     ['count="{{ state.count.clone() }}"', 'count="{{ 42_u32 }}"', /mismatched types/],
-    ['count="{{ state.count.clone() }}"', 'unknown="{{ state.count.clone() }}"', /no field named `unknown`/],
-    ['count="{{ state.count.clone() }}"', '', /missing field `count`/],
+    ['count="{{ state.count.clone() }}"', 'unknown="{{ state.count.clone() }}"', /no method named `unknown`/],
+    ['count="{{ state.count.clone() }}"', '', /missing required input `count` of `CounterInputs`/],
     ['<CounterAlias ', '<MissingCounter ', /cannot find type `MissingCounter`/],
-    ['rust:content="body"', 'rust:content="missing"', /no field named `missing`/],
-    ['<Row count="{{ state.count.clone() }}">', '<Row>', /missing field `count`/],
+    ['rust:content="body"', 'rust:content="missing"', /no method named `missing`/],
+    ['<Row count="{{ state.count.clone() }}">', '<Row>', /missing required input `count` of `RowInputs`/],
     ['<Row count="{{ state.count.clone() }}">', '<Row count="{{ 42_u32 }}">', /mismatched types/],
-    ['<Row count="{{ state.count.clone() }}">', '<Row unknown="{{ state.count.clone() }}">', /no field named `unknown`/],
+    ['<Row count="{{ state.count.clone() }}">', '<Row unknown="{{ state.count.clone() }}">', /no method named `unknown`/],
   ]) {
     let broken = source.replace(before, after);
     if (after.includes("MissingCounter")) broken = broken.replace("</CounterAlias>", "</MissingCounter>");
@@ -43,12 +43,14 @@ try {
   // or scans these annotations. Check actual rustc failures, not expansion text.
   const widgets = join(scratch, "src/widgets.rs");
   const widgetSource = await readFile(widgets, "utf8");
-  for (const [replacement, diagnostic] of [
-    ["count: Signal<i32>,", /field needs #\[input\] or #\[local/],
-    ["#[input] #[local(init = signal(0))] count: Signal<i32>,", /choose exactly one/],
-    ["#[local(init = 42_u32)] count: Signal<i32>,", /mismatched types/],
+  const count = "#[input]\n    count: Signal<i32>,";
+  for (const [before, after, diagnostic] of [
+    [count, "count: Signal<i32>,", /field needs #\[input\] or #\[local/],
+    [count, "#[input] #[local(init = signal(0))] count: Signal<i32>,", /choose exactly one/],
+    [count, "#[local(init = 42_u32)] count: Signal<i32>,", /mismatched types/],
+    ["#[input]\n    badge:", "#[input(required)]\n    badge:", /missing required input `badge` of `CellsInputs`/],
   ]) {
-    await writeFile(widgets, widgetSource.replace("#[input]\n    count: Signal<i32>,", replacement));
+    await writeFile(widgets, widgetSource.replace(before, after));
     await assert.rejects(run(["check", "--offline", "--locked"]), error => {
       assert.match(error.stderr, diagnostic);
       assert.match(error.stderr, /src[\/]widgets\.rs:/);
@@ -63,7 +65,7 @@ try {
   assert.match(expanded.stdout, /Added/);
   await rm(added);
   await run(["build", "--debug", "--offline", "--locked"]);
-  console.log("PASS: native discovery, aliases, PascalCase Button, typed values, missing/unknown fields, and HTML diagnostics");
+  console.log("PASS: native discovery, aliases, PascalCase Button, typed values, missing/unknown/optional inputs, and HTML diagnostics");
   const port = await reservePort();
   server = startProcess(cli, ["preview", "--port", String(port), "--offline", "--locked"], { cwd: scratch, env });
 

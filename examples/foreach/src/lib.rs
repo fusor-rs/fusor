@@ -126,6 +126,7 @@ struct TrackedRow {
     _activate: fusor::Registration,
     _cleanup: fusor::Registration,
 }
+#[derive(fusor::Inputs)]
 struct TrackedRowInputs {
     item: Memo<Item>,
     position: Memo<usize>,

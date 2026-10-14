@@ -16,6 +16,7 @@ impl Details {
 
 fusor::bindings!(details);
 
+#[derive(fusor::Inputs)]
 pub struct DetailsInputs {
     pub id: u32,
 }

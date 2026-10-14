@@ -43,6 +43,7 @@ impl Stock {
 
 fusor::bindings!(pricing);
 
+#[derive(fusor::Inputs)]
 pub struct PriceInputs {
     pub product: Signal<String>,
 }
@@ -57,6 +58,7 @@ impl fusor::dom::FromInputs for Price {
     }
 }
 
+#[derive(fusor::Inputs)]
 pub struct StockInputs {
     pub product: Signal<String>,
 }

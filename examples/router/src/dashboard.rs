@@ -15,6 +15,7 @@ struct Settings {
 }
 #[derive(FromInputs)]
 struct Missing;
+#[derive(fusor::Inputs)]
 pub struct FilterInputs {}
 struct Filter {
     location: Derived<fusor_router::AppUrl>,

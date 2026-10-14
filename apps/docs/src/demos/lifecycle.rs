@@ -57,6 +57,7 @@ impl TickingPanel {
 
 fusor::bindings!(lifecycle);
 
+#[derive(fusor::Inputs)]
 struct TickingPanelInputs {
     pub ticks: Signal<u32>,
     pub events: Signal<Vec<String>>,

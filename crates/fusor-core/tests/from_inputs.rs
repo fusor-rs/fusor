@@ -1,6 +1,6 @@
 #![cfg(feature = "derive")]
 
-use fusor::{FromInputs, Owner, Signal, signal};
+use fusor::{FromInputs, Inputs, Owner, Signal, signal};
 use std::cell::Cell;
 
 // These constructors compile and execute with no DOM feature or mounting trait.
@@ -88,6 +88,80 @@ fn local_expressions_run_once_in_declaration_order() {
     Braces::from_inputs(BracesInputs {}, Owner::new().handle()).unwrap();
 }
 
+#[derive(FromInputs)]
+struct Button {
+    #[input]
+    label: &'static str,
+    #[input]
+    icon: Option<char>,
+    #[input(default)]
+    pressed: bool,
+    #[input(default = next())]
+    order: u32,
+    #[input(default = Self::SIZE)]
+    size: u8,
+}
+impl Button {
+    const SIZE: u8 = 2;
+}
+
+#[test]
+fn omitted_inputs_take_defaults_that_run_only_when_omitted() {
+    CALLS.with(|calls| calls.set(0));
+    let inputs = <ButtonInputs as Inputs>::builder().label("Save").build();
+    let omitted = Button::from_inputs(inputs, Owner::new().handle()).unwrap();
+    assert_eq!(
+        (
+            omitted.label,
+            omitted.icon,
+            omitted.pressed,
+            omitted.order,
+            omitted.size
+        ),
+        ("Save", None, false, 1, 2)
+    );
+    let inputs = <ButtonInputs as Inputs>::builder()
+        .order(7)
+        .icon(Some('+'))
+        .pressed(true)
+        .label("Add")
+        .build();
+    let supplied = Button::from_inputs(inputs, Owner::new().handle()).unwrap();
+    assert_eq!(
+        (
+            supplied.label,
+            supplied.icon,
+            supplied.pressed,
+            supplied.order
+        ),
+        ("Add", Some('+'), true, 7)
+    );
+    assert_eq!(CALLS.with(Cell::get), 1);
+}
+
+#[derive(Inputs)]
+struct ListInputs<'a, T: Copy, const LIMIT: usize = 2> {
+    items: &'a [T],
+    #[input(default = LIMIT)]
+    limit: usize,
+    caption: std::option::Option<&'static str>,
+    #[input(required)]
+    selected: Option<usize>,
+}
+
+#[test]
+fn hand_written_generic_inputs_build_with_defaults() {
+    let items = [1, 2, 3];
+    let inputs = <ListInputs<'_, i32> as Inputs>::builder()
+        .selected(Some(1))
+        .items(&items)
+        .build();
+    assert_eq!(
+        (inputs.items, inputs.limit, inputs.caption, inputs.selected),
+        (&items[..], 2, None, Some(1))
+    );
+}
+
 #[test]
 fn input_types_preserve_self_and_raw_identifiers() {
     let leaf = Recursive::from_inputs(
@@ -164,6 +238,7 @@ struct Manual {
     _cleanup: fusor::Registration,
 }
 
+#[derive(Inputs)]
 struct ManualInputs {
     value: i32,
     observed: Signal<Vec<&'static str>>,
@@ -226,11 +301,13 @@ fn old_manual_jsvalue_error_and_explicit_browser_error_conversions_compile() {
     use fusor::dom::{FromInputs as BrowserFromInputs, IntoMountError, JsValue};
 
     struct OldBrowserComponent;
+    #[derive(Inputs)]
+    struct OldBrowserInputs;
     impl BrowserFromInputs for OldBrowserComponent {
-        type Inputs = ();
+        type Inputs = OldBrowserInputs;
         type Error = JsValue;
 
-        fn from_inputs(_: (), _: fusor::OwnerHandle) -> Result<Self, JsValue> {
+        fn from_inputs(_: OldBrowserInputs, _: fusor::OwnerHandle) -> Result<Self, JsValue> {
             Ok(Self)
         }
     }
@@ -242,7 +319,7 @@ fn old_manual_jsvalue_error_and_explicit_browser_error_conversions_compile() {
     accepts::<String>();
     accepts::<&str>();
     let owner = Owner::new();
-    assert!(OldBrowserComponent::from_inputs((), owner.handle()).is_ok());
+    assert!(OldBrowserComponent::from_inputs(OldBrowserInputs, owner.handle()).is_ok());
     let derived: Result<Empty, JsValue> =
         Empty::from_inputs(EmptyInputs, owner.handle()).map_err(IntoMountError::into_mount_error);
     assert!(derived.is_ok());

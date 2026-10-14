@@ -8,6 +8,7 @@ impl Drop for Badge {
     fn drop(&mut self) { app::static_disposed(); }
 }
 
+#[derive(fusor::Inputs)]
 pub struct BadgeInputs {
 }
 impl fusor::dom::FromInputs for Badge {

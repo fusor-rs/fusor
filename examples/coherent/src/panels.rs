@@ -55,6 +55,7 @@ impl Row {
 }
 fusor::bindings!(panels);
 
+#[derive(fusor::Inputs)]
 pub struct RowInputs {
     pub item: fusor::Memo<RowData>,
     pub mounts: Signal<usize>,
@@ -70,6 +71,7 @@ impl fusor::dom::FromInputs for Row {
     }
 }
 
+#[derive(fusor::Inputs)]
 pub struct PriceInputs {
     pub selected: Signal<String>,
 }
@@ -84,6 +86,7 @@ impl fusor::dom::FromInputs for Price {
     }
 }
 
+#[derive(fusor::Inputs)]
 pub struct StockInputs {
     pub selected: Signal<String>,
 }

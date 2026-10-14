@@ -42,6 +42,7 @@ impl Reader {
 
 fusor::bindings!(reader);
 
+#[derive(fusor::Inputs)]
 pub struct ReaderInputs {
     pub selected_id: Signal<u32>,
 }
