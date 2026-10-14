@@ -119,7 +119,8 @@ fusor uses Tailwind CSS 4.3.3. It downloads the program from Tailwind's GitHub r
 checks it against a checksum recorded in fusor. Each fusor release pins one Tailwind
 version, so every machine builds the same CSS.
 
-Standalone builds exist for macOS, Linux and 64-bit Windows on x86. On another system, set
+Standalone builds exist for macOS, Linux and 64-bit Windows on x86. On Linux, fusor picks
+the glibc or musl build that matches the system. On another system, set
 `FUSOR_TAILWIND` to a `tailwindcss` 4.3.3 program you installed yourself.
 
 - [Environment variables](/docs/cli#environment)
