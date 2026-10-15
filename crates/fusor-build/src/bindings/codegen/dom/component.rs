@@ -21,7 +21,7 @@ pub(super) fn emit(component: &Component, ctx: Ctx<'_>) -> TokenStream {
     let prepare = prepare(component, &html, ctx);
     match &component.shape {
         ComponentShape::App(expression) => app_entry(expression, &prepare),
-        ComponentShape::Row | ComponentShape::Fragment(_) | ComponentShape::Content(_) => {
+        ComponentShape::Row(_) | ComponentShape::Fragment(_) | ComponentShape::Content(_) => {
             captured(&prepare, ctx)
         }
         ComponentShape::Declared(_) => component_impl(component, server, &html, &prepare),

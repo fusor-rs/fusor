@@ -119,6 +119,13 @@ struct ForwardedRow {
     clicks: Signal<u32>,
 }
 
+// Mounted inside a static native row root, which the row keeps.
+#[derive(fusor::FromInputs)]
+struct ItemLink {
+    #[input]
+    item: Memo<Item>,
+}
+
 struct TrackedRow {
     item: Memo<Item>,
     position: Memo<usize>,

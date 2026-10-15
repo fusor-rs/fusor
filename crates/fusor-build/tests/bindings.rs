@@ -1639,6 +1639,35 @@ fn foreach_index_proof_keeps_descendant_and_nested_environments_complete() {
 }
 
 #[test]
+fn foreach_keeps_a_static_row_root_around_a_component() {
+    for contents in [
+        r#"<li class="row"><Row value="{{ item.clone() }}"></Row></li>"#,
+        r#"<li><Row value="{{ item.clone() }}"></Row><span>more</span></li>"#,
+    ] {
+        for target in ["", " rust:render=shared", " rust:render=server"] {
+            let page = extract(&format!(
+                r#"{STATE}<template rust:component=Counter{target}><ul><ForEach items="{{{{ state.rows }}}}" key="{{{{ |item| item.id }}}}">{contents}</ForEach></ul></template>"#
+            )).unwrap();
+            let rust = tokens(&page.rust);
+            if target != " rust:render=server" {
+                assert!(
+                    rust.contains(&tokens("::fusor_components::ForEach::row")),
+                    "{contents}{target}"
+                );
+                assert!(!rust.contains(&tokens("::fusor_components::ForEach::item_row")));
+            }
+            if !target.is_empty() {
+                assert!(
+                    rust.contains(&tokens("::fusor_components::ForEach::server_row")),
+                    "{contents}{target}"
+                );
+                assert!(!rust.contains(&tokens("::fusor_components::ForEach::server_item_row")));
+            }
+        }
+    }
+}
+
+#[test]
 fn foreach_index_proof_keeps_named_async_and_route_environments_complete() {
     for contents in [
         r#"<Async><Await value="{{ state.read }}" let="result"><ul><ForEach items="{{ result.rows }}" key="{{ |item| item.id }}"><Row value="{{ item.clone() }}"></Row></ForEach></ul></Await></Async>"#,
