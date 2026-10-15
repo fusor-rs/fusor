@@ -132,7 +132,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "catalog-cart-web"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "catalog-types",
  "catalog-views",
@@ -145,7 +145,7 @@ dependencies = [
 
 [[package]]
 name = "catalog-designer-views"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "catalog-types",
  "fusor-async",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "catalog-designer-web"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "catalog-designer-views",
  "catalog-types",
@@ -170,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "catalog-grouped-web"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "catalog-designer-views",
  "catalog-types",
@@ -184,7 +184,7 @@ dependencies = [
 
 [[package]]
 name = "catalog-site"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "catalog-types",
  "catalog-views",
@@ -197,7 +197,7 @@ dependencies = [
 
 [[package]]
 name = "catalog-types"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-islands",
  "serde",
@@ -205,7 +205,7 @@ dependencies = [
 
 [[package]]
 name = "catalog-views"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "catalog-types",
  "fusor-build",
@@ -481,7 +481,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-async"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "derive-where",
  "fusor-core",
@@ -496,7 +496,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-async-components"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-async",
  "fusor-build",
@@ -508,7 +508,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-bench-hello"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-build",
  "fusor-components",
@@ -518,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-bench-todo"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-build",
  "fusor-components",
@@ -528,7 +528,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-bench-workload"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-build",
  "fusor-components",
@@ -541,7 +541,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-benchmarks"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-async",
  "fusor-build",
@@ -554,7 +554,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-build"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-core",
  "fusor-islands",
@@ -572,7 +572,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-children"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-build",
  "fusor-components",
@@ -582,7 +582,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-cli"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "clap",
  "flate2",
@@ -608,7 +608,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-coherent"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-async",
  "fusor-build",
@@ -619,7 +619,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-components"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-core",
  "web-sys",
@@ -627,7 +627,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-composition"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-async",
  "fusor-build",
@@ -637,7 +637,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-control-flow"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-async",
  "fusor-build",
@@ -650,7 +650,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-core"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-macros",
  "js-sys",
@@ -660,7 +660,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-docs"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "docs-base",
  "docs-base-build",
@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-editor"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-build",
  "fusor-components",
@@ -699,7 +699,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-foreach"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-build",
  "fusor-components",
@@ -709,7 +709,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-integrations"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-async",
  "fusor-build",
@@ -721,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-islands"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-core",
  "js-sys",
@@ -734,7 +734,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-landing"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-async",
  "fusor-build",
@@ -750,7 +750,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-macros"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -759,7 +759,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-navigation"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-async",
  "fusor-build",
@@ -771,14 +771,14 @@ dependencies = [
 
 [[package]]
 name = "fusor-npm"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "fusor-playground"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-build",
  "fusor-components",
@@ -789,7 +789,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-query"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "derive-where",
  "fusor-async",
@@ -802,7 +802,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-release"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "clap",
  "crc32fast",
@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-router"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "form_urlencoded",
  "fusor-core",
@@ -828,7 +828,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-router-example"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-build",
  "fusor-components",
@@ -839,7 +839,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-server"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-core",
  "fusor-islands",
@@ -849,7 +849,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-std"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-async",
  "fusor-core",
@@ -863,7 +863,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-test"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-async",
  "fusor-core",
@@ -874,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-worker"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-async",
  "fusor-core",
@@ -895,7 +895,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-worker-macros"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -904,7 +904,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-workers"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-async",
  "fusor-build",

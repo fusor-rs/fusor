@@ -80,7 +80,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-async"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "derive-where",
  "fusor-core",
@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-build"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-core",
  "fusor-islands",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-components"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-core",
  "web-sys",
@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-core"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "fusor-macros",
  "js-sys",
@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-islands"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "serde",
  "serde_json",
@@ -147,7 +147,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-macros"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -156,7 +156,7 @@ dependencies = [
 
 [[package]]
 name = "fusor-router"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "form_urlencoded",
  "fusor-core",
