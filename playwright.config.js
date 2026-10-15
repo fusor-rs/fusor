@@ -37,6 +37,10 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4173",
     trace: "retain-on-failure",
+    // The playground scrolls smoothly, which can move a control between
+    // Playwright's stability check and its click; its reduced-motion styles
+    // scroll instantly.
+    reducedMotion: "reduce",
   },
   projects,
   webServer: {
