@@ -47,11 +47,19 @@ pub(super) enum ComponentShape {
     /// The `App` boundary, built by this state expression.
     App(Rust),
     /// A ForEach row, rendered inline by its list.
-    Row,
+    Row(RowRoot),
     /// Children of a component tag, a Branch case or a Route body; captures its caller's state.
     Fragment(Rust),
     /// A `rust:content` template passed to a component; captures its caller's state.
     Content(Rust),
+}
+
+/// What a ForEach row's single root is.
+pub(super) enum RowRoot {
+    /// A native element, created from the row's template.
+    Native,
+    /// A component tag, which the row mounts in place of a template.
+    Component,
 }
 
 impl Component {
@@ -88,32 +96,22 @@ impl Component {
     pub fn capture(&self) -> Option<&Rust> {
         match &self.shape {
             ComponentShape::Fragment(capture) | ComponentShape::Content(capture) => Some(capture),
-            ComponentShape::Declared(_) | ComponentShape::App(_) | ComponentShape::Row => None,
+            ComponentShape::Declared(_) | ComponentShape::App(_) | ComponentShape::Row(_) => None,
         }
     }
 
+    /// The component tag a row mounts directly, when that tag is the row's root.
     pub fn forwarded_child(&self) -> Option<&Binding> {
-        if !self.inline()
-            || !self.elements.is_empty()
-            || !self.texts.is_empty()
-            || !self.text_elements.is_empty()
-        {
-            return None;
-        }
-        match self.bindings.as_slice() {
-            [
-                binding @ Binding::Invocation {
-                    condition: None,
-                    key: None,
-                    ..
-                },
-            ] => Some(binding),
+        match (&self.shape, self.bindings.as_slice()) {
+            (ComponentShape::Row(RowRoot::Component), [binding @ Binding::Invocation { .. }]) => {
+                Some(binding)
+            }
             _ => None,
         }
     }
 
     pub fn inline(&self) -> bool {
-        matches!(self.shape, ComponentShape::Row)
+        matches!(self.shape, ComponentShape::Row(_))
     }
 
     pub fn fragment(&self) -> bool {
@@ -127,7 +125,7 @@ impl Component {
         match self.shape {
             ComponentShape::Declared(kind) => kind,
             ComponentShape::App(_) => RootKind::Existing,
-            ComponentShape::Row | ComponentShape::Fragment(_) | ComponentShape::Content(_) => {
+            ComponentShape::Row(_) | ComponentShape::Fragment(_) | ComponentShape::Content(_) => {
                 RootKind::Template
             }
         }

@@ -31,6 +31,10 @@ try {
   await expect(forwarded.locator('.forwarded-title')).toHaveText(['Ada','Grace']);
   await forwarded.nth(0).getByRole('button').click();
   await forwarded.nth(0).evaluate(node=>window.adaForwarded=node);
+  // A static native row root around a component stays the row root.
+  const wrapped=page.locator('#wrapped > *');
+  await expect(wrapped).toHaveCount(2);
+  await expect(page.locator('#wrapped > li.wrapped > a')).toHaveText(['Ada','Grace']);
   await page.getByRole('button',{name:'Reverse',exact:true}).click();
   await expect(rows.locator('.title')).toHaveText(['Grace','Ada']);
   await expect(rows.locator('.position')).toHaveText(['0','1']);
@@ -40,6 +44,7 @@ try {
   await expect(rows.nth(1).getByRole('textbox')).toHaveValue('keep this note');
   await expect(forwarded.locator('.forwarded-title')).toHaveText(['Grace','Ada']);
   await expect(forwarded.locator('output')).toHaveText(['0','1']);
+  await expect(page.locator('#wrapped > li.wrapped > a')).toHaveText(['Grace','Ada']);
   assert(await forwarded.nth(1).evaluate(node=>node===window.adaForwarded));
   await page.getByRole('button',{name:'Rename',exact:true}).click();
   await expect(rows.locator('.title')).toHaveText(['Grace','Ada Lovelace']);

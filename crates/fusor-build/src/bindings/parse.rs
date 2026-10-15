@@ -938,7 +938,7 @@ impl Parser<'_> {
             ..cx.lexicals.open(Component::new(
                 id,
                 Rust::ident(&format!("__FusorForEach{}", id.index()), tag.span.start),
-                ComponentShape::Row,
+                ComponentShape::Row(RowRoot::Native),
                 render,
                 tag.span.start..tag.span.end,
             ))
@@ -1451,20 +1451,21 @@ impl Parser<'_> {
         self.mount += 1;
         let binding = self.components[owner].bindings.len();
         let mut invocation = super::tags::invocation(source, &tag, point, false)?;
-        if parent.is_some_and(|frame| matches!(frame.kind, FrameKind::ForEach))
-            && matches!(
+        if parent.is_some_and(|frame| matches!(frame.kind, FrameKind::ForEach)) {
+            if matches!(
                 &invocation,
                 Binding::Invocation {
                     condition: Some(_),
                     ..
                 } | Binding::Invocation { key: Some(_), .. }
-            )
-        {
-            return Err(error(
-                source,
-                tag.span.start,
-                "ForEach owns row identity; put conditional or separately keyed components inside a native row element",
-            ));
+            ) {
+                return Err(error(
+                    source,
+                    tag.span.start,
+                    "ForEach owns row identity; put conditional or separately keyed components inside a native row element",
+                ));
+            }
+            self.components[owner].shape = ComponentShape::Row(RowRoot::Component);
         }
         let fragment_index = self.open_children_fragment(&tag, &cx, owner);
         if let Binding::Invocation { children, .. } = &mut invocation {
