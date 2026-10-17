@@ -1,10 +1,10 @@
-//! Loopback only. The path policy lives in [`http`].
+//! Loopback unless an address is given. The path policy lives in [`http`].
 use super::{
+    address::Address,
     http::{self, Body},
     proxy::{Rule, Rules},
 };
 use crate::{
-    commands::dev::Options,
     context::Context,
     error::{Error, Result},
     layout,
@@ -23,11 +23,13 @@ use std::time::Instant;
 use std::{
     convert::Infallible,
     io,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener},
+    net::TcpListener,
     rc::Rc,
     sync::{Arc, RwLock},
     task::Poll,
 };
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio_rustls::TlsAcceptor;
 
 /// One application in a dev session: the settings it builds with, and the
 /// project state its watcher keeps current.
@@ -36,18 +38,24 @@ pub(crate) struct DevApp {
     pub project: Project,
 }
 
+/// Where a server listens, and the backends it forwards to.
+pub(crate) struct Server {
+    pub address: Address,
+    pub proxy: Rules,
+}
+
 /// Serve every app from one origin, each under its own base path, so links
 /// between them work as they will when deployed.
 pub(crate) fn dev(
     cx: &Context,
     apps: Vec<DevApp>,
-    options: &Options,
+    server: Server,
+    open: bool,
     started: Instant,
-    proxy: Rules,
 ) -> Result {
     validate_apps(&apps)?;
 
-    let listeners = bind(options.port)?;
+    let listeners = server.address.bind()?;
     let mut routes = Vec::new();
     let mut watchers = Vec::new();
     for DevApp { cx, project } in apps {
@@ -64,9 +72,9 @@ pub(crate) fn dev(
         .to_owned();
     ready(
         cx,
-        options.port,
+        &server.address,
         &base,
-        options.open,
+        open,
         &format!(
             "Ready in {}, watching for changes. Press Ctrl+C to stop.",
             elapsed_text(started.elapsed())
@@ -74,7 +82,7 @@ pub(crate) fn dev(
     )?;
     cx.reporter.blank();
 
-    serve(cx, listeners, proxy, move |method, url, accept| {
+    serve(cx, listeners, server, move |method, url, accept| {
         let Some((cx, state)) = route(&routes, url) else {
             return http::build_response(404, "text/plain", b"Not found".to_vec(), false);
         };
@@ -128,38 +136,15 @@ fn validate_apps(apps: &[DevApp]) -> Result {
     Ok(())
 }
 
-pub(crate) fn check_port(port: u16) -> Result {
-    bind(port).map(drop)
-}
-
-/// Both loopback addresses, since `localhost` may resolve to either.
-pub(crate) fn bind(port: u16) -> Result<Vec<TcpListener>> {
-    let ipv4 = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
-    let ipv6 = SocketAddr::from((Ipv6Addr::LOCALHOST, port));
-    let ipv4_listener = TcpListener::bind(ipv4).map_err(|error| cannot_listen(ipv4, error))?;
-    match TcpListener::bind(ipv6) {
-        Ok(ipv6_listener) => Ok(vec![ipv4_listener, ipv6_listener]),
-        // Another server there would answer `localhost` in place of this one.
-        Err(error) if error.kind() == io::ErrorKind::AddrInUse => Err(cannot_listen(ipv6, error)),
-        // A host without IPv6 has no `::1`, so its `localhost` is 127.0.0.1.
-        Err(_) => Ok(vec![ipv4_listener]),
-    }
-}
-
-fn cannot_listen(address: SocketAddr, error: io::Error) -> Error {
-    Error::project(format!("cannot listen on {address}: {error}"))
-        .remedy("stop the process using that port, or pass --port PORT")
-}
-
-/// `localhost`, not 127.0.0.1: browsers treat them as different sites, and
-/// passkeys reject an IP address.
-pub(crate) fn url(port: u16, base: &str) -> String {
-    format!("http://localhost:{port}{base}")
-}
-
 /// The server is listening: say so, give scripts the address, and open it.
-pub(crate) fn ready(cx: &Context, port: u16, base: &str, open: bool, message: &str) -> Result {
-    let url = url(port, base);
+pub(crate) fn ready(
+    cx: &Context,
+    address: &Address,
+    base: &str,
+    open: bool,
+    message: &str,
+) -> Result {
+    let url = address.url(base);
     cx.reporter.done(message);
     cx.reporter.address(&url)?;
     if open {
@@ -171,7 +156,7 @@ pub(crate) fn ready(cx: &Context, port: u16, base: &str, open: bool, message: &s
 pub(crate) fn serve(
     cx: &Context,
     listeners: Vec<TcpListener>,
-    proxy: Rules,
+    server: Server,
     answer: impl Fn(&Method, &str, &str) -> Body + 'static,
 ) -> Result {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -179,7 +164,8 @@ pub(crate) fn serve(
         .build()?;
     let cx = Rc::new(cx.clone());
     let answer = Rc::new(answer);
-    let proxy = Rc::new(proxy);
+    let tls = server.address.tls;
+    let proxy = Rc::new(server.proxy);
     // Keep idle and speculative browser connections off a blocking worker pool:
     // a burst must not strand a script request behind another keep-alive socket.
     tokio::task::LocalSet::new().block_on(&runtime, async move {
@@ -195,6 +181,7 @@ pub(crate) fn serve(
             tokio::task::spawn_local(serve_connection(
                 cx.clone(),
                 stream,
+                tls.clone(),
                 proxy.clone(),
                 answer.clone(),
             ));
@@ -218,6 +205,22 @@ async fn accept(listeners: &[tokio::net::TcpListener]) -> io::Result<tokio::net:
 async fn serve_connection(
     cx: Rc<Context>,
     stream: tokio::net::TcpStream,
+    tls: Option<TlsAcceptor>,
+    proxy: Rc<Rules>,
+    answer: Rc<impl Fn(&Method, &str, &str) -> Body>,
+) {
+    let Some(tls) = tls else {
+        return serve_http(cx, stream, proxy, answer).await;
+    };
+    match tls.accept(stream).await {
+        Ok(stream) => serve_http(cx, stream, proxy, answer).await,
+        Err(error) => cx.reporter.note(format!("TLS: {error}")),
+    }
+}
+
+async fn serve_http(
+    cx: Rc<Context>,
+    stream: impl AsyncRead + AsyncWrite + Unpin + 'static,
     proxy: Rc<Rules>,
     answer: Rc<impl Fn(&Method, &str, &str) -> Body>,
 ) {

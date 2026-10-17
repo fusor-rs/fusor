@@ -314,7 +314,7 @@ fn optional_asset_command_and_refresh_policy_are_explicit_configuration() {
         r#"assets = { "/" = "public" }
 assets-build = ["node", "build-assets.mjs"]
 dev-refresh = false
-dev = { proxy = { "/api" = "http://localhost:8080" } }
+dev = { proxy = { "/api" = "http://localhost:8080" }, host = "0.0.0.0", tls-cert = "cert.pem" }
 entry ="#,
     );
     fs::write(&path, &source).unwrap();
@@ -322,6 +322,11 @@ entry ="#,
     assert!(!config.dev_refresh);
     assert_eq!(config.assets_build, ["node", "build-assets.mjs"]);
     assert_eq!(config.dev.proxy["/api"], "http://localhost:8080");
+    assert_eq!(
+        config.dev.host,
+        Some(std::net::Ipv4Addr::UNSPECIFIED.into())
+    );
+    assert_eq!(config.dev.tls_cert, Some("cert.pem".into()));
     fs::write(
         &path,
         source.replace(

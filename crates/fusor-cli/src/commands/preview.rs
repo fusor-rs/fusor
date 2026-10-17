@@ -2,7 +2,12 @@
 //! and history fallback come from the output manifest, not from Cargo.
 use crate::{
     context::Context,
-    dev::{http, proxy::Rules, server},
+    dev::{
+        address::Address,
+        http,
+        proxy::Rules,
+        server::{self, Server},
+    },
     error::{Error, Result},
     pipeline::{
         manifest::OutputManifest,
@@ -23,18 +28,20 @@ pub(crate) fn run(cx: &Context, directory: Option<&Path>, port: u16, open: bool)
         return serve_site(cx, &directory, &site, port, open);
     }
     let output = OutputManifest::read(&directory)?;
-    server::check_port(port)?;
-    let listeners = server::bind(port)?;
+    let address = Address::loopback(port);
+    let listeners = address.bind()?;
     cx.reporter
         .banner(format!("preview of {}", shown(&directory)));
-    cx.reporter
-        .field("Local", server::url(port, &output.base_path));
+    cx.reporter.field("Local", address.url(&output.base_path));
     cx.reporter.blank();
-    server::ready(cx, port, &output.base_path, open, READY)?;
+    server::ready(cx, &address, &output.base_path, open, READY)?;
     server::serve(
         cx,
         listeners,
-        Rules::default(),
+        Server {
+            address,
+            proxy: Rules::default(),
+        },
         move |method, url, accept| {
             http::respond(
                 method,
@@ -59,15 +66,15 @@ fn serve_site(cx: &Context, root: &Path, site: &SiteManifest, port: u16, open: b
         .into_iter()
         .map(|(directory, output)| (output.base_path.clone(), (directory, output)))
         .collect();
-    server::check_port(port)?;
-    let listeners = server::bind(port)?;
+    let address = Address::loopback(port);
+    let listeners = address.bind()?;
     let base = mounts
         .iter()
         .map(|(base, _)| base.as_str())
         .min_by_key(|base| base.len())
         .unwrap_or("/");
     cx.reporter.banner(format!("preview of {}", shown(root)));
-    cx.reporter.field("Local", server::url(port, base));
+    cx.reporter.field("Local", address.url(base));
     cx.reporter.field(
         "Apps",
         describe(
@@ -78,11 +85,14 @@ fn serve_site(cx: &Context, root: &Path, site: &SiteManifest, port: u16, open: b
         ),
     );
     cx.reporter.blank();
-    server::ready(cx, port, base, open, READY)?;
+    server::ready(cx, &address, base, open, READY)?;
     server::serve(
         cx,
         listeners,
-        Rules::default(),
+        Server {
+            address,
+            proxy: Rules::default(),
+        },
         move |method, url, accept| match route(&mounts, url) {
             Some((directory, output)) => http::respond(
                 method,

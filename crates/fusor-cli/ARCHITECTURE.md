@@ -49,7 +49,8 @@ src/
   workspace/       Project, typed cargo metadata, application selection
   toolchain/       Rust, the Wasm target, wasm-bindgen, Tailwind CSS, npm
   pipeline/        Publication, sites, Cargo, wasm-bindgen, Tailwind, diagnostics, output
-  dev/             server, HTTP policy, backend proxy, watcher, fast refresh
+  dev/             server, listen address and TLS, HTTP policy, backend proxy, watcher,
+                   fast refresh
 ```
 
 ## Before changing these

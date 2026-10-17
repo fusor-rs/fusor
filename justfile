@@ -140,6 +140,7 @@ ci-browser:
     just test-browser
     just test template-cache
     just test dev
+    just test dev-https
     just test standalone
     just test tailwind
     just test component-libraries

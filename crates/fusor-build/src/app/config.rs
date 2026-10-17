@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    net::IpAddr,
     path::{Component, Path, PathBuf},
 };
 
@@ -100,13 +101,23 @@ impl Default for AppConfig {
     }
 }
 
-/// `[package.metadata.fusor.dev]` settings used by `fusor dev`.
+/// `[package.metadata.fusor.dev]` settings used by `fusor dev`. Its command-line
+/// options of the same names override them.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct DevConfig {
     /// Browser URL prefixes mapped to backend HTTP origins. Paths and queries
     /// are forwarded unchanged; command-line rules override matching prefixes.
     pub proxy: BTreeMap<String, String>,
+    /// The address to listen on, in place of both loopback addresses.
+    pub host: Option<IpAddr>,
+    /// The host name printed and opened in place of the address.
+    pub name: Option<String>,
+    /// A package-relative PEM certificate chain. With `tls_key`, the
+    /// development server serves HTTPS.
+    pub tls_cert: Option<PathBuf>,
+    /// The package-relative PEM private key of `tls_cert`.
+    pub tls_key: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
