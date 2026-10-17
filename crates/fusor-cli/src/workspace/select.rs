@@ -116,9 +116,13 @@ fn application(manifest: &Path) -> Result<Option<Candidate>> {
     Ok(candidate(manifest, &document))
 }
 
+/// Must agree with `Package::is_application`, which reads Cargo metadata.
 fn candidate(manifest: &Path, document: &toml::Value) -> Option<Candidate> {
     let package = document.get("package")?;
-    package.get("metadata")?.get("fusor")?;
+    let fusor = package.get("metadata")?.get("fusor")?;
+    if fusor.get("library") == Some(&toml::Value::Boolean(true)) {
+        return None;
+    }
     Some(Candidate {
         manifest: manifest.to_owned(),
         name: package.get("name")?.as_str()?.to_owned(),

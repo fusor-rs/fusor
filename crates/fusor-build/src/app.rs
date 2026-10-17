@@ -10,16 +10,19 @@ mod includes;
 mod validate;
 
 pub use artifact::{
-    ARTIFACT_VERSION, ArtifactManifest, JavaScriptArtifact, RegistrationArtifact, SourceArtifact,
+    ARTIFACT_VERSION, ArtifactManifest, JavaScriptArtifact, LibraryManifest, RegistrationArtifact,
+    SourceArtifact,
 };
-pub(crate) use artifact::{HTML_FILE, MANIFEST_FILE, MODULE_FILE};
+pub(crate) use artifact::{
+    HTML_FILE, LIBRARY_MANIFEST_FILE, LIBRARY_TEMPLATES_FILE, MANIFEST_FILE, MODULE_FILE,
+};
 pub use assets::{AssetFiles, AssetPattern, AssetSource, SuffixedAssets};
 pub use config::{
     AppConfig, DeliveryConfig, DeliveryMode, DeliveryUnit, DevConfig, Source, SourceKind,
     valid_module_name,
 };
 pub use error::SourceError;
-pub use generate::generate;
+pub use generate::{generate, generate_library};
 pub use includes::includes_foreign_file;
 #[doc(hidden)]
 pub use includes::includes_foreign_file_with;

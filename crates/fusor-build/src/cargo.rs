@@ -1,11 +1,15 @@
 //! Cargo I/O adapter. The compiler stages remain pure and usable without Cargo.
 use crate::{
     BuildError, SourceMap,
-    app::{MANIFEST_FILE, MODULE_FILE, SourceError},
+    app::{LIBRARY_MANIFEST_FILE, MANIFEST_FILE, MODULE_FILE, SourceArtifact, SourceError},
     extract,
 };
 use quote::quote;
-use std::{env, fs, path::Path};
+use std::{
+    env, fs,
+    num::NonZeroU32,
+    path::{Path, PathBuf},
+};
 
 fn worker_build_mode() {
     println!("cargo::rustc-check-cfg=cfg(fusor_worker)");
@@ -19,36 +23,13 @@ fn worker_build_mode() {
 /// Include `FUSOR_MODULE` in lib.rs to expose inline `crate::ui` modules and
 /// verify external native modules registered with [`fusor::bindings!`].
 pub fn compile_app() -> Result<(), BuildError> {
-    worker_build_mode();
-    let root = env::var_os("CARGO_MANIFEST_DIR").ok_or("compile_app must run from build.rs")?;
-    let manifest = Path::new(&root).join("Cargo.toml");
-    println!("cargo::rerun-if-changed={}", manifest.display());
-    let config = crate::app::AppConfig::load(&manifest)?;
-    println!("cargo::rustc-env=FUSOR_BASE_PATH={}", config.base_path);
-    for source in config.discover_sources(Path::new(&root))? {
-        println!(
-            "cargo::rerun-if-changed={}",
-            Path::new(&root).join(&source.path).display()
-        );
-    }
-    // Cargo watches directory membership, including additions/removals. A
-    // missing default directory is covered by its closest existing ancestor.
-    for directory in &config.templates {
-        let mut watch = Path::new(&root).join(directory);
-        while !watch.exists() {
-            if !watch.pop() {
-                break;
-            }
-        }
-        println!("cargo::rerun-if-changed={}", watch.display());
-    }
-    let out = env::var_os("OUT_DIR").ok_or("Cargo did not provide OUT_DIR")?;
-    let artifacts = crate::app::generate(&manifest, Path::new(&out))?;
-    for source in &artifacts.sources {
-        if let Some(path) = &source.external {
-            println!("cargo::rerun-if-changed={}", path.display());
-        }
-    }
+    let package = Package::watch("compile_app")?;
+    println!(
+        "cargo::rustc-env=FUSOR_BASE_PATH={}",
+        package.config.base_path
+    );
+    let artifacts = crate::app::generate(&package.manifest, &package.out)?;
+    watch_external(&artifacts.sources);
     for module in &artifacts.javascript {
         if let Some(path) = &module.rust_source {
             println!("cargo::rerun-if-changed={}", path.display());
@@ -60,9 +41,93 @@ pub fn compile_app() -> Result<(), BuildError> {
     );
     println!(
         "cargo::rustc-env=FUSOR_ARTIFACT_MANIFEST={}",
-        Path::new(&out).join(MANIFEST_FILE).display()
+        package.out.join(MANIFEST_FILE).display()
     );
     Ok(())
+}
+
+/// Compile the component files of a package whose `[package.metadata.fusor]`
+/// sets `library = true`. Its modules use `fusor::template!` as an
+/// application's do; the CLI adds its templates to the application's page.
+pub fn compile_library() -> Result<(), BuildError> {
+    let package = Package::watch("compile_library")?;
+    // A library cannot know the application's base path. Empty, its Routers
+    // still nest, and a root Router fails; see fusor_router's mount_routes.
+    println!("cargo::rustc-env=FUSOR_BASE_PATH=");
+    let name = env::var("CARGO_PKG_NAME").map_err(|_| "Cargo did not provide CARGO_PKG_NAME")?;
+    let version =
+        env::var("CARGO_PKG_VERSION").map_err(|_| "Cargo did not provide CARGO_PKG_VERSION")?;
+    let library = library_namespace(&format!("{name}@{version}"));
+    let artifacts = crate::app::generate_library(&package.manifest, library, &package.out)?;
+    watch_external(&artifacts.sources);
+    println!(
+        "cargo::rustc-env=FUSOR_MODULE={}",
+        package.out.join(MODULE_FILE).display()
+    );
+    println!(
+        "cargo::rustc-env=FUSOR_LIBRARY_MANIFEST={}",
+        package.out.join(LIBRARY_MANIFEST_FILE).display()
+    );
+    Ok(())
+}
+
+/// The build script's package, with Cargo told to rerun on its HTML.
+struct Package {
+    manifest: PathBuf,
+    out: PathBuf,
+    config: crate::app::AppConfig,
+}
+
+impl Package {
+    fn watch(caller: &str) -> Result<Self, BuildError> {
+        worker_build_mode();
+        let root = env::var_os("CARGO_MANIFEST_DIR")
+            .ok_or_else(|| format!("{caller} must run from build.rs"))?;
+        let root = Path::new(&root);
+        let manifest = root.join("Cargo.toml");
+        println!("cargo::rerun-if-changed={}", manifest.display());
+        let config = crate::app::AppConfig::load(&manifest)?;
+        for source in config.discover_sources(root)? {
+            println!(
+                "cargo::rerun-if-changed={}",
+                root.join(&source.path).display()
+            );
+        }
+        // Cargo watches directory membership, including additions/removals. A
+        // missing default directory is covered by its closest existing ancestor.
+        for directory in &config.templates {
+            let mut watch = root.join(directory);
+            while !watch.exists() {
+                if !watch.pop() {
+                    break;
+                }
+            }
+            println!("cargo::rerun-if-changed={}", watch.display());
+        }
+        let out = env::var_os("OUT_DIR").ok_or("Cargo did not provide OUT_DIR")?;
+        Ok(Self {
+            manifest,
+            out: out.into(),
+            config,
+        })
+    }
+}
+
+fn watch_external(sources: &[SourceArtifact]) {
+    for path in sources.iter().filter_map(|source| source.external.as_ref()) {
+        println!("cargo::rerun-if-changed={}", path.display());
+    }
+}
+
+/// A library's component namespace. FNV-1a keeps it stable across toolchains;
+/// 0 is the application's.
+fn library_namespace(package: &str) -> NonZeroU32 {
+    const OFFSET_BASIS: u32 = 0x811c_9dc5;
+    const PRIME: u32 = 0x0100_0193;
+    let hash = package.bytes().fold(OFFSET_BASIS, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(PRIME)
+    });
+    NonZeroU32::new(hash).unwrap_or(NonZeroU32::MIN)
 }
 
 /// Call from a package's build.rs. Cargo then recompiles when the HTML changes.

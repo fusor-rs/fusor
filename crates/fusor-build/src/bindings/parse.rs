@@ -68,7 +68,7 @@ struct NewCase {
 /// the Branch owner's place and reads the Branch's Await snapshots.
 fn push_case(
     components: &mut Vec<Component>,
-    first_component: usize,
+    first_component: ComponentId,
     branch: BranchRef,
     offset: usize,
     case: NewCase,
@@ -78,7 +78,7 @@ fn push_case(
         unreachable!("branch binding")
     };
     let index = components.len();
-    let id = ComponentId::new(first_component + index);
+    let id = first_component.offset(index);
     let body = Component {
         row_locals: owner.row_locals.clone(),
         async_locals: case.async_locals,
@@ -516,7 +516,7 @@ impl<'a> TagContext<'a> {
 struct Parser<'a> {
     source: &'a str,
     blocks: &'a [RustBlock],
-    first_component: usize,
+    first_component: ComponentId,
     foreach_hosts: BTreeSet<usize>,
     stack: Vec<Frame>,
     components: Vec<Component>,
@@ -534,7 +534,7 @@ struct Parser<'a> {
 pub(super) fn parse(
     source: &str,
     blocks: &[RustBlock],
-    first_component: usize,
+    first_component: ComponentId,
 ) -> Result<Plan, ExtractError> {
     let mut parser = Parser {
         source,
@@ -852,7 +852,7 @@ impl Parser<'_> {
             "only state=\"{{ Rust expression }}\"; put HTML attributes on its native root",
         )?;
         let state = input.expression("state")?;
-        let id = ComponentId::new(first_component + components.len());
+        let id = first_component.offset(components.len());
         let owner = components.len();
         components.push(lexicals.open(Component::new(
             id,
@@ -922,7 +922,7 @@ impl Parser<'_> {
             ));
         }
 
-        let id = ComponentId::new(first_component + self.components.len());
+        let id = first_component.offset(self.components.len());
         let body = self.components.len();
         let mut row_locals = self.components[caller].row_locals.clone();
         row_locals.push((item, index));
@@ -1296,7 +1296,7 @@ impl Parser<'_> {
         super::router_tags::validate(source, tag.span.start, routes, path.as_deref())?;
         self.check_route_alias(&tag, &cx, owner, alias.as_ref())?;
         let index = self.components.len();
-        let id = ComponentId::new(first_component + index);
+        let id = first_component.offset(index);
         self.components
             .push(cx.lexicals.with_route(alias.as_ref()).open(Component {
                 row_locals: self.components[owner].row_locals.clone(),
@@ -1710,7 +1710,7 @@ impl Parser<'_> {
             crate::html::value_start(source, content.span.start),
         )?;
         let (caller_owner, invocation) = owner.invocation;
-        let id = ComponentId::new(first_component + components.len());
+        let id = first_component.offset(components.len());
         let ty = Rust::ident(&format!("__FusorContent{}", id.index()), tag.span.start);
         let capture = components[caller_owner]
             .capture()
@@ -1770,7 +1770,7 @@ impl Parser<'_> {
             ));
         }
         let index = components.len();
-        let id = ComponentId::new(first_component + index);
+        let id = first_component.offset(index);
         components.push(lexicals.open(Component::new(
             id,
             Rust::parse(source, &ty, tag.span.start)?,

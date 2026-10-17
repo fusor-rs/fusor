@@ -8,7 +8,7 @@ use crate::{
     process::cargo,
     workspace::Project,
 };
-use fusor_build::app::ArtifactManifest;
+use fusor_build::app::{ArtifactManifest, LibraryManifest};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -26,6 +26,8 @@ pub(crate) enum Mode {
 
 pub(crate) struct Compilation {
     pub manifest: ArtifactManifest,
+    /// Component libraries in the application's dependency graph.
+    pub libraries: Vec<Library>,
     pub wasm: Option<PathBuf>,
     /// The native renderer of an islands application.
     pub executable: Option<PathBuf>,
@@ -74,14 +76,44 @@ fn compile_target(
     declarations::write(&project.root, &manifest.javascript)?;
     Ok(Compilation {
         manifest,
+        libraries: libraries(streamed.libraries)?,
         wasm: streamed.wasm,
         executable: streamed.executable,
     })
 }
 
+/// A component library's artifact and the path the application's page reads
+/// it from again on a development refresh.
+pub(crate) struct Library {
+    pub path: PathBuf,
+    pub manifest: LibraryManifest,
+}
+
+impl Library {
+    pub fn read(path: PathBuf) -> Result<Self> {
+        let manifest = LibraryManifest::read(&path)?;
+        Ok(Self { path, manifest })
+    }
+}
+
+/// In package order. Libraries in one page must number their components apart.
+fn libraries(by_package: BTreeMap<String, Library>) -> Result<Vec<Library>> {
+    let mut namespaces = BTreeMap::new();
+    for (package, library) in &by_package {
+        if let Some(other) = namespaces.insert(library.manifest.library, package) {
+            return Err(Error::project(format!(
+                "component libraries {other} and {package} share a component namespace"
+            ))
+            .remedy("rename one of the two packages or change its version"));
+        }
+    }
+    Ok(by_package.into_values().collect())
+}
+
 #[derive(Default)]
 struct Streamed {
     artifact: Option<ArtifactManifest>,
+    libraries: BTreeMap<String, Library>,
     wasm: Option<PathBuf>,
     executable: Option<PathBuf>,
 }
@@ -245,16 +277,25 @@ fn read_messages(
             eprintln!("{line}");
             continue;
         };
-        let selected = message["package_id"].as_str() == Some(&project.id);
+        let package = message["package_id"].as_str();
+        let selected = package == Some(&project.id);
         match message["reason"].as_str() {
             Some("build-script-executed") => {
-                if let Some(path) = artifact_path(&message) {
+                if let Some(path) = build_variable(&message, "FUSOR_ARTIFACT_MANIFEST") {
                     let manifest = ArtifactManifest::read(Path::new(path))?;
                     // A diagnostic in a dependency still points at its HTML.
-                    diagnostics.register(&manifest, &project.workspace)?;
+                    diagnostics.register(&manifest.sources, &project.workspace)?;
                     if selected {
                         streamed.artifact = Some(manifest);
                     }
+                }
+                if let Some(path) = build_variable(&message, "FUSOR_LIBRARY_MANIFEST") {
+                    let library = Library::read(path.into())?;
+                    diagnostics.register(&library.manifest.sources, &project.workspace)?;
+                    let package = package.ok_or_else(|| {
+                        Error::internal("Cargo reported a build script without a package")
+                    })?;
+                    streamed.libraries.insert(package.to_owned(), library);
                 }
             }
             Some("compiler-artifact") if selected => {
@@ -282,9 +323,10 @@ fn read_messages(
     Ok(streamed)
 }
 
-fn artifact_path(message: &Value) -> Option<&str> {
+/// A `cargo::rustc-env` variable the build script set.
+fn build_variable<'a>(message: &'a Value, name: &str) -> Option<&'a str> {
     message["env"].as_array()?.iter().find_map(|pair| {
-        (pair[0].as_str() == Some("FUSOR_ARTIFACT_MANIFEST"))
+        (pair[0].as_str() == Some(name))
             .then(|| pair[1].as_str())
             .flatten()
     })
@@ -295,4 +337,37 @@ fn reap(child: &mut Child, failed: bool) -> Result<std::process::ExitStatus> {
         let _ = child.kill();
     }
     Ok(child.wait()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn library(namespace: u32) -> Library {
+        Library {
+            path: PathBuf::new(),
+            manifest: LibraryManifest {
+                version: fusor_build::app::ARTIFACT_VERSION,
+                templates: PathBuf::new(),
+                root: PathBuf::new(),
+                library: namespace,
+                sources: Vec::new(),
+                classes: Default::default(),
+            },
+        }
+    }
+
+    #[test]
+    fn libraries_sharing_a_component_namespace_are_rejected_by_package() {
+        let distinct = BTreeMap::from([("b".to_owned(), library(1)), ("a".to_owned(), library(2))]);
+        let namespaces: Vec<_> = libraries(distinct)
+            .unwrap()
+            .iter()
+            .map(|library| library.manifest.library)
+            .collect();
+        assert_eq!(namespaces, [2, 1]);
+        let shared = BTreeMap::from([("a".to_owned(), library(1)), ("b".to_owned(), library(1))]);
+        let error = libraries(shared).err().unwrap().to_string();
+        assert!(error.contains("libraries a and b share"), "{error}");
+    }
 }

@@ -283,8 +283,12 @@ dev-refresh = true              # false when build logic reads HTML or assets
 > Restart `fusor dev` after changing `base-path`. Island sites also declare a `delivery`
 > table.
 
+A crate that sets `library = true` is a component library, not an application: its
+templates join the page of each application that depends on it.
+
 - [Set up island delivery](/docs/islands/setup)
 - [Style with Tailwind CSS](/docs/tailwind)
+- [Share components from a library crate](/docs/component-libraries)
 
 ### Publish static files {#assets}
 

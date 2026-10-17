@@ -18,6 +18,7 @@ mod tags;
 mod tokens;
 
 use crate::{BindingLocation, ExtractError, RustBlock};
+use fusor::template::ComponentId;
 use ir::Binding;
 pub(crate) use ir::Edit;
 use std::collections::BTreeSet;
@@ -39,7 +40,7 @@ pub(crate) fn compile(
     source: &str,
     blocks: &[RustBlock],
     rust: &mut String,
-    first_component: usize,
+    first_component: ComponentId,
     embedded_templates: bool,
 ) -> Result<Compiled, ExtractError> {
     let plan = parse::parse(source, blocks, first_component)?;

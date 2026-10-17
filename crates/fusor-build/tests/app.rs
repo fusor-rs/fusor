@@ -1,6 +1,6 @@
 use fusor_build::BuildError;
-use fusor_build::app::{AppConfig, ArtifactManifest, generate};
-use std::{error::Error as _, fs};
+use fusor_build::app::{AppConfig, ArtifactManifest, LibraryManifest, generate, generate_library};
+use std::{error::Error as _, fs, num::NonZeroU32};
 
 fn setup() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
@@ -558,4 +558,88 @@ fn javascript_discovery_rejects_unresolved_sources_and_retains_causes() {
     let error = error.to_string();
     assert!(error.contains("counter.html:1:"));
     assert!(error.contains("JavaScript source"));
+}
+
+fn component_library() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("web/components")).unwrap();
+    fs::write(
+        dir.path().join("Cargo.toml"),
+        "[package]\nname = \"panel\"\n[package.metadata.fusor]\nlibrary = true\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("web/components/panel.html"),
+        r#"<template rust:component="Panel"><section class="static" class:open="true"></section></template>"#,
+    )
+    .unwrap();
+    dir
+}
+
+#[test]
+fn a_library_numbers_components_in_its_namespace_and_joins_an_application_page() {
+    let dir = component_library();
+    let library = generate_library(
+        &dir.path().join("Cargo.toml"),
+        NonZeroU32::new(7).unwrap(),
+        &dir.path().join("out"),
+    )
+    .unwrap();
+    assert_eq!(library.root, dir.path().canonicalize().unwrap());
+    assert_eq!(library.classes.iter().collect::<Vec<_>>(), ["open"]);
+    assert_eq!(
+        LibraryManifest::read(&dir.path().join("out/fusor_library.json"))
+            .unwrap()
+            .library,
+        7
+    );
+    let (app, _) = native_template_application();
+    let artifact = generate(&app.path().join("Cargo.toml"), &app.path().join("out")).unwrap();
+    let (page, loader_offset) = artifact.page([&library]).unwrap();
+    let template = page
+        .find(r#"<template data-fusor-component="7-0""#)
+        .unwrap();
+    assert_eq!(page.rfind("<template"), Some(template));
+    assert!(template < loader_offset);
+    assert!(page[loader_offset..].starts_with("</body>"));
+}
+
+#[test]
+fn library_and_application_configuration_errors_name_the_key_to_change() {
+    let dir = component_library();
+    let manifest = dir.path().join("Cargo.toml");
+    let out = dir.path().join("out");
+    let build_library = || generate_library(&manifest, NonZeroU32::new(7).unwrap(), &out);
+    let original = fs::read_to_string(&manifest).unwrap();
+    assert!(
+        generate(&manifest, &out)
+            .unwrap_err()
+            .to_string()
+            .contains("call fusor_build::compile_library()")
+    );
+    fs::write(&manifest, format!("{original}entry = \"web/index.html\"\n")).unwrap();
+    let error = build_library().unwrap_err().to_string();
+    assert!(
+        error.contains("remove entry from [package.metadata.fusor]"),
+        "{error}"
+    );
+    fs::write(&manifest, original.replace("library = true", "")).unwrap();
+    let error = build_library().unwrap_err().to_string();
+    assert!(error.contains("requires library = true"), "{error}");
+    let error = generate(&manifest, &out).unwrap_err().to_string();
+    assert!(
+        error.contains("set entry in [package.metadata.fusor]") && error.contains("library = true"),
+        "{error}"
+    );
+    fs::write(&manifest, original).unwrap();
+    fs::write(
+        dir.path().join("web/components/panel.html"),
+        r#"<template rust:component="Panel"><script type="module">export function onMount() {}</script><section></section></template>"#,
+    )
+    .unwrap();
+    let error = build_library().unwrap_err().to_string();
+    assert!(
+        error.contains("unsupported in a component library"),
+        "{error}"
+    );
 }

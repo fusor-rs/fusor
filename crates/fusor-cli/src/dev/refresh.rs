@@ -4,7 +4,13 @@ use crate::{
     context::Context,
     error::{Error, Result},
     layout,
-    pipeline::{BuildMode, Publication, assets, html, manifest::OutputManifest, tailwind},
+    pipeline::{
+        BuildMode, Publication, assets,
+        cargo::Library,
+        html::{self, Page},
+        manifest::OutputManifest,
+        tailwind,
+    },
     workspace::Project,
 };
 use fusor_build::app::{self, ArtifactManifest};
@@ -173,10 +179,19 @@ pub(crate) fn try_refresh(
         return Ok(false);
     }
 
+    let libraries = output
+        .libraries
+        .iter()
+        .map(|path| Library::read(path.clone()))
+        .collect::<Result<Vec<_>>>()?;
+    let page = Page {
+        artifact: &artifact,
+        libraries: &libraries,
+    };
     let effect = publish_revision(
         cx,
         project,
-        &artifact,
+        page,
         output,
         Changes {
             html: &html,
@@ -201,7 +216,7 @@ struct Changes<'a> {
 fn publish_revision(
     cx: &Context,
     project: &Project,
-    artifact: &ArtifactManifest,
+    page: Page,
     mut output: OutputManifest,
     changes: Changes,
 ) -> Result<&'static str> {
@@ -226,11 +241,11 @@ fn publish_revision(
         output.reload_after = Some(revision);
     }
     let package = publication.generated().join(layout::PACKAGE);
-    let stylesheet = tailwind::compile(project, artifact, &package, BuildMode::Development)?;
+    let stylesheet = tailwind::compile(project, page, &package, BuildMode::Development)?;
     fs::write(
         publication.staging().join("index.html"),
         html::render(
-            artifact,
+            page,
             &publication.url_prefix(),
             Some(revision),
             stylesheet.as_slice(),

@@ -1,5 +1,6 @@
 use super::{
-    ARTIFACT_VERSION, AppConfig, ArtifactManifest, HTML_FILE, MANIFEST_FILE, MODULE_FILE,
+    ARTIFACT_VERSION, AppConfig, ArtifactManifest, HTML_FILE, JavaScriptArtifact,
+    LIBRARY_MANIFEST_FILE, LIBRARY_TEMPLATES_FILE, LibraryManifest, MANIFEST_FILE, MODULE_FILE,
     RegistrationArtifact, Result, Source, SourceArtifact, SourceError, SourceKind,
     external::{LinkedSource, Linker},
     includes::{BINDINGS_PREFIX, TEMPLATE_DIRECTORY},
@@ -11,11 +12,13 @@ use crate::{
     html,
     javascript::{self, PlannedModule},
 };
+use fusor::template::ComponentId;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::{
     collections::BTreeSet,
     fs,
+    num::NonZeroU32,
     path::{Path, PathBuf},
 };
 
@@ -23,6 +26,36 @@ use std::{
 /// authored application are modified. Useful to hosts and `cargo fusor expand`.
 pub fn generate(manifest: &Path, out: &Path) -> Result<ArtifactManifest> {
     let config = AppConfig::load(manifest)?;
+    if config.library {
+        return Err("[package.metadata.fusor] sets library = true; \
+                    call fusor_build::compile_library() from build.rs"
+            .into());
+    }
+    generate_sources(&config, manifest, out, ComponentId::new(0))?.write_application()
+}
+
+/// Compile a component library's templates to a Cargo output directory. Its
+/// components are numbered in `library`, which must differ from that of every
+/// other library in an application.
+pub fn generate_library(
+    manifest: &Path,
+    library: NonZeroU32,
+    out: &Path,
+) -> Result<LibraryManifest> {
+    let config = AppConfig::load(manifest)?;
+    if !config.library {
+        return Err("compile_library() requires library = true in [package.metadata.fusor]".into());
+    }
+    let first_component = ComponentId::in_library(library.get(), 0);
+    generate_sources(&config, manifest, out, first_component)?.write_library(library)
+}
+
+fn generate_sources(
+    config: &AppConfig,
+    manifest: &Path,
+    out: &Path,
+    first_component: ComponentId,
+) -> Result<Generated> {
     let root = manifest
         .parent()
         .ok_or("manifest has no parent directory")?;
@@ -34,10 +67,10 @@ pub fn generate(manifest: &Path, out: &Path) -> Result<ArtifactManifest> {
         fs::remove_dir_all(&templates)?;
     }
     let mut generator = Generator {
-        config: &config,
+        config,
         package_root: &package_root,
         out: &out,
-        next_component: 0,
+        next_component: first_component,
         embedded_templates: false,
         linker: Linker::new(&package_root, &config.output, &out),
     };
@@ -47,14 +80,14 @@ pub fn generate(manifest: &Path, out: &Path) -> Result<ArtifactManifest> {
         .into_iter()
         .map(|source| generator.compile(source))
         .collect::<Result<Vec<_>>>()?;
-    generator.write(sources)
+    Generated::write(out, package_root, sources)
 }
 
 struct Generator<'a> {
     config: &'a AppConfig,
     package_root: &'a Path,
     out: &'a Path,
-    next_component: usize,
+    next_component: ComponentId,
     embedded_templates: bool,
     linker: Linker<'a>,
 }
@@ -110,7 +143,7 @@ impl Generator<'_> {
                 .into());
             }
         }
-        self.next_component += page.component_count;
+        self.next_component = self.next_component.offset(page.component_count);
         Ok(page)
     }
 
@@ -146,7 +179,7 @@ impl Generator<'_> {
                 .ok_or("generated module path must be UTF-8")?;
             ui_module = Some(quote! { #[path = #path] pub mod #module; });
         }
-        self.check_javascript_delivery(&page, html_path)?;
+        self.check_javascript_support(&page, html_path)?;
         let javascript = javascript::plan(
             self.package_root,
             self.out,
@@ -166,24 +199,36 @@ impl Generator<'_> {
         })
     }
 
-    fn check_javascript_delivery(&self, page: &Page, html: &Path) -> Result<()> {
-        if let Some(module) = page
-            .javascript
-            .first()
-            .filter(|_| self.config.delivery.is_some())
-        {
-            return Err(SourceError::at(
-                    html,
-                    module.line,
-                    module.column,
-                    "component JavaScript is unsupported in server/island delivery; use a browser application",
-                )
-                .into());
+    fn check_javascript_support(&self, page: &Page, html: &Path) -> Result<()> {
+        let unsupported = if self.config.library {
+            "component JavaScript is unsupported in a component library; move the module into the application"
+        } else if self.config.delivery.is_some() {
+            "component JavaScript is unsupported in server/island delivery; use a browser application"
+        } else {
+            return Ok(());
+        };
+        if let Some(module) = page.javascript.first() {
+            return Err(SourceError::at(html, module.line, module.column, unsupported).into());
         }
         Ok(())
     }
+}
 
-    fn write(self, sources: Vec<CompiledSource>) -> Result<ArtifactManifest> {
+/// Every source is written; the application page or library templates remain.
+struct Generated {
+    out: PathBuf,
+    package_root: PathBuf,
+    module: PathBuf,
+    sources: Vec<SourceArtifact>,
+    javascript: Vec<JavaScriptArtifact>,
+    classes: BTreeSet<String>,
+    entry: Option<Entry>,
+    /// The `<template>` elements of every source except the entry.
+    templates: String,
+}
+
+impl Generated {
+    fn write(out: PathBuf, package_root: PathBuf, sources: Vec<CompiledSource>) -> Result<Self> {
         let mut ui_modules = Vec::new();
         let mut registrations = Vec::new();
         let mut artifacts = Vec::new();
@@ -218,27 +263,64 @@ impl Generator<'_> {
                 templates.push('\n');
             }
         }
-        let mut entry = entry.expect("the entry is always the first source");
-        html::insert_before_body_end(&mut entry.html, &templates, Some(&mut entry.loader_offset));
-        let html_path = self.out.join(HTML_FILE);
-        let module_path = self.out.join(MODULE_FILE);
-        fs::write(&html_path, entry.html)?;
+        let module = out.join(MODULE_FILE);
         fs::write(
-            &module_path,
+            &module,
             quote! { pub mod ui { #(#ui_modules)* } #(#registrations)* }.to_string(),
         )?;
-        let artifact = ArtifactManifest {
-            version: ARTIFACT_VERSION,
-            html: html_path,
-            module: module_path,
-            loader_offset: entry.loader_offset,
-            managed_entry: entry.managed,
+        Ok(Self {
+            out,
+            package_root,
+            module,
             sources: artifacts,
             javascript,
             classes,
+            entry,
+            templates,
+        })
+    }
+
+    fn write_application(self) -> Result<ArtifactManifest> {
+        let mut entry = self
+            .entry
+            .expect("an application's entry is its first source");
+        html::insert_before_body_end(
+            &mut entry.html,
+            &self.templates,
+            Some(&mut entry.loader_offset),
+        );
+        let html_path = self.out.join(HTML_FILE);
+        fs::write(&html_path, entry.html)?;
+        let artifact = ArtifactManifest {
+            version: ARTIFACT_VERSION,
+            html: html_path,
+            module: self.module,
+            loader_offset: entry.loader_offset,
+            managed_entry: entry.managed,
+            sources: self.sources,
+            javascript: self.javascript,
+            classes: self.classes,
         };
         fs::write(
             self.out.join(MANIFEST_FILE),
+            serde_json::to_vec_pretty(&artifact)?,
+        )?;
+        Ok(artifact)
+    }
+
+    fn write_library(self, library: NonZeroU32) -> Result<LibraryManifest> {
+        let templates = self.out.join(LIBRARY_TEMPLATES_FILE);
+        fs::write(&templates, self.templates)?;
+        let artifact = LibraryManifest {
+            version: ARTIFACT_VERSION,
+            templates,
+            root: self.package_root,
+            library: library.get(),
+            sources: self.sources,
+            classes: self.classes,
+        };
+        fs::write(
+            self.out.join(LIBRARY_MANIFEST_FILE),
             serde_json::to_vec_pretty(&artifact)?,
         )?;
         Ok(artifact)

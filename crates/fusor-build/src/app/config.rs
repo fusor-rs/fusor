@@ -10,6 +10,21 @@ use std::{
 const ENTRY_NAME: &str = "app";
 /// Discovered templates are named by this prefix and their package-relative path.
 const DISCOVERED_PREFIX: char = '@';
+const MISSING_ENTRY: &str = "; set entry in [package.metadata.fusor] to the application's \
+     page, or library = true for a component library";
+/// Keys that configure the published page, which a component library does not have.
+const APPLICATION_KEYS: &[&str] = &[
+    "entry",
+    "delivery",
+    "assets",
+    "assets-build",
+    "tailwind",
+    "dev-refresh",
+    "dev",
+    "output",
+    "base-path",
+    "history-fallback",
+];
 
 /// One HTML file of the application.
 #[derive(Debug, Clone)]
@@ -38,6 +53,9 @@ pub enum SourceKind {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct AppConfig {
+    /// A component library: its templates join the page of each application
+    /// that depends on it. It has no entry document of its own.
+    pub library: bool,
     pub delivery: Option<DeliveryConfig>,
     pub entry: PathBuf,
     /// Published URL paths, relative to `base-path`, and the files copied there.
@@ -65,6 +83,7 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            library: false,
             delivery: None,
             entry: "web/index.html".into(),
             assets: BTreeMap::new(),
@@ -137,6 +156,16 @@ impl AppConfig {
             .into());
         }
         let config: Self = metadata.clone().try_into()?;
+        if let Some(key) = APPLICATION_KEYS
+            .iter()
+            .find(|key| config.library && metadata.get(key).is_some())
+        {
+            return Err(format!(
+                "a component library has no page of its own; remove {key} from \
+                 [package.metadata.fusor], or remove library = true to build an application"
+            )
+            .into());
+        }
         config.validate()?;
         Ok(config)
     }
@@ -244,9 +273,14 @@ impl AppConfig {
         let mut sources = Vec::new();
         for (name, kind, path) in self.sources() {
             let authored = root.join(path);
-            let canonical = authored
-                .canonicalize()
-                .map_err(|error| SourceError::new(&authored, &error).with_cause(error))?;
+            let canonical = authored.canonicalize().map_err(|error| {
+                let remedy = if kind == SourceKind::Entry {
+                    MISSING_ENTRY
+                } else {
+                    ""
+                };
+                SourceError::new(&authored, format!("{error}{remedy}")).with_cause(error)
+            })?;
             if !canonical.starts_with(&root) || canonical.starts_with(root.join(&self.output)) {
                 return Err(SourceError::new(
                     path,
@@ -314,9 +348,12 @@ impl AppConfig {
         Ok(files)
     }
 
-    /// Entry first, then explicitly registered modules in deterministic order.
+    /// Entry first, unless this is a library, then explicitly registered
+    /// modules in deterministic order.
     pub fn sources(&self) -> impl Iterator<Item = (&str, SourceKind, &Path)> {
-        std::iter::once((ENTRY_NAME, SourceKind::Entry, self.entry.as_path())).chain(
+        let entry =
+            (!self.library).then_some((ENTRY_NAME, SourceKind::Entry, self.entry.as_path()));
+        entry.into_iter().chain(
             self.components
                 .iter()
                 .map(|(name, path)| (name.as_str(), SourceKind::Component, path.as_path())),

@@ -7,7 +7,10 @@ use crate::{
 use fusor_build::app::AppConfig;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct OutputManifest {
@@ -30,6 +33,9 @@ pub(crate) struct OutputManifest {
     pub reload_after: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rust_signature: Option<Value>,
+    /// Component library artifacts that a development refresh merges again.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub libraries: Vec<PathBuf>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -74,6 +80,7 @@ impl OutputManifest {
             revision: None,
             reload_after: None,
             rust_signature: None,
+            libraries: Vec::new(),
             javascript: None,
             delivery: None,
         }

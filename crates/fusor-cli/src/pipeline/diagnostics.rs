@@ -1,7 +1,7 @@
 //! Compiler diagnostics, remapped to their HTML. Written to stderr directly: a
 //! status verb would break the alignment of rustc's carets.
 use crate::error::Result;
-use fusor_build::{SourceMap, app::ArtifactManifest};
+use fusor_build::{SourceMap, app::SourceArtifact};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -13,8 +13,8 @@ use std::{
 pub(crate) struct Diagnostics(BTreeMap<String, (String, SourceMap, bool)>);
 
 impl Diagnostics {
-    pub fn register(&mut self, manifest: &ArtifactManifest, workspace: &Path) -> Result {
-        for file in &manifest.sources {
+    pub fn register(&mut self, sources: &[SourceArtifact], workspace: &Path) -> Result {
+        for file in sources {
             let source = file
                 .source
                 .strip_prefix(workspace)

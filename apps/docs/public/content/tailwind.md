@@ -38,6 +38,9 @@ There are three places a class can come from:
 | A `class:name` binding, switched on and off by Rust | `class:bg-indigo-600="state.active.get()"` |
 | A string in Rust code | `"text-emerald-700"` in `src/app.rs` |
 
+Tailwind also reads every [component library](/docs/component-libraries) the application
+depends on.
+
 A `class:name` binding adds the class while its expression is `true` and removes it while
 it is `false`. Tailwind can't see these names in your files the way it sees the others, so the
 fusor compiler passes them to Tailwind directly. Variants such as `md:` and `hover:`, and

@@ -108,7 +108,8 @@ impl NavigationDriver for ViewRouter {
 
 /// Mount an HTML route selector. Inside a router view it matches after that
 /// view's prefix; otherwise it becomes the page's router, owning browser
-/// navigation and its cleanup.
+/// navigation and its cleanup. A component library compiles its selectors
+/// with an empty `base`, so they can only nest.
 pub fn mount_routes(
     scope: &mut Scope,
     target: &MountPoint,
@@ -119,6 +120,11 @@ pub fn mount_routes(
     if view::enclosing_view::<Scope>(&scope.owner()).is_some() {
         scope.retain(view::Boundary::nest(&scope.owner(), target, routes)?);
         return Ok(());
+    }
+    if base.is_empty() {
+        return Err(super::error(
+            "a component library's Router must be inside a Route of the application's Router",
+        ));
     }
     Tree::mount_root_in(scope, target, base, target.parent_element()?, routes)
 }

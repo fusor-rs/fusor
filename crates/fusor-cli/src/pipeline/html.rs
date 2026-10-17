@@ -1,10 +1,18 @@
 //! The compiler records the loader's byte offset; nothing here parses HTML.
+use super::cargo::Library;
 use crate::{
     error::{Error, Result},
     layout,
 };
 use fusor_build::app::ArtifactManifest;
 use std::{fs, path::Path};
+
+/// The application's compiled entry and the component libraries it uses.
+#[derive(Clone, Copy)]
+pub(crate) struct Page<'a> {
+    pub artifact: &'a ArtifactManifest,
+    pub libraries: &'a [Library],
+}
 
 /// The generated entry module and the modules it statically imports, relative
 /// to the package. Without these hints the browser discovers them one import
@@ -57,14 +65,15 @@ fn preloads(url_prefix: &str, modules: &[String]) -> String {
 /// `revision` is set only in development, where the refresh client uses it to
 /// tell a patched document from a stale one. `modules` are preloaded.
 pub(crate) fn render(
-    artifact: &ArtifactManifest,
+    page: Page,
     url_prefix: &str,
     revision: Option<u64>,
     styles: &[String],
     modules: &[String],
 ) -> Result<String> {
-    let mut html = fs::read_to_string(&artifact.html)?;
-    let offset = artifact.loader_offset;
+    let (mut html, offset) = page
+        .artifact
+        .page(page.libraries.iter().map(|library| &library.manifest))?;
     if !html.is_char_boundary(offset) {
         return Err(Error::internal(
             "the compiler recorded a loader offset inside a character",
