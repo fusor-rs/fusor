@@ -15,7 +15,8 @@ pub(super) struct TemplateCode {
 }
 
 pub(super) fn lower(component: &Component, ctx: Ctx) -> TemplateCode {
-    let id = component.id.index();
+    let library = component.id.library();
+    let index = component.id.index();
     let version = template::VERSION;
     let kind = emit::variant(Span::call_site(), component.kind());
     let elements = component.elements.iter().map(|node| {
@@ -56,7 +57,7 @@ pub(super) fn lower(component: &Component, ctx: Ctx) -> TemplateCode {
         declarations: quote! {
             const __FUSOR_TEMPLATE: ::fusor::template::TemplateDescriptor = ::fusor::template::TemplateDescriptor {
                 version: #version,
-                component: ::fusor::template::ComponentId::new(#id),
+                component: ::fusor::template::ComponentId::in_library(#library, #index),
                 kind: ::fusor::template::RootKind::#kind,
                 elements: &[#(#elements),*],
                 texts: &[#(#texts),*],

@@ -1,4 +1,5 @@
 use super::Result;
+use crate::html;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
@@ -12,6 +13,8 @@ pub const ARTIFACT_VERSION: u32 = 5;
 pub(crate) const MANIFEST_FILE: &str = "fusor_artifacts.json";
 pub(crate) const HTML_FILE: &str = "fusor_app.html";
 pub(crate) const MODULE_FILE: &str = "fusor_module.rs";
+pub(crate) const LIBRARY_MANIFEST_FILE: &str = "fusor_library.json";
+pub(crate) const LIBRARY_TEMPLATES_FILE: &str = "fusor_library.html";
 
 /// Paths are absolute. The CLI discovers this manifest from Cargo JSON messages,
 /// never by guessing profile directories or package library filenames.
@@ -28,6 +31,24 @@ pub struct ArtifactManifest {
     pub javascript: Vec<JavaScriptArtifact>,
     /// Every class a `class:name` binding toggles. The markup holds no trace of
     /// them, so CSS tools that scan sources for class names need this list.
+    pub classes: BTreeSet<String>,
+}
+
+/// A component library's part of the page of each application that depends
+/// on it. Paths are absolute. The CLI finds it as it finds [`ArtifactManifest`].
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LibraryManifest {
+    pub version: u32,
+    /// The library's `<template>` elements.
+    pub templates: PathBuf,
+    /// The package directory, which Tailwind scans for class names.
+    pub root: PathBuf,
+    /// The namespace of the library's component identities. Two libraries in
+    /// one page must differ.
+    pub library: u32,
+    pub sources: Vec<SourceArtifact>,
+    /// As [`ArtifactManifest::classes`].
     pub classes: BTreeSet<String>,
 }
 
@@ -71,12 +92,41 @@ pub struct RegistrationArtifact {
 impl ArtifactManifest {
     pub fn read(path: &Path) -> Result<Self> {
         let manifest: Self = serde_json::from_slice(&fs::read(path)?)?;
-        if manifest.version != ARTIFACT_VERSION {
-            return Err("unsupported fusor artifact version; rebuild with matching tools".into());
-        }
+        supported(manifest.version)?;
         if manifest.sources.is_empty() {
             return Err("fusor artifact manifest contains no source modules".into());
         }
         Ok(manifest)
     }
+
+    /// The entry page with the templates of `libraries` before `</body>`, and
+    /// the loader's offset in it.
+    pub fn page<'a>(
+        &self,
+        libraries: impl IntoIterator<Item = &'a LibraryManifest>,
+    ) -> Result<(String, usize)> {
+        let mut page = fs::read_to_string(&self.html)?;
+        let mut loader_offset = self.loader_offset;
+        let templates = libraries
+            .into_iter()
+            .map(|library| fs::read_to_string(&library.templates))
+            .collect::<std::io::Result<String>>()?;
+        html::insert_before_body_end(&mut page, &templates, Some(&mut loader_offset));
+        Ok((page, loader_offset))
+    }
+}
+
+impl LibraryManifest {
+    pub fn read(path: &Path) -> Result<Self> {
+        let manifest: Self = serde_json::from_slice(&fs::read(path)?)?;
+        supported(manifest.version)?;
+        Ok(manifest)
+    }
+}
+
+fn supported(version: u32) -> Result<()> {
+    if version != ARTIFACT_VERSION {
+        return Err("unsupported fusor artifact version; rebuild with matching tools".into());
+    }
+    Ok(())
 }

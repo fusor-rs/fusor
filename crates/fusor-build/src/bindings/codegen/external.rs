@@ -318,7 +318,7 @@ pub(crate) fn generate(
         ));
     }
     let authored = authored_tags(source)?;
-    let plan = parse::parse(source, &[], 0)?;
+    let plan = parse::parse(source, &[], template::ComponentId::new(0))?;
     validate_source_coverage(source, &plan.components)?;
     let templates = plan
         .components

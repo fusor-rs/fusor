@@ -1,18 +1,18 @@
 //! Compiles the application's Tailwind stylesheet into the generation.
 //!
 //! Tailwind finds classes by scanning the package for candidate strings, so it
-//! sees static `class` attributes and string literals in Rust. A `class:name`
+//! sees static `class` attributes and string literals in Rust. The generated
+//! entry adds each component library's package with `@source`. A `class:name`
 //! binding leaves no class in any file it scans; the compiler lists those
-//! names, and a generated entry passes them to Tailwind with `@source inline`.
-use super::BuildMode;
+//! names, and the entry passes them to Tailwind with `@source inline`.
+use super::{BuildMode, html::Page};
 use crate::{
     error::{Error, Result},
     layout, toolchain,
     workspace::Project,
 };
-use fusor_build::app::ArtifactManifest;
 use sha2::{Digest, Sha256};
-use std::{fs, path::Path, process::Command};
+use std::{collections::BTreeSet, fs, path::Path, process::Command};
 
 /// Digits of the content hash in the stylesheet's file name.
 const HASH_LENGTH: usize = 16;
@@ -22,7 +22,7 @@ const HASH_LENGTH: usize = 16;
 /// URL and a dev refresh can link it without reloading the page.
 pub(crate) fn compile(
     project: &Project,
-    artifact: &ArtifactManifest,
+    page: Page,
     package: &Path,
     mode: BuildMode,
 ) -> Result<Option<String>> {
@@ -36,7 +36,7 @@ pub(crate) fn compile(
         .join(&project.name);
     fs::create_dir_all(&work)?;
     let input = work.join("input.css");
-    fs::write(&input, entry(&project.root.join(stylesheet), artifact))?;
+    fs::write(&input, entry(&project.root.join(stylesheet), page))?;
     let mut command = Command::new(&binary);
     // Tailwind scans from its working directory.
     command
@@ -63,15 +63,28 @@ pub(crate) fn compile(
 }
 
 /// Class names contain no whitespace; the compiler rejects it in `class:name`.
-fn entry(stylesheet: &Path, artifact: &ArtifactManifest) -> String {
-    // CSS treats a backslash as an escape, and Windows accepts `/`.
-    let path = stylesheet.to_string_lossy().replace('\\', "/");
-    let mut css = format!("@import {};\n", css_string(&path));
-    if !artifact.classes.is_empty() {
-        let classes = Vec::from_iter(artifact.classes.iter().map(String::as_str)).join(" ");
+fn entry(stylesheet: &Path, page: Page) -> String {
+    let mut css = format!("@import {};\n", css_path(stylesheet));
+    for library in page.libraries {
+        css.push_str(&format!("@source {};\n", css_path(&library.manifest.root)));
+    }
+    let classes: BTreeSet<&str> = page
+        .libraries
+        .iter()
+        .flat_map(|library| &library.manifest.classes)
+        .chain(&page.artifact.classes)
+        .map(String::as_str)
+        .collect();
+    if !classes.is_empty() {
+        let classes = Vec::from_iter(classes).join(" ");
         css.push_str(&format!("@source inline({});\n", css_string(&classes)));
     }
     css
+}
+
+/// CSS treats a backslash as an escape, and Windows accepts `/`.
+fn css_path(path: &Path) -> String {
+    css_string(&path.to_string_lossy().replace('\\', "/"))
 }
 
 fn css_string(text: &str) -> String {

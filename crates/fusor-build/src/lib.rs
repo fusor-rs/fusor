@@ -17,7 +17,7 @@ mod source_map;
 
 pub use app::SourceError;
 pub use build_error::BuildError;
-pub use cargo::{compile, compile_app};
+pub use cargo::{compile, compile_app, compile_library};
 pub use extract::extract;
 pub use source_map::{SourceMap, SourceMapError};
 

@@ -36,6 +36,7 @@ http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "server", "client"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 tokio = { version = "1", features = ["net", "rt", "time"] }
+tokio-rustls = { version = "=0.26.4", default-features = false, features = ["ring", "tls12"] }
 proc-macro2 = { version = "=1.0.107", default-features = false, features = ["span-locations"] }
 
 [lints]

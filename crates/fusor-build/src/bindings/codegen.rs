@@ -647,6 +647,7 @@ fn generate_using(
 mod tests {
     //! Structural dispatch regression; public consumers execute the generated code.
     use super::*;
+    use fusor::template::ComponentId;
     use std::{cell::RefCell, collections::BTreeSet};
 
     #[derive(Default)]
@@ -718,7 +719,7 @@ mod tests {
     #[test]
     fn delegated_dom_backend_receives_nested_factories_and_preserves_output_and_origins() {
         let source = NESTED_FACTORIES;
-        let plan = crate::bindings::parse::parse(source, &[], 0).unwrap();
+        let plan = crate::bindings::parse::parse(source, &[], ComponentId::new(0)).unwrap();
         let mut direct = String::new();
         let direct_origins = generate(source, &plan.components, &mut direct, false);
         let recorder = RecordingDom::default();

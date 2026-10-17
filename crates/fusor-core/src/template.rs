@@ -73,7 +73,50 @@ macro_rules! identifier {
     };
 }
 
-identifier!(ComponentId);
+/// A declared component's identity in the page. An application numbers its
+/// components in library namespace 0. A component library numbers its own in
+/// a nonzero namespace, so the templates of several crates share one document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ComponentId {
+    library: u32,
+    index: usize,
+}
+
+impl ComponentId {
+    /// An application's component.
+    pub const fn new(index: usize) -> Self {
+        Self::in_library(0, index)
+    }
+
+    pub const fn in_library(library: u32, index: usize) -> Self {
+        Self { library, index }
+    }
+
+    pub const fn library(self) -> u32 {
+        self.library
+    }
+
+    /// The component's position among those its crate declares.
+    pub const fn index(self) -> usize {
+        self.index
+    }
+
+    /// The component `count` places after this one, in the same library.
+    pub const fn offset(self, count: usize) -> Self {
+        Self::in_library(self.library, self.index + count)
+    }
+}
+
+/// `index` for an application's component, `library-index` for a library's.
+impl fmt::Display for ComponentId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.library {
+            0 => self.index.fmt(f),
+            library => write!(f, "{library}-{}", self.index),
+        }
+    }
+}
+
 identifier!(ElementId);
 identifier!(TextId);
 identifier!(MountId);

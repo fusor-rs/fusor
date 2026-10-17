@@ -164,6 +164,46 @@ files and refresh endpoints remain local even with a `/` proxy. Forwarding appli
 to `dev`; HTTPS backends and WebSocket upgrades are unsupported. Restart the development
 server after changing proxy rules.
 
+### Serve HTTPS on your network {#dev-https}
+
+Passkeys, `Secure` and `__Host-` cookies and service workers need a secure context. A
+passkey also belongs to one host name, so a passkey for `example.local` can't be used from
+`localhost`. To develop at a name of your own, and open the app from a phone on the same
+network, give `fusor dev` an address, a certificate and a name:
+
+```sh title=Terminal
+fusor dev --host 192.168.1.16 --port 443 \
+  --tls-cert cert.pem --tls-key key.pem --name dev.example.local
+```
+
+- `--host ADDRESS` listens on that IP address instead of 127.0.0.1 and ::1. `0.0.0.0`
+  listens on every IPv4 address of the machine. Ports below 1024, such as 443, need
+  administrator rights, except on macOS with `--host 0.0.0.0`.
+- `--tls-cert PATH` and `--tls-key PATH` are a PEM certificate chain and its private key.
+  With both, the server speaks HTTPS instead of HTTP. One without the other is an error.
+- `--name HOST` is the host name printed and opened, here `https://dev.example.local/`.
+  Without it, the address is printed, or `localhost` for `0.0.0.0`. The port is left out
+  when it is 443.
+
+Or set them in the application's manifest, with paths relative to the package. Options on
+the command line replace the manifest's values:
+
+```toml title=Cargo.toml
+[package.metadata.fusor.dev]
+host = "192.168.1.16"
+name = "dev.example.local"
+tls-cert = "tls/cert.pem"
+tls-key = "tls/key.pem"
+```
+
+An unreadable certificate or key, or a key that doesn't match the certificate, fails before
+the first build. Live refresh and proxy rules work the same over HTTPS. Fusor doesn't make
+or trust certificates, and doesn't announce the name on the network: create the certificate
+with your own root, trust that root on each device, and make the name resolve to the address.
+Any device that can reach the address can load the app.
+
+With `--site`, every application that sets these keys must set the same values.
+
 ## Preview a build {#preview}
 
 `fusor preview` serves an existing build with no Cargo, Rust or npm. It uses the base path
@@ -177,8 +217,9 @@ fusor preview dist --port 8092
 ```
 
 > Servers use port 4173 unless you pass `--port`. A busy port fails before any build starts.
-> They listen on both loopback addresses, 127.0.0.1 and ::1, and print a `localhost` address,
-> where passkeys and `localhost` cookies work.
+> Unless `fusor dev` is given a [`--host`](#dev-https), they listen on both loopback
+> addresses, 127.0.0.1 and ::1, and print a `localhost` address, where passkeys and
+> `localhost` cookies work.
 
 ## Publish several applications as one site {#site}
 
@@ -283,8 +324,12 @@ dev-refresh = true              # false when build logic reads HTML or assets
 > Restart `fusor dev` after changing `base-path`. Island sites also declare a `delivery`
 > table.
 
+A crate that sets `library = true` is a component library, not an application: its
+templates join the page of each application that depends on it.
+
 - [Set up island delivery](/docs/islands/setup)
 - [Style with Tailwind CSS](/docs/tailwind)
+- [Share components from a library crate](/docs/component-libraries)
 
 ### Publish static files {#assets}
 

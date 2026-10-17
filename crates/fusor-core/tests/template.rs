@@ -8,6 +8,7 @@ fn html_identifiers_have_one_canonical_encoding() {
         assert_eq!(id.index(), number);
         assert_eq!(ComponentId::new(number).to_string(), number.to_string());
     }
+    assert_eq!(ComponentId::in_library(7, 3).to_string(), "7-3");
     for invalid in ["", "+1", "-1", "01", " 1", "1 ", "1.0", "١"] {
         assert!(invalid.parse::<ElementId>().is_err(), "{invalid}");
     }

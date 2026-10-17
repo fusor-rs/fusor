@@ -88,7 +88,9 @@ impl Metadata {
 impl Package {
     /// Must agree with `select::candidate`, which reads the manifest instead.
     pub fn is_application(&self) -> bool {
-        self.metadata.get("fusor").is_some()
+        self.metadata
+            .get("fusor")
+            .is_some_and(|fusor| fusor.get("library") != Some(&serde_json::Value::Bool(true)))
     }
 
     pub fn has_target(&self, name: &str, kind: &str) -> bool {
@@ -144,14 +146,16 @@ mod tests {
     }
 
     #[test]
-    fn a_package_without_fusor_metadata_is_not_an_application() {
+    fn only_a_package_with_fusor_metadata_and_no_library_flag_is_an_application() {
         let metadata = metadata(serde_json::json!({
             "packages": [
                 {"id": "a", "name": "a", "version": "0.1.0", "manifest_path": "/w/a/Cargo.toml"},
                 {"id": "b", "name": "b", "version": "0.1.0", "manifest_path": "/w/b/Cargo.toml",
-                 "metadata": {"fusor": {}}}
+                 "metadata": {"fusor": {}}},
+                {"id": "c", "name": "c", "version": "0.1.0", "manifest_path": "/w/c/Cargo.toml",
+                 "metadata": {"fusor": {"library": true}}}
             ],
-            "workspace_members": ["b"], "workspace_root": "/w",
+            "workspace_members": ["b", "c"], "workspace_root": "/w",
             "target_directory": "/w/target", "resolve": {"nodes": []}
         }));
         let package = |name: &str| {
@@ -163,6 +167,7 @@ mod tests {
         };
         assert!(!package("a").is_application());
         assert!(package("b").is_application());
+        assert!(!package("c").is_application());
         assert!(!metadata.is_member(package("a")));
     }
 }

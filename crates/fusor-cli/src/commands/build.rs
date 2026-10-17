@@ -7,6 +7,7 @@ use crate::{
     pipeline::{
         self, BuildMode, Publication,
         cargo::{Mode, compile},
+        html::Page,
         manifest::Javascript,
         wasm,
     },
@@ -139,11 +140,14 @@ fn application(
         &format!("{prefix}/{}", layout::PACKAGE),
         mode == BuildMode::Release,
     )?)?;
-    let styles: Vec<String> =
-        pipeline::tailwind::compile(project, &compilation.manifest, &package, mode)?
-            .into_iter()
-            .chain(bundle.styles.iter().cloned())
-            .collect();
+    let page = Page {
+        artifact: &compilation.manifest,
+        libraries: &compilation.libraries,
+    };
+    let styles: Vec<String> = pipeline::tailwind::compile(project, page, &package, mode)?
+        .into_iter()
+        .chain(bundle.styles.iter().cloned())
+        .collect();
     write_boot(project, &publication, &compilation.manifest, workers, mode)?;
     // Development pages keep the loader's own discovery order.
     let modules = if dev {
@@ -153,16 +157,10 @@ fn application(
     };
     fs::write(
         publication.staging().join("index.html"),
-        pipeline::html::render(
-            &compilation.manifest,
-            &prefix,
-            dev.then_some(0),
-            &styles,
-            &modules,
-        )?,
+        pipeline::html::render(page, &prefix, dev.then_some(0), &styles, &modules)?,
     )?;
 
-    let output = publication.output_manifest(&compilation.manifest, bundle, mode)?;
+    let output = publication.output_manifest(page, bundle, mode)?;
     publication.commit(&output)
 }
 

@@ -54,12 +54,12 @@ pub(crate) struct Publication<'a> {
 impl<'a> Publication<'a> {
     pub fn output_manifest(
         &self,
-        artifact: &fusor_build::app::ArtifactManifest,
+        page: html::Page,
         bundle: Javascript,
         mode: BuildMode,
     ) -> Result<OutputManifest> {
         let mut output = OutputManifest::new(self.generation.clone(), &self.project.config);
-        if !artifact.javascript.is_empty() {
+        if !page.artifact.javascript.is_empty() {
             output.javascript = Some(bundle);
         }
         if mode != BuildMode::Development {
@@ -69,8 +69,13 @@ impl<'a> Publication<'a> {
         output.reload_after = Some(0);
         // Recorded only when reuse is possible, so the watcher does not
         // re-establish eligibility on every edit.
-        if crate::dev::refresh::enabled(self.cx, self.project, artifact)? {
-            output.rust_signature = Some(crate::dev::refresh::signature(artifact)?);
+        if crate::dev::refresh::enabled(self.cx, self.project, page.artifact)? {
+            output.rust_signature = Some(crate::dev::refresh::signature(page.artifact)?);
+            output.libraries = page
+                .libraries
+                .iter()
+                .map(|library| library.path.clone())
+                .collect();
         }
         Ok(output)
     }

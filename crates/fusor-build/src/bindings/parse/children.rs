@@ -83,7 +83,7 @@ impl Parser<'_> {
         owner: usize,
     ) -> usize {
         let index = self.components.len();
-        let id = ComponentId::new(self.first_component + index);
+        let id = self.first_component.offset(index);
         let owner = &self.components[owner];
         self.components.push(Component {
             row_locals: owner.row_locals.clone(),

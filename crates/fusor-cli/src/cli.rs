@@ -105,6 +105,18 @@ pub(crate) enum Action {
         /// Forward a URL prefix to a backend HTTP origin; repeat for more prefixes
         #[arg(long, value_name = "PREFIX=URL")]
         proxy: Vec<crate::dev::proxy::Rule>,
+        /// Listen on this address instead of loopback
+        #[arg(long, value_name = "ADDRESS")]
+        host: Option<std::net::IpAddr>,
+        /// Print and open this host name instead of the address
+        #[arg(long, value_name = "HOST")]
+        name: Option<String>,
+        /// Serve HTTPS with this PEM certificate chain
+        #[arg(long, value_name = "PATH", requires = "tls_key")]
+        tls_cert: Option<PathBuf>,
+        /// The PEM private key of --tls-cert
+        #[arg(long, value_name = "PATH", requires = "tls_cert")]
+        tls_key: Option<PathBuf>,
     },
     /// Preview existing production output locally, without Cargo or installation
     #[command(visible_alias = "serve")]

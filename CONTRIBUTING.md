@@ -110,8 +110,9 @@ Then run the browser suites for the area you changed:
 | Islands | `just test islands`, `just test delivery`, `just test component-hydration` |
 | JavaScript modules and npm | `just test javascript`, `just test javascript-build`, `just test javascript-dev`, `just test integrations` |
 | Workers, tasks, shared pools, or streams | `just test worker`, `just test worker-pool`, `just test worker-dev` |
-| The CLI or the dev server | `just test dev`, `just test standalone` |
+| The CLI or the dev server | `just test dev`, `just test dev-https`, `just test standalone` |
 | Tailwind CSS compilation or stylesheet refresh | `just test tailwind` |
+| Component library crates | `just test component-libraries` |
 | The docs, landing page or benchmark site | `just test docs`, `just test docs-examples`, `just test-landing`, `just test benchmarks` |
 | Benchmark tooling | `just test-tools`, `just bench verify` |
 

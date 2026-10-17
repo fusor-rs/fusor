@@ -167,6 +167,10 @@
     "group": "Application guides"
   },
   {
+    "slug": "component-libraries",
+    "group": "Application guides"
+  },
+  {
     "slug": "quick-guides/user-sessions",
     "group": "Quick guides"
   },

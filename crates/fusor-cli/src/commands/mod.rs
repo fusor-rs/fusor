@@ -13,6 +13,7 @@ pub(crate) mod upgrade;
 use crate::{
     cli::{Action, RepoAction},
     context::Context,
+    dev::address::{AddressConfig, TlsFiles},
     error::Result,
     toolchain,
     workspace::{Project, select},
@@ -73,8 +74,25 @@ pub(crate) fn dispatch(cx: &Context, action: Action) -> Result {
             open,
             site,
             proxy,
+            host,
+            name,
+            tls_cert,
+            tls_key,
         } => {
-            let options = dev::Options { port, open, proxy };
+            let address = AddressConfig {
+                host,
+                name,
+                // Each requires the other.
+                tls: tls_cert
+                    .zip(tls_key)
+                    .map(|(cert, key)| TlsFiles { cert, key }),
+            };
+            let options = dev::Options {
+                port,
+                open,
+                proxy,
+                address,
+            };
             if site {
                 toolchain::rust::preflight(cx, Path::new("."), true)?;
                 return dev::site(cx, options);

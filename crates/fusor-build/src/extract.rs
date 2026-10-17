@@ -1,12 +1,13 @@
 //! Split an HTML page into its line-preserved Rust module and its runtime HTML.
 use crate::{ExternalRust, ExtractError, Page, RustBlock, bindings, error, html};
+use fusor::template::ComponentId;
 use html5gum::{StartTag, Token};
 
 /// Extract every `text/rust` script body, in document order, without interpreting
 /// Rust, decoding HTML entities in code, or serializing it through an HTML DOM.
 /// Standard HTML script-content rules apply, including the `</script>` delimiter.
 pub fn extract(source: &str) -> Result<Page, ExtractError> {
-    let page = extract_from(source, 0, false)?;
+    let page = extract_from(source, ComponentId::new(0), false)?;
     // Without a script there is nowhere to declare state; compile_app() allows it
     // for templates included from ordinary Rust modules.
     if page.component_count > 0 && page.blocks.is_empty() {
@@ -22,7 +23,7 @@ pub fn extract(source: &str) -> Result<Page, ExtractError> {
 /// `first_component` continues the numbering of components from earlier sources.
 pub(crate) fn extract_from(
     source: &str,
-    first_component: usize,
+    first_component: ComponentId,
     embedded_templates: bool,
 ) -> Result<Page, ExtractError> {
     let scripts = scan_scripts(source)?;
