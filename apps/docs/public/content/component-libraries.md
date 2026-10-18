@@ -19,10 +19,10 @@ edition = "2024"
 rust-version = "1.85"
 
 [dependencies]
-fusor-core = { version = "=0.1.7", features = ["dom"] }
+fusor-core = { version = "=0.1.8", features = ["dom"] }
 
 [build-dependencies]
-fusor-build = { version = "=0.1.7" }
+fusor-build = { version = "=0.1.8" }
 
 [package.metadata.fusor]
 library = true

@@ -7,7 +7,7 @@ pub static SITE: Site = Site {
     name: "fusor",
     base_path: "/docs/",
     logo: "/docs/favicon.svg",
-    version: "v0.1 dev",
+    version: concat!("v", env!("CARGO_PKG_VERSION")),
     pages: PAGES,
 };
 

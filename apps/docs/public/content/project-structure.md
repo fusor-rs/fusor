@@ -51,12 +51,12 @@ rust-version = "1.85"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-fusor-core = { version = "=0.1.7", features = ["dom"] }
-fusor-components = { version = "=0.1.7", features = ["browser"] }
+fusor-core = { version = "=0.1.8", features = ["dom"] }
+fusor-components = { version = "=0.1.8", features = ["browser"] }
 wasm-bindgen = "=0.2.117"
 
 [build-dependencies]
-fusor-build = { version = "=0.1.7" }
+fusor-build = { version = "=0.1.8" }
 
 [package.metadata.fusor]
 assets = { "/" = "public" }
