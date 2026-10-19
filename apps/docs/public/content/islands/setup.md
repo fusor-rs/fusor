@@ -53,10 +53,10 @@ generated HTML setup and build dependency as in a normal app.
 
 ```toml title=Cargo.toml · root of a separate workspace
 [workspace.dependencies]
-fusor-core = { version = "=0.1.8" }
-fusor-build = { version = "=0.1.8" }
-fusor-islands = { version = "=0.1.8" }
-fusor-server = { version = "=0.1.8" }
+fusor-core = { version = "=0.1.9" }
+fusor-build = { version = "=0.1.9" }
+fusor-islands = { version = "=0.1.9" }
+fusor-server = { version = "=0.1.9" }
 serde = { version = "1", features = ["derive"] }
 wasm-bindgen = "=0.2.117"
 ```

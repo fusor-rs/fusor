@@ -60,7 +60,7 @@ These two files are a complete reusable component, not a whole app. A page place
 
 ## Get started
 
-The v0.1.8 CLI and crates are released. To build apps you need Rust 1.85 or newer, installed with [rustup](https://rustup.rs). Then install the CLI:
+The v0.1.9 CLI and crates are released. To build apps you need Rust 1.85 or newer, installed with [rustup](https://rustup.rs). Then install the CLI:
 
 ```sh
 # macOS or Linux

@@ -14,27 +14,27 @@ output = "dist"
 "/benchmarks/" = "fusor-benchmarks"
 
 [workspace.package]
-version = "0.1.8"
+version = "0.1.9"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/fusor-rs/fusor"
 
 [workspace.dependencies]
-fusor-worker = { path = "crates/fusor-worker", version = "=0.1.8" }
-fusor-worker-macros = { path = "crates/fusor-worker-macros", version = "=0.1.8" }
-fusor-npm = { path = "crates/fusor-npm", version = "=0.1.8" }
-fusor-components = { path = "crates/fusor-components", version = "=0.1.8" }
-fusor-macros = { path = "crates/fusor-macros", version = "=0.1.8" }
-fusor-core = { path = "crates/fusor-core", version = "=0.1.8" }
-fusor-build = { path = "crates/fusor-build", version = "=0.1.8" }
-fusor-async = { path = "crates/fusor-async", version = "=0.1.8" }
-fusor-router = { path = "crates/fusor-router", version = "=0.1.8" }
-fusor-query = { path = "crates/fusor-query", version = "=0.1.8" }
-fusor-test = { path = "crates/fusor-test", version = "=0.1.8" }
-fusor-std = { path = "crates/fusor-std", version = "=0.1.8" }
-fusor-islands = { path = "crates/fusor-islands", version = "=0.1.8" }
-fusor-server = { path = "crates/fusor-server", version = "=0.1.8" }
+fusor-worker = { path = "crates/fusor-worker", version = "=0.1.9" }
+fusor-worker-macros = { path = "crates/fusor-worker-macros", version = "=0.1.9" }
+fusor-npm = { path = "crates/fusor-npm", version = "=0.1.9" }
+fusor-components = { path = "crates/fusor-components", version = "=0.1.9" }
+fusor-macros = { path = "crates/fusor-macros", version = "=0.1.9" }
+fusor-core = { path = "crates/fusor-core", version = "=0.1.9" }
+fusor-build = { path = "crates/fusor-build", version = "=0.1.9" }
+fusor-async = { path = "crates/fusor-async", version = "=0.1.9" }
+fusor-router = { path = "crates/fusor-router", version = "=0.1.9" }
+fusor-query = { path = "crates/fusor-query", version = "=0.1.9" }
+fusor-test = { path = "crates/fusor-test", version = "=0.1.9" }
+fusor-std = { path = "crates/fusor-std", version = "=0.1.9" }
+fusor-islands = { path = "crates/fusor-islands", version = "=0.1.9" }
+fusor-server = { path = "crates/fusor-server", version = "=0.1.9" }
 # Exact: the wasm-bindgen tool fusor downloads (BINDGEN_VERSION in
 # crates/fusor-cli/src/layout.rs) must match this crate version.
 wasm-bindgen = "=0.2.117"

@@ -13,7 +13,7 @@ other fusor crates.
 
 ```toml title=Cargo.toml
 [dependencies]
-fusor-components = { version = "=0.1.8", features = ["browser"] }
+fusor-components = { version = "=0.1.9", features = ["browser"] }
 ```
 
 > Apps created with `fusor new` already include this dependency. `<ForEach>` is a reserved

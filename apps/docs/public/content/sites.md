@@ -59,7 +59,7 @@ mounts collide, the previous site stays in place.
 
 ```sh title=Terminal
 $ fusor build --site
-▲ fusor 0.1.8 · production build
+▲ fusor 0.1.9 · production build
 ○ Compiling homepage ...
 ✓ Compiled homepage in 12.4s
 ○ Compiling docs ...

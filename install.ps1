@@ -2,7 +2,7 @@
 #
 #   irm https://fusor.build/install.ps1 | iex
 #
-# Set $env:FUSOR_VERSION = "v0.1.8" to install a specific release, and
+# Set $env:FUSOR_VERSION = "v0.1.9" to install a specific release, and
 # $env:FUSOR_INSTALL to choose the directory (default ~\.fusor). Binaries go in
 # its bin\, which is added to your user PATH.
 $ErrorActionPreference = 'Stop'
