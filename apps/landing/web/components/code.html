@@ -1,5 +1,6 @@
 <template rust:component="CodeBlock">
   <pre
+    class="max-h-[30rem] overflow-auto p-5 font-mono text-[13px] leading-relaxed md:p-6"
     tabindex="0"
     aria-label='{{ format!("{} source", state.file.get().name) }}'
   ><code><ForEach items="{{ state.file.get().tokens.to_vec() }}" key="{{ |token| token.id }}"><span class="syntax-token" style="{{ item.get().style }}">{{ item.get().text }}</span></ForEach></code></pre>

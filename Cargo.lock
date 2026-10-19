@@ -737,11 +737,10 @@ dependencies = [
 name = "fusor-landing"
 version = "0.1.8"
 dependencies = [
- "fusor-async",
  "fusor-build",
  "fusor-components",
  "fusor-core",
- "gloo-timers",
+ "fusor-router",
  "syntect",
  "two-face",
  "wasm-bindgen",

@@ -3,354 +3,300 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#faf9f6" />
+    <meta name="theme-color" content="#faf9f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121314" media="(prefers-color-scheme: dark)" />
     <meta
       name="description"
-      content="Build reactive web apps with Rust. Write your UI in HTML files and keep state and frontend logic in Rust, with no markup inside Rust macros."
+      content="Fusor is an open source lab working in Rust: fusor for the web, HyperCMD for the terminal, hyperpane for iPhone and Mac, and the things we build with them, like Hughie."
     />
-    <meta property="og:title" content="fusor — A framework for Rust and HTML" />
+    <meta property="og:title" content="Fusor — We make tools. Then we use them." />
     <meta
       property="og:description"
-      content="Write your UI in HTML files. Keep state and frontend logic in Rust. No markup inside Rust macros."
+      content="An open source lab working in Rust. Tools for the browser, the terminal and iPhone and Mac, and the things we make with them."
     />
     <meta property="og:type" content="website" />
-    <title>fusor — A framework for Rust and HTML</title>
+    <title>Fusor — An open source lab working in Rust</title>
     <link rel="icon" href="./brand/fusor.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./landing.css" />
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to content</a>
+    <a
+      class="sr-only z-50 rounded-full bg-ink px-4 py-2 text-sm text-canvas focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+      href="#main"
+      >Skip to content</a
+    >
     <App state="{{ App::new() }}">
-      <div class="site">
-        <header class="site-header page-width">
-          <a class="brand" href="./" aria-label="fusor home">
-            <img class="brand-lockup" src="./brand/fusor-horizontal.svg" width="126" height="41" alt="" />
+      <div
+        class="world"
+        data-world="{{ state.project.get().project().world.key() }}"
+        data-project="{{ state.project.get().project().key }}"
+      >
+        <a class="hughie-strip" data-world="night" data-project="hughie" href="https://hughie.si/">
+          <span class="hughie size-7 shrink-0" aria-hidden="true">
+            <img class="h-full w-full" src="./lab/hughie-asleep.png" width="28" height="28" alt="" />
+            <span class="hughie-glance"><img class="h-full w-full" src="./lab/hughie-awake.png" alt="" /></span>
+            <span class="hughie-eyes"><img class="h-full w-full" src="./lab/hughie-awake.png" alt="" /></span>
+          </span>
+          <span><span class="font-semibold">Hughie.</span> <span class="text-ink-soft">The AI that never leaves your house.</span></span>
+          <span class="hughie-cta shrink-0 font-medium text-accent max-sm:hidden">Join the waitlist ↗</span>
+        </a>
+        <header class="mx-auto flex h-14 w-full max-w-[1320px] items-center justify-between px-5 md:px-10">
+          <a class="flex items-center gap-2.5" href="./" aria-label="Fusor home">
+            <span class="fusion block size-7" aria-hidden="true">
+              <img src="./brand/fusor-upper.svg" width="28" height="28" alt="" />
+              <img src="./brand/fusor-lower.svg" width="28" height="28" alt="" />
+            </span>
+            <span class="wordmark block h-[19px] w-[55px]" aria-hidden="true"></span>
           </a>
-          <nav aria-label="Main navigation">
-            <a href="/docs/">Docs</a>
-            <a href="/docs/showcase">Examples</a>
-            <a href="#by-fusor">By Fusor</a>
-            <a href="https://github.com/fusor-rs/fusor"
-              >GitHub <span aria-hidden="true">↗</span></a
-            >
+          <nav aria-label="Main navigation" class="flex items-center gap-6 text-sm text-ink-soft">
+            <a class="hover:text-ink" href="/docs/">Docs</a>
+            <a class="hidden hover:text-ink sm:inline" href="/made-with-fusor">Made with fusor</a>
+            <a class="hidden hover:text-ink md:inline" href="/benchmarks/">Benchmarks</a>
+            <a class="hover:text-ink" href="https://github.com/fusor-rs">GitHub ↗</a>
           </nav>
         </header>
-        <main id="main" class="page-width">
-          <section class="intro" aria-labelledby="intro-title">
-            <div class="intro-copy">
-              <h1 id="intro-title">Build reactive web apps with <span>Rust.</span></h1>
-              <p class="intro-description">
-                Write your UI in HTML files. Keep state and frontend logic in Rust. No markup inside
-                Rust macros.
-              </p>
-              <div class="action-links">
-                <a href="#example-title">See it in action <span aria-hidden="true">↓</span></a>
-                <a href="/docs/html-and-rust"
-                  >Read the introduction <span aria-hidden="true">↗</span></a
-                >
-              </div>
-            </div>
-            <div id="install" class="hero-install" role="region" aria-labelledby="install-title">
-              <h2 id="install-title">Install fusor</h2>
-              <div class="install-panel">
-                <div class="install-toolbar">
-                  <div class="install-platforms" role="group" aria-label="Installation platform">
+
+        <Router>
+          <Route path="/">
+        <main id="main" class="bench mx-auto w-full max-w-[1320px] px-5 pt-4 pb-4 md:px-10">
+          <div class="bench-intro">
+            <h1 class="text-[clamp(2.25rem,4vw,3.25rem)] leading-[1.04] font-semibold tracking-[-0.035em] text-balance">
+              <span class="block">We make tools.</span>
+              <span class="block text-ink-faint">Then we use them.</span>
+            </h1>
+            <p class="mt-5 max-w-md leading-relaxed text-ink-soft">
+              Fusor is an open source lab working in Rust, with interfaces written in plain HTML.
+              Choose anything we make to see it.
+            </p>
+          </div>
+
+          <nav class="bench-index" aria-label="Projects">
+            <ForEach items="{{ GROUPS.to_vec() }}" key="{{ |group| group.name }}" item="group">
+              <div class="index-group">
+              <h2 class="index-heading">{{ group.get().name }}</h2>
+              <ul class="index-list">
+                <ForEach items="{{ group.get().projects.to_vec() }}" key="{{ |id| id.project().key }}" item="id">
+                  <li>
                     <button
+                      class="index-item"
                       type="button"
-                      aria-pressed="{{ !state.install_windows.get() }}"
-                      on:click="state.select_install(false)"
-                    >macOS / Linux</button>
-                    <button
-                      type="button"
-                      aria-pressed="{{ state.install_windows.get() }}"
-                      on:click="state.select_install(true)"
-                    >Windows</button>
-                  </div>
-                  <button
-                    class="copy-install"
-                    type="button"
-                    on:click="state.copy_install()"
-                    aria-live="polite"
-                  >{{ state.copy_label.get() }}</button>
-                </div>
-                <div class="install-command"><code>{{ state.install_command() }}</code></div>
+                      aria-pressed="{{ state.project.get() == id.get() }}"
+                      on:click="state.select(id.get())"
+                    >
+                      <span class="index-name">{{ id.get().project().name }}</span>
+                      <span class="index-kind">{{ id.get().project().kind }}</span>
+                      <time class="index-day" datetime="{{ id.get().project().shipped.datetime() }}">{{
+                        id.get().project().shipped.label() }}</time>
+                    </button>
+                  </li>
+                </ForEach>
+              </ul>
               </div>
-              <p class="setup-note">{{ state.install_note() }}</p>
-              <div class="setup-footer">
-                <p>Requires <a href="https://rustup.rs/">Rust 1.85 or newer</a>.</p>
-                <a class="setup-guide" href="/docs/installation"
-                  >Installation guide <span aria-hidden="true">→</span></a
-                >
-              </div>
-            </div>
-          </section>
-          <section class="example" aria-labelledby="example-title">
-            <div class="section-heading">
-              <h2 id="example-title">Each example is a component: an HTML template and a Rust module.</h2>
-              <a href="{{ state.example.get().guide() }}"
-                >Read the guide <span aria-hidden="true">↗</span></a
+            </ForEach>
+          </nav>
+          <a class="bench-more text-sm text-ink-soft hover:text-ink" href="/made-with-fusor">Made with fusor, for fun</a>
+
+          <div class="bench-stage stage">
+            <div class="stage-viewport">
+              <div
+                class="stage-frame"
+                data-shape="{{ state.project.get().project().shape.key() }}"
+                data-flipped="{{ state.flipped.get() }}"
               >
-            </div>
-            <div class="example-switcher" role="group" aria-label="Choose an example">
-              <button
-                aria-pressed="{{ state.example.get() == Example::Counter }}"
-                on:click="state.select(Example::Counter)"
-              >
-                Counter
-              </button>
-              <button
-                aria-pressed="{{ state.example.get() == Example::Search }}"
-                on:click="state.select(Example::Search)"
-              >
-                Live search
-              </button>
-              <button
-                aria-pressed="{{ state.example.get() == Example::KeyedList }}"
-                on:click="state.select(Example::KeyedList)"
-              >
-                Keyed lists
-              </button>
-              <button
-                aria-pressed="{{ state.example.get() == Example::AsyncData }}"
-                on:click="state.select(Example::AsyncData)"
-              >
-                Async data
-              </button>
-            </div>
-            <p class="example-description">{{ state.example.get().description() }}</p>
-            <div class="example-workspace">
-              <div class="preview-panel">
-                <div class="preview-heading">
-                  <span class="status-dot" aria-hidden="true"></span>Running in your browser
-                </div>
-                <div class="example-result">
-                  <Match value="{{ state.example.get() }}">
-                    <Case pattern="Example::Counter">
-                      <div class="counter-example">
-                        <Counter></Counter>
-                        <p>Each button calls a method<br />defined in counter.rs.</p>
+                <div class="stage-face stage-front" inert="{{ state.flipped.get() }}">
+                  <Match value="{{ state.project.get().project().shape }}">
+                    <Case pattern="Shape::Browser">
+                      <div class="arrives absolute inset-0 flex flex-col">
+                        <div class="flex h-10 shrink-0 items-center gap-2 border-b border-hairline px-4" aria-hidden="true">
+                          <span class="size-2.5 rounded-full bg-hairline"></span>
+                          <span class="size-2.5 rounded-full bg-hairline"></span>
+                          <span class="size-2.5 rounded-full bg-hairline"></span>
+                        </div>
+                        <div class="min-h-0 flex-1"><Greeting></Greeting></div>
                       </div>
                     </Case>
-                    <Case pattern="Example::Search">
-                      <LiveSearch></LiveSearch>
+                    <Case pattern="Shape::Terminal">
+                      <div class="absolute inset-0">
+                      <ForEach
+                        items="{{ state.project.get().project().screenshot.iter().collect::<Vec<_>>() }}"
+                        key="{{ |screenshot| screenshot.src }}"
+                        item="screenshot"
+                      >
+                        <img
+                          class="arrives absolute inset-0 h-full w-full object-cover object-bottom"
+                          src="{{ screenshot.get().src }}"
+                          alt="{{ screenshot.get().description }}"
+                        />
+                      </ForEach>
+                      </div>
                     </Case>
-                    <Case pattern="Example::KeyedList">
-                      <KeyedList></KeyedList>
+                    <Case pattern="Shape::Phone">
+                      <img
+                        class="arrives absolute top-[2.5%] left-[5%] h-[95%] w-[90%] rounded-[calc(var(--phone-width)*0.13)] object-cover object-top"
+                        src="./lab/hyperpane-iphone.png"
+                        width="600"
+                        height="1304"
+                        alt="This page running as an app in the iPhone simulator"
+                      />
                     </Case>
-                    <Case pattern="Example::AsyncData">
-                      <AsyncData></AsyncData>
+                    <Case pattern="Shape::Face">
+                      <div class="arrives absolute inset-0 grid place-items-center">
+                        <div class="hughie w-[88%]" aria-hidden="true">
+                          <img class="h-full w-full" src="./lab/hughie-asleep.png" width="384" height="384" alt="" />
+                          <span class="hughie-glance"><img class="h-full w-full" src="./lab/hughie-awake.png" alt="" /></span>
+                          <span class="hughie-eyes"><img class="h-full w-full" src="./lab/hughie-awake.png" alt="" /></span>
+                        </div>
+                      </div>
                     </Case>
                   </Match>
                 </div>
-              </div>
-              <div class="source-panel">
-                <div class="source-tabs">
-                  <div class="source-group" role="group" aria-label="Component files">
-                    <span class="source-group-label" aria-hidden="true">Component</span>
-                    <button
-                      type="button"
-                      aria-pressed="{{ state.shows(false, false) }}"
-                      on:click="state.show_file(false, false)"
-                    >
-                      <span class="file-symbol html-symbol" aria-hidden="true">&lt;&gt;</span>{{
-                      state.file(false, false).name }}
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed="{{ state.shows(false, true) }}"
-                      on:click="state.show_file(false, true)"
-                    >
-                      <span class="file-symbol" aria-hidden="true">rs</span>{{
-                      state.file(false, true).name }}
-                    </button>
+                <div class="stage-face stage-back" inert="{{ !state.flipped.get() }}">
+                  <div class="h-full overflow-y-auto">
+                    <ForEach items="{{ state.project.get().project().sources.to_vec() }}" key="{{ |file| file.href }}">
+                      <section class="arrives">
+                        <h3 class="px-5 pt-5 font-mono text-xs text-night-soft md:px-6">{{ item.get().name }}</h3>
+                        <CodeBlock file="{{ item.clone() }}"></CodeBlock>
+                      </section>
+                    </ForEach>
                   </div>
-                  <div class="source-group" role="group" aria-label="Page files">
-                    <span class="source-group-label" aria-hidden="true">Page</span>
-                    <button
-                      type="button"
-                      aria-pressed="{{ state.shows(true, false) }}"
-                      on:click="state.show_file(true, false)"
-                    >
-                      <span class="file-symbol html-symbol" aria-hidden="true">&lt;&gt;</span>{{
-                      state.file(true, false).name }}
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed="{{ state.shows(true, true) }}"
-                      on:click="state.show_file(true, true)"
-                    >
-                      <span class="file-symbol" aria-hidden="true">rs</span>{{
-                      state.file(true, true).name }}
-                    </button>
-                  </div>
-                  <a
-                    href="{{ state.source().href }}"
-                    target="_blank"
-                    rel="noopener"
-                    aria-label="Open the displayed source file"
-                    >↗</a
-                  >
-                </div>
-                <div class="source-content">
-                  <ForEach items="{{ vec![state.source()] }}" key="{{ |file| file.href }}">
-                    <CodeBlock file="{{ item.clone() }}"></CodeBlock>
-                  </ForEach>
                 </div>
               </div>
             </div>
-            <div class="source-key">
-              <p class="example-note">
-                These are complete source files. The component files define
-                <code class="page-tag">{{ state.example.get().tag() }}</code>; the page files place
-                that tag inside <code>&lt;App&gt;</code>, which starts the app. Four things connect
-                HTML and Rust:
-              </p>
-              <dl>
-                <div>
-                  <dt><code>rust:component</code></dt>
-                  <dd>Names the Rust struct. Its fields and methods are available as state.</dd>
-                </div>
-                <div>
-                  <dt><code>{{ INTERPOLATION }}</code></dt>
-                  <dd>Shows a Rust value as text or an attribute, and updates when the signals it reads change.</dd>
-                </div>
-                <div>
-                  <dt><code>on:click</code> · <code>bind</code></dt>
-                  <dd>Runs Rust when an event fires, or keeps an input and a signal in sync.</dd>
-                </div>
-                <div>
-                  <dt><code>template!(…)</code></dt>
-                  <dd>Connects the module to its HTML, so the compiler checks both together.</dd>
-                </div>
-              </dl>
-              <p class="setup-context">
-                <code>fusor new</code> creates <code>Cargo.toml</code>, <code>build.rs</code>, and
-                <code>src/lib.rs</code>; declare the additional component modules in
-                <code>src/lib.rs</code>.
-                <a href="/docs/html-and-rust/app">The App boundary <span aria-hidden="true">→</span></a>
-              </p>
-            </div>
-          </section>
-          <section class="model-section" aria-labelledby="model-title">
-            <div class="section-heading">
-              <h2 id="model-title">How it works</h2>
-              <span class="section-note">What you write, and what fusor does with it.</span>
-            </div>
-            <div class="concept-grid">
-              <article>
-                <h3>Markup in HTML files</h3>
-                <p>
-                  Templates are <code>.html</code> files with the elements, classes, labels, and
-                  forms you would write anyway. Style them with CSS. Rust goes in double-brace
-                  bindings and attributes such as <code>on:click</code>.
-                </p>
-                <a href="/docs/html-and-rust"
-                  >HTML and Rust <span aria-hidden="true">→</span></a
-                >
-              </article>
-              <article>
-                <h3>Logic in Rust modules</h3>
-                <p>
-                  State is a Rust struct and behavior is its methods, with ordinary imports and
-                  types. The compiler checks every expression in your templates against that code.
-                </p>
-                <a href="/docs/components"
-                  >Reusable components <span aria-hidden="true">→</span></a
-                >
-              </article>
-              <article>
-                <h3>Fine-grained updates</h3>
-                <p>
-                  Your Rust compiles to WebAssembly and runs in the browser. Each binding tracks the
-                  signals it reads. When a signal changes, the bindings that read it run again; the
-                  rest of the component does not re-render.
-                </p>
-                <a href="/docs/reactivity"
-                  >Signals and derived state <span aria-hidden="true">→</span></a
-                >
-              </article>
-              <article>
-                <h3>Owned cleanup and async</h3>
-                <p>
-                  Listeners, effects, and requests belong to the component that started them and
-                  stop when it is removed. <code>&lt;Async&gt;</code> can keep the previous view
-                  until related data is ready.
-                </p>
-                <a href="/docs/ownership">Owners and cleanup <span aria-hidden="true">→</span></a>
-              </article>
-            </div>
-          </section>
-          <section id="by-fusor" class="ecosystem" aria-labelledby="ecosystem-title">
-            <h2 id="ecosystem-title">More from Fusor</h2>
-            <p class="ecosystem-description">Tools and projects built by Fusor.</p>
-            <div class="project-grid">
-              <a class="project-card" href="https://cmd.fusor.build/">
-                <p class="project-kind">Terminal framework</p>
-                <h3>
-                  <img src="./brand/hypercmd-horizontal.svg" width="187" height="36" alt="HyperCMD" />
-                </h3>
-                <p class="project-description">
-                  Build terminal interfaces with HTML and Rust. HyperCMD brings fusor’s templates
-                  and reactive state to the command line.
-                </p>
-                <span class="project-link">Explore HyperCMD <span aria-hidden="true">↗</span></span>
-              </a>
-              <a class="project-card" href="https://boom.fusor.build/">
-                <p class="project-kind">SQL client</p>
-                <h3>
-                  <img src="./brand/sql-bomb-horizontal.svg" width="174" height="36" alt="SQL Bomb" />
-                </h3>
-                <p class="project-description">
-                  Run SQL and explore streaming results in your terminal. SQL Bomb puts HyperCMD
-                  and fusor to work in a database client.
-                </p>
-                <span class="project-link">Explore SQL Bomb <span aria-hidden="true">↗</span></span>
-              </a>
-            </div>
-          </section>
-          <aside class="further-reading" aria-label="Further reading">
-            <h3>Keep exploring</h3>
-            <div class="further-reading-links">
-              <a href="/docs/showcase">Working examples <span aria-hidden="true">↗</span></a>
-              <a href="/docs/tooling">CLI &amp; editor tooling <span aria-hidden="true">↗</span></a>
-              <a href="/benchmarks/">Benchmarks <span aria-hidden="true">↗</span></a>
-              <a href="https://github.com/fusor-rs/fusor"
-                >Source &amp; contributions <span aria-hidden="true">↗</span></a
-              >
-            </div>
-          </aside>
-          <section class="getting-started" aria-labelledby="start-title">
-            <div class="getting-started-heading">
-              <h2 id="start-title">Build your first app.</h2>
-              <p>Create a project, edit the starter, and see your changes in the browser.</p>
-              <div class="action-links">
-                <a class="primary-link" href="/docs/installation"
-                  >Get started <span aria-hidden="true">→</span></a
-                >
-                <a href="#install">Back to installation <span aria-hidden="true">↑</span></a>
-              </div>
-            </div>
-            <div>
-              <pre class="create-command" tabindex="0" aria-label="Create and run an application"><code>fusor new my-app
-cd my-app
-fusor dev</code></pre>
-              <p class="setup-note">Open the local URL printed in your terminal.</p>
-            </div>
-          </section>
+          </div>
+
+          <div class="bench-caption" aria-live="polite">
+            <p class="flex flex-wrap items-center justify-center gap-3">
+              <span class="text-2xl font-semibold tracking-tight">{{ state.project.get().project().name }}</span>
+              <span class="rounded-full border border-hairline px-2.5 py-0.5 text-xs text-ink-soft">{{
+                state.project.get().project().status }}</span>
+            </p>
+            <p class="mx-auto mt-2 max-w-xl leading-relaxed text-ink-soft">{{ state.project.get().project().summary }}</p>
+            <p class="mt-4 flex min-h-9 flex-wrap items-center justify-center gap-x-5 gap-y-2">
+              <button
+                class="control border border-hairline text-ink-soft aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-canvas"
+                type="button"
+                hidden="{{ state.project.get().project().sources.is_empty() }}"
+                aria-pressed="{{ state.flipped.get() }}"
+                on:click="state.flipped.update(|flipped| *flipped = !*flipped)"
+              >How it’s made</button>
+              <span class="flex flex-wrap justify-center gap-x-5 gap-y-2">
+                <ForEach items="{{ state.project.get().project().links.to_vec() }}" key="{{ |link| link.href }}">
+                  <a class="text-accent hover:underline" href="{{ item.get().href }}">{{ item.get().label }}</a>
+                </ForEach>
+              </span>
+            </p>
+          </div>
         </main>
-        <footer class="site-footer page-width">
-          <p>fusor <span>·</span> Open source, MIT</p>
-          <a href="https://github.com/fusor-rs/fusor"
-            >Built with fusor <span aria-hidden="true">↗</span></a
+          </Route>
+          <Route path="/made-with-fusor">
+            <main id="main" class="mx-auto w-full max-w-[1320px] flex-1 px-5 pt-10 pb-16 md:px-10 md:pt-16">
+              <a class="text-sm text-ink-soft hover:text-ink" href="/">The lab</a>
+              <h1 class="mt-6 text-[clamp(2.25rem,4.2vw,3.5rem)] leading-[1.04] font-semibold tracking-[-0.035em]">
+                Made with fusor.
+              </h1>
+              <p class="mt-4 max-w-xl leading-relaxed text-ink-soft">
+                Things built with fusor and HyperCMD for fun, to see how far HTML and Rust can go.
+              </p>
+              <ul class="mt-12 grid gap-x-10 gap-y-14 md:grid-cols-2">
+                <ForEach items="{{ MADE_WITH.to_vec() }}" key="{{ |id| id.project().key }}" item="id">
+                  <li>
+                    <div class="aspect-[1.45] overflow-hidden rounded-2xl bg-[#25282a] shadow-[0_0_0_1px_var(--color-hairline),0_30px_60px_-30px_rgb(0_0_0/0.35)]">
+                      <ForEach items="{{ id.get().project().screenshot.iter().collect::<Vec<_>>() }}" key="{{ |screenshot| screenshot.src }}" item="screenshot">
+                        <img
+                          class="h-full w-full object-cover object-bottom"
+                          src="{{ screenshot.get().src }}"
+                          loading="lazy"
+                          alt="{{ screenshot.get().description }}"
+                        />
+                      </ForEach>
+                    </div>
+                    <div class="mt-5 flex flex-wrap items-center gap-3">
+                      <p class="flex flex-wrap gap-2">
+                        <ForEach items="{{ id.get().project().built_with.to_vec() }}" key="{{ |tool| tool.project().key }}" item="tool">
+                          <span class="tool-badge">
+                            <span class="flex">
+                              <ForEach items="{{ tool.get().project().mark.iter().collect::<Vec<_>>() }}" key="{{ |mark| *mark }}" item="mark">
+                                <img class="size-4" src="{{ mark.get() }}" width="16" height="16" alt="" />
+                              </ForEach>
+                            </span>
+                            <span class="sr-only">Built with </span>{{ tool.get().project().name }}
+                          </span>
+                        </ForEach>
+                      </p>
+                      <p class="text-xs text-ink-faint">{{ id.get().project().status }}</p>
+                    </div>
+                    <h2 class="mt-3 flex flex-wrap items-baseline gap-x-3">
+                      <span class="text-2xl font-semibold tracking-tight">{{ id.get().project().name }}</span>
+                      <span class="text-sm text-ink-faint">{{ id.get().project().kind }}</span>
+                    </h2>
+                    <p class="mt-2 leading-relaxed text-ink-soft">{{ id.get().project().summary }}</p>
+                    <p class="mt-4 flex flex-wrap items-center gap-x-5 text-sm">
+                      <time class="text-ink-faint" datetime="{{ id.get().project().shipped.datetime() }}">{{ id.get().project().shipped.label() }}</time>
+                      <span class="flex gap-x-5">
+                        <ForEach items="{{ id.get().project().links.to_vec() }}" key="{{ |link| link.href }}">
+                          <a class="text-accent hover:underline" href="{{ item.get().href }}">{{ item.get().label }}</a>
+                        </ForEach>
+                      </span>
+                    </p>
+                  </li>
+                </ForEach>
+              </ul>
+            </main>
+          </Route>
+        </Router>
+
+        <footer class="border-t border-hairline">
+          <div
+            id="install"
+            class="mx-auto flex max-w-[1320px] flex-wrap items-center gap-x-5 gap-y-3 px-5 py-4 md:px-10"
+            role="region"
+            aria-labelledby="install-title"
           >
+            <h2 id="install-title" class="text-sm font-semibold">Install fusor</h2>
+            <div
+              class="segmented rounded-full bg-hairline/70 text-xs"
+              style="--segments: 2"
+              role="group"
+              aria-label="Installation platform"
+            >
+              <span class="segmented-thumb rounded-full bg-raised shadow-sm" aria-hidden="true"></span>
+              <button
+                class="control px-3 py-1.5 text-xs text-ink-soft aria-pressed:text-ink"
+                type="button"
+                aria-pressed="{{ !state.install_windows.get() }}"
+                on:click="state.select_install(false)"
+              >macOS / Linux</button>
+              <button
+                class="control px-3 py-1.5 text-xs text-ink-soft aria-pressed:text-ink"
+                type="button"
+                aria-pressed="{{ state.install_windows.get() }}"
+                on:click="state.select_install(true)"
+              >Windows</button>
+            </div>
+            <div
+              class="flex min-w-0 flex-[1_1_20rem] flex-wrap items-center justify-end gap-x-3 gap-y-1 rounded-full bg-night py-1.5 pr-1.5 pl-5 text-night-ink max-sm:rounded-2xl"
+            >
+              <div class="install-command min-w-0 flex-[1_1_14rem] overflow-x-auto py-1 font-mono text-[13px] sm:whitespace-nowrap">
+                <code>{{ state.install_command() }}</code>
+              </div>
+              <button
+                class="control shrink-0 bg-night-ink py-1.5 text-night hover:bg-white"
+                type="button"
+                on:click="state.copy_install()"
+                aria-live="polite"
+              >{{ state.copy_label.get() }}</button>
+            </div>
+            <p class="text-sm text-ink-soft">
+              Rust 1.85 or newer.
+              <a class="text-accent hover:underline" href="/docs/installation">Installation guide</a>
+            </p>
+          </div>
         </footer>
       </div>
     </App>
     <noscript
-      ><p class="noscript-note">
-        The interactive example requires JavaScript and WebAssembly. You can read the component’s
-        <a href="./source/web/components/counter.html.txt">HTML</a> and
-        <a href="./source/src/counter.rs.txt">Rust source</a> as plain text.
+      ><p class="px-5 py-6 text-sm">
+        This page is a fusor app, and its live parts need JavaScript and WebAssembly. Read the
+        <a class="underline" href="/docs/">fusor documentation</a>.
       </p></noscript
     >
   </body>

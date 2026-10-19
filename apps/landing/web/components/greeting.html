@@ -1,0 +1,14 @@
+<template rust:component="Greeting">
+  <div class="flex h-full flex-col">
+    <div class="flex flex-1 flex-col items-center justify-center gap-8 px-6 py-6 text-center">
+      <p class="max-w-full text-5xl font-semibold tracking-tight break-words md:text-6xl">{{ state.line() }}</p>
+      <label class="flex w-full max-w-xs flex-col gap-2 text-sm text-ink-soft">
+        What should Rust call you?
+        <input class="field text-center" bind="state.name" placeholder="Your name" autocomplete="given-name" maxlength="40" />
+      </label>
+    </div>
+    <p class="truncate border-t border-hairline px-4 py-2.5 font-mono text-xs text-ink-faint">
+      <span class="text-accent">self.name</span> = {{ format!("{:?}", state.name.get()) }}
+    </p>
+  </div>
+</template>

@@ -10,7 +10,8 @@
     { "source": "/benchmarks", "destination": "/benchmarks/", "permanent": true }
   ],
   "rewrites": [
-    { "source": "/docs/:path*", "destination": "/docs/index.html" }
+    { "source": "/docs/:path*", "destination": "/docs/index.html" },
+    { "source": "/made-with-fusor", "destination": "/index.html" }
   ],
   "headers": [
     {

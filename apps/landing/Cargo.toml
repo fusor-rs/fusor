@@ -12,8 +12,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 fusor-core = { path = "../../crates/fusor-core", features = ["dom"] }
 fusor-components = { path = "../../crates/fusor-components", features = ["browser"] }
-fusor-async = { path = "../../crates/fusor-async", features = ["browser"] }
-gloo-timers = { version = "=0.3.0", features = ["futures"] }
+fusor-router = { path = "../../crates/fusor-router", features = ["browser"] }
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
 web-sys = { workspace = true, features = ["Window", "Navigator", "Clipboard"] }
@@ -25,6 +24,8 @@ two-face = { version = "=0.5.2", default-features = false, features = ["syntect-
 
 [package.metadata.fusor]
 base-path = "/"
+history-fallback = ["/made-with-fusor"]
+tailwind = "web/app.css"
 
 # The .txt suffix makes browsers display published source instead of running it.
 [package.metadata.fusor.assets]
@@ -33,4 +34,4 @@ base-path = "/"
 "/install.ps1" = "../../install.ps1"
 "/source/src/" = { files = "src/*.rs", suffix = ".txt" }
 "/source/web/components/" = { files = "web/components/*.html", suffix = ".txt" }
-"/source/host/" = { files = ["host/*/src/app.rs", "host/*/web/index.html"], suffix = ".txt" }
+"/source/shown/" = { files = "shown/*/*", suffix = ".txt" }

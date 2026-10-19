@@ -56,7 +56,7 @@ fusor::template!("web/components/counter.html");
 
 `rust:component="Counter"` makes the struct's fields and methods available as `state`. Each button calls one of its methods, which changes the `count` signal. The output reads that signal, so its text updates when the count changes. The compiler checks the expressions in the HTML along with the rest of the module.
 
-These two files are a complete reusable component, not a whole app. A page places it with a `<Counter></Counter>` tag inside `<App>`, which starts the app and owns everything in it. The landing page's example editor shows, next to each component's files, a short page that mounts it; for this counter, that is [`index.html`](apps/landing/host/counter/web/index.html) and its [Rust module](apps/landing/host/counter/src/app.rs). `fusor new` creates `Cargo.toml`, `build.rs`, and `src/lib.rs`; declare additional component modules in `src/lib.rs`. The documentation site has a full walkthrough of templates, modules, and application startup.
+These two files are a complete reusable component, not a whole app. A page places it with a `<Counter></Counter>` tag inside `<App>`, which starts the app and owns everything in it. `fusor new` creates `Cargo.toml`, `build.rs`, and `src/lib.rs`; declare additional component modules in `src/lib.rs`. The documentation site has a full walkthrough of templates, modules, and application startup.
 
 ## Get started
 
@@ -103,7 +103,7 @@ The default application is a client side WebAssembly app. Optional packages add 
 
 ## Examples
 
-- [Landing app](apps/landing/) — a complete fusor site with live counter, search, lists, and async examples.
+- [Landing app](apps/landing/) — the fusor.build homepage, a fusor app with a live component, worlds and exact source behind each tool.
 - [Playground](examples/playground/) — Rust written directly inside an HTML page with reactive bindings.
 - [Reader](examples/navigation/) — typed navigation and async data across owned views.
 - [Editor](examples/editor/README.md) — typed fields, explicit saves, and state shared across views.

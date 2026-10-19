@@ -1,8 +1,13 @@
 # fusor landing page
 
-A fusor application for the public homepage, with selectable working examples
-and their exact highlighted HTML and Rust source files. HTML owns the layout; Rust owns the
-interactive state. There is no JavaScript UI framework or remote font dependency.
+A fusor application for the public homepage of the Fusor lab. On a large display
+it is one screen: a strip for Hughie's waitlist across the top, what the lab is and
+an index of everything it makes on the left, one object on stage on the right, and
+fusor's install command along the bottom. A
+second page, `/made-with-fusor`, is a gallery of hobby projects built with fusor,
+each badged with the lab's tool it is built with.
+HTML owns the layout; Rust owns the interactive state; Tailwind styles both. There
+is no JavaScript UI framework or remote font dependency.
 
 ## Build and preview
 
@@ -51,54 +56,68 @@ rebuild and deployment.
 
 ## Application structure
 
-- `web/index.html` and `src/app.rs`: page, example and source-file controls, and
-  the install-command clipboard interaction.
-- `src/examples.rs`: the example registry, descriptions, and related guide links.
-- `src/{counter,search,keyed_list,async_data}.rs` and matching templates under
-  `web/components`: four independently owned live components. Choosing a different
-  example disposes the previous one and starts the next with fresh state. Changing
-  the displayed source file leaves the running example intact.
-- `host/{counter,search,keyed_list,async_data}/web/index.html` and matching
-  `src/app.rs`: for each example, a short page that mounts and imports only that
-  component inside `<App>`, shown under the "Page" file group in the example
-  editor. These files are displayed and downloadable but not compiled into this
-  app, which has its own entry page. Template discovery only scans `web/components`,
-  so the host pages are never picked up by this build.
+- `web/index.html` and `src/app.rs`: the page and its two routes, the selected
+  project, whether the object on stage is turned over, and the install-command
+  clipboard interaction. `/made-with-fusor` is listed in `history-fallback` for
+  `fusor dev` and `fusor preview`, and rewritten to `/index.html` in the repository's
+  `vercel.json` for the deployed site.
+- `src/project.rs`: everything the lab makes, as a table. Each project has its
+  index entry (name, kind, the day it last shipped), its caption (status, summary,
+  links), the frame shape and the page's world while it is on stage, and for tools
+  the source files on the back of the frame, plus the lab's tools it is built with
+  (the gallery's badges, with each tool's mark). Add a project there and to a group
+  in `GROUPS` for the index, or to `MADE_WITH` for the "Made with fusor" gallery.
+- `src/greeting.rs` and `web/components/greeting.html`: the live component in the
+  browser frame. Its strip shows the Rust `String` it binds, `Debug`-formatted.
+- `shown/`: files shown on the back of the stage that this app does not compile.
+  `hypercmd/browser.html` is HyperCMD's file browser template, copied unchanged from
+  `examples/file-browser/ui/browser.html` at fusor-rs/hypercmd 594eaa7, the example
+  in `public/lab/hypercmd-file-browser.png`; copy it again when that example
+  changes. `hyperpane/run.sh` is the command that runs any fusor app on iPhone.
 - `build/highlight.rs`, `src/code.rs`, and `web/components/code.html`: build-time
   Syntect highlighting rendered as escaped text tokens. No runtime highlighter or
-  raw HTML injection. Colors have at least 4.5:1 contrast against the code background.
-- `public/landing.css`: responsive styles, focus states, and reduced-motion support.
-- `public/data/issues`: clearly labeled local fixtures for the async example.
+  raw HTML injection. Colors have at least 4.5:1 contrast against the charcoal code
+  background.
+- `web/app.css`: the Tailwind entry. It defines the color tokens (swapped for dark
+  mode and registered with `@property` so worlds can glide), each project's world,
+  the spring easing curves, the bench layout and index, the `control` and `field`
+  utilities, the segmented-control thumb, the stage frame's shapes and turn, the
+  fusing mark, Hughie, and the arrival transition for what comes on stage.
+- `public/lab`: images from the lab's projects, and HyperCMD's mark for badges, from
+  its `assets/brand/hypercmd.svg`. HyperCMD's file browser (cropped to
+  its window), SQL Bomb, spotify-tui and supabase-tui (each cropped to the terminal
+  frame's 1.45 proportion) come from each project's repository, and Hughie's faces
+  from hughie.si. `hyperpane-iphone.png` is this page captured in the iPhone 17
+  simulator through `hyperpane run --ios --dist`; capture it again when the top of
+  the page changes.
 - `build.rs`: highlighting, standard HTML compilation, installer assets, and exact
   plain-text source copies. Generated copies in `public/` are ignored by Git.
 
-Counter is the first example because it shows the whole model in two short files:
-the HTML calls `increment` and `reset` methods on a Rust struct, and one binding
-displays the count. A key below the source explains the four pieces of template
-syntax visitors will see. The example files are complete reusable components, not
-whole apps, so the editor's tab bar has two labeled groups: "Component" (the
-selected example's HTML and Rust) and "Page" (that example's host `index.html` and
-`app.rs`). One sentence above the key names the selected component's tag and says
-the page places it inside `<App>`, which starts the app; a one-line note below says
-what `fusor new` adds. Choosing another example while a page file is open keeps that
-page file open, so it switches to the new example's page. From a component file, it
-opens the new component's HTML. At phone
-widths each group's label sits above its two files. Live search filters real guide links using a bound input.
-Keyed lists demonstrate that notes survive reordering of the actual DOM nodes.
-Async data reads a title and status independently after 250 ms and 1,000 ms delays;
-`<Async>` creates and owns its coherent boundary, retaining the previous result
-until both reads succeed. No boundary field or initialization is needed. The
-framework marks the result busy while work is pending; CSS dims it. Status and
-retry controls using an optional explicit handle are covered in the linked guide.
+The page is an app rather than a document. The index lists the lab's tools (fusor,
+HyperCMD, hyperpane) and the things it makes with them (Hughie, SQL Bomb). Hobby
+projects made for fun (spotify-tui, supabase-tui) are on the "Made with fusor" page,
+linked from beneath the index and from the header. Choosing one puts it on stage: one frame becomes a
+browser running a live fusor component, a terminal, an iPhone showing this page
+through hyperpane, or Hughie himself. The whole page takes on that project's world:
+warm white for fusor and hyperpane, Hughie's own night and peach light for Hughie,
+and the lab's charcoal and vermilion for the terminal projects. A tool's "How it's made" turns the frame over to the exact files behind its
+front, so code appears as the lab's proof rather than as a tutorial; a thing links
+to where it lives instead. fusor's install command stays on screen whatever is on
+stage. On phones the object comes first, with the index as a dial beneath it.
 
-The design uses system fonts, the selected fusor F emblem, an oxide accent, and a
-compact source-and-result view. Header navigation and the logo stay visible at
-phone widths. [Branding](BRANDING.md) records the selected artwork and palette.
-The hero pairs the introduction with platform-specific installation and a copy
-button. A closing call to action shows the commands to create and run an app.
-The “More from Fusor” section links to HyperCMD and SQL Bomb, explaining
-how they use fusor. Their horizontal logos in `public/brand/` come from each
-project’s `assets/brand/` directory.
+The design uses system fonts, the fusor F emblem and wordmark (painted in the
+world's ink), an oxide accent on warm white, and brand charcoal for source code.
+[Branding](BRANDING.md) records the artwork and palette.
+
+Motion has one arrival and otherwise answers a choice. On load, the mark's two
+shapes arrive from opposite sides and lock together. Choosing a project glides the
+page into its world, reshapes the frame on a spring while the new content sharpens
+into it, and moves the index's accent dot; "How it's made" turns the frame over in
+3D. Hughie breathes, glances up when he arrives on stage or when the page loads in the
+strip, and opens his eyes when the pointer comes near. The strip carries Hughie's
+world (`data-world` and `data-project`), so it keeps his night on every page and
+blends into the page when he is on stage. With reduced motion, nothing moves: worlds, frame and thumb
+change at once, the mark and Hughie stay still, and new content only fades in.
 
 ## Verification
 
@@ -114,16 +133,13 @@ cargo clippy --manifest-path apps/landing/Cargo.toml \
   --target wasm32-unknown-unknown --locked -- -D warnings
 ```
 
-Each browser run starts its own temporary preview server. Tests check that Counter
-opens first with its HTML shown and that the source key renders template syntax
-literally. They exercise search
-and empty states, keyed input/DOM retention, async coherent publication,
-supersession, failed refresh retention and recovery, switching away during a request, counter updates,
-keyboard interaction, and all examples at six widths from 320 to 1440 pixels.
-They compare all eight component files and all eight host page files, and their
-downloadable copies, with the sources on disk. They check that only one file tab
-is active, that each host page mounts and imports only its own component, that an
-open page file follows a newly selected example, that viewing the page files keeps
-the running example's state, syntax-color contrast, and that documentation links
-resolve. Chromium also checks the clipboard. Screenshots are saved by browser in
-the ignored `test-results` directory. Docs and benchmark builds are not required.
+Each browser run starts its own temporary preview server. Tests check the index
+and that each of its five projects takes the stage with its world and frame shape,
+the greeting and its Rust state, that each tool turns over to source files identical
+to the files on disk and to their published copies with readable syntax contrast,
+that things do not turn and land face up, the "Made with fusor" page by link and by
+its own address, the install commands, documentation
+links, no horizontal overflow from 320 to 1440 pixels, the object above the index on
+phones, and keyboard selection. Chromium also checks the clipboard. Screenshots are
+saved by browser in the ignored `test-results` directory. Docs and benchmark builds
+are not required.

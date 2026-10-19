@@ -1,0 +1,64 @@
+<template rust:component="Browser">
+  <main>
+    <h1>File browser</h1>
+    <Router>
+      <Route path="/">
+        <DirectoryView path="{{ state.path.clone() }}" filter="{{ state.filter.clone() }}" open="{{ state.open.clone() }}"></DirectoryView>
+      </Route>
+      <Route path="/preview">
+        <FilePreview path="{{ state.selected.get() }}"></FilePreview>
+      </Route>
+    </Router>
+    <div class="help">
+      <p><strong>↑↓</strong> select · <strong>Enter</strong> choose · <strong>Tab</strong> next</p>
+      <p><strong>PgUp/PgDn</strong> scroll · <strong>Ctrl+C</strong> quit</p>
+    </div>
+  </main>
+</template>
+
+<template rust:component="DirectoryView">
+  <section class="screen">
+    <div class="toolbar">
+      <label class="filter">Filter <input id="filter" type="text" bind="state.filter" placeholder="Name contains…"></label>
+      <button disabled="{{ state.path.get().parent().is_none() }}" on:click="state.up()">Parent</button>
+      <button on:click="state.revision.update(|revision| *revision += 1)">Refresh</button>
+    </div>
+    <If condition="{{ !state.status().is_empty() }}"><p>{{ state.status() }}</p></If>
+    <Async boundary="{{ state.boundary }}">
+      <Await value="{{ state.listing }}" let="listing">
+        <section class="listing">
+          <p class="path">{{ state.path.get().display() }}</p>
+          <If condition="{{ state.visible(&listing).is_empty() }}"><p>No matching entries</p></If>
+          <div class="entries">
+            <ForEach items="{{ state.visible(&listing) }}" key="{{ |entry| entry.path.clone() }}">
+              <button class="entry" disabled="{{ !item.get().supported }}" on:click="(state.open)(item.get())">{{ item.get().label() }}</button>
+            </ForEach>
+          </div>
+          <p>{{ format!("{} of {} entries", state.visible(&listing).len(), listing.entries.len()) }}</p>
+          <If condition="{{ listing.truncated }}"><p>{{ format!("Showing the first {} entries returned by the filesystem.", files::MAX_ENTRIES) }}</p></If>
+        </section>
+      </Await>
+    </Async>
+  </section>
+</template>
+
+<template rust:component="FilePreview">
+  <section class="screen preview">
+    <div class="toolbar">
+      <button on:click="state.history.back()">Back</button>
+      <button on:click="state.revision.update(|revision| *revision += 1)">Reload</button>
+    </div>
+    <h2>{{ state.path.file_name().unwrap_or_default().to_string_lossy() }}</h2>
+    <p class="path">{{ state.path.display() }}</p>
+    <If condition="{{ !state.status().is_empty() }}"><p>{{ state.status() }}</p></If>
+    <Async boundary="{{ state.boundary }}">
+      <Await value="{{ state.contents }}" let="contents">
+        <div>
+          <If condition="{{ contents.truncated }}"><p>{{ format!("Preview limited to the first {} KiB.", files::PREVIEW_BYTES / 1024) }}</p></If>
+          <If condition="{{ contents.text.is_empty() }}"><p>Empty file</p></If>
+          <pre>{{ contents.text.as_str() }}</pre>
+        </div>
+      </Await>
+    </Async>
+  </section>
+</template>

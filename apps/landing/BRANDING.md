@@ -16,6 +16,7 @@ with no embedded raster images, external fonts, or scripts.
 | Light rounded badge with a transparent cutout | [fusor-badge-reversed.svg](public/brand/fusor-badge-reversed.svg) |
 | Main stacked logo | [Color](public/brand/fusor-lockup.svg), [monochrome](public/brand/fusor-lockup-mono.svg), [reversed](public/brand/fusor-lockup-reversed.svg) |
 | Horizontal logo | [fusor-horizontal.svg](public/brand/fusor-horizontal.svg) |
+| The symbol's two shapes, for motion | [Upper](public/brand/fusor-upper.svg), [lower](public/brand/fusor-lower.svg) |
 | X/profile avatar | [Light SVG](public/brand/fusor-avatar.svg), [dark SVG](public/brand/fusor-avatar-dark.svg) |
 | Upload-ready avatars | [Light 400px](public/brand/fusor-avatar-400.png), [dark 400px](public/brand/fusor-avatar-dark-400.png), [light 800px](public/brand/fusor-avatar-800.png), [dark 800px](public/brand/fusor-avatar-dark-800.png) |
 

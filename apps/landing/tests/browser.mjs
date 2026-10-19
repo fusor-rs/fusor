@@ -25,30 +25,37 @@ await waitFor(() => server.output.includes("Ready"), "site preview", {
 const base = `http://127.0.0.1:${port}`;
 const browser = await engine.launch();
 const context = await browser.newContext({
-  viewport: { width: 1440, height: 1050 },
+  viewport: { width: 1440, height: 900 },
   reducedMotion: "reduce",
 });
 const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
-const picker = page.getByRole("group", { name: "Choose an example" });
-const select = (name) =>
-  picker.getByRole("button", { name, exact: true }).click();
-const output = page.locator(".counter output");
-const code = page.locator(".source-content pre code");
-const examples = [
-  ["Counter", "counter"],
-  ["Live search", "search"],
-  ["Keyed lists", "keyed_list"],
-  ["Async data", "async_data"],
-];
-const asyncReady = async () => {
-  await expect(page.locator(".issue-result")).not.toHaveAttribute(
-    "aria-busy",
-    "true",
-  );
-  await expect(page.locator('[data-field="title"]')).not.toHaveText("");
+const index = page.getByRole("navigation", { name: "Projects" });
+// An index entry's accessible name starts with the project's name.
+const entry = (name) => index.getByRole("button", { name: new RegExp(`^${name} `) });
+const world = page.locator(".world");
+const frame = page.locator(".stage-frame");
+const front = page.locator(".stage-front");
+const back = page.locator(".stage-back");
+const caption = page.locator(".bench-caption");
+const turn = page.getByRole("button", { name: "How it’s made", exact: true });
+// Every page leads with Hughie's waitlist, in his own night.
+const expectHughieStrip = async () => {
+  const strip = page.getByRole("link", { name: /^Hughie\. The AI that never leaves your house\./ });
+  await expect(strip).toHaveAttribute("href", "https://hughie.si/");
+  await expect(strip).toHaveAttribute("data-project", "hughie");
 };
+// Name, data-project, world, frame shape, and the files on the back of a tool.
+const projects = [
+  ["fusor", "fusor", "day", "browser", ["web/components/greeting.html", "src/greeting.rs"]],
+  ["HyperCMD", "hypercmd", "night", "terminal", ["shown/hypercmd/browser.html"]],
+  ["hyperpane", "hyperpane", "day", "phone", ["shown/hyperpane/run.sh"]],
+  ["Hughie", "hughie", "night", "face", []],
+  ["SQL Bomb", "sql-bomb", "night", "terminal", []],
+];
+// Hobby projects live on their own page, not in the index.
+const hobbies = ["spotify-tui", "supabase-tui"];
 // Runs in the page: distinct syntax colors and their worst contrast ratio.
 const syntaxContrast = (element) => {
   const rgb = (value) =>
@@ -68,9 +75,7 @@ const syntaxContrast = (element) => {
       );
     }, 0);
   const bg = luminance(
-    rgb(
-      getComputedStyle(element.closest(".source-panel")).backgroundColor,
-    ),
+    rgb(getComputedStyle(element.closest(".stage-back")).backgroundColor),
   );
   const colors = [
     ...new Set(
@@ -92,329 +97,75 @@ const syntaxContrast = (element) => {
 
 try {
   await page.goto(base);
-  // The smallest example opens first, with its HTML file shown.
-  await expect(output).toHaveText("0");
-  await expect(
-    picker.getByRole("button", { name: "Counter", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    page.getByRole("button", { name: "counter.html", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-  // Template syntax in the source key renders literally, not as a binding.
-  await expect(page.locator(".source-key dt code")).toHaveText([
-    "rust:component",
-    "{{ … }}",
-    "on:click",
-    "bind",
-    "template!(…)",
-  ]);
-  assert.equal(
-    await page.title(),
-    "fusor — A framework for Rust and HTML",
-  );
-  await page.screenshot({ path: `${artifacts}desktop.png`, fullPage: true });
-  await page.screenshot({ path: `${artifacts}desktop-fold.png` });
-
-  // Every displayed file must remain byte-for-byte identical to the real source.
-  for (const [label, stem] of examples) {
-    await select(label);
-    for (const language of ["html", "rs"]) {
-      await page
-        .getByRole("button", { name: `${stem}.${language}`, exact: true })
-        .click();
-      const path =
-        language === "html" ? `web/components/${stem}.html` : `src/${stem}.rs`;
-      const source = await readFile(
-        new URL(`../${path}`, import.meta.url),
-        "utf8",
-      );
-      assert.equal(
-        await code.textContent(),
-        source,
-        `${stem}.${language}: complete source`,
-      );
-      await expect(
-        page.getByRole("link", { name: "Open the displayed source file" }),
-      ).toHaveAttribute("href", `./source/${path}.txt`);
-      const response = await context.request.get(`${base}/source/${path}.txt`);
-      assert.equal(response.status(), 200);
-      assert.match(response.headers()["content-type"], /^text\/plain/);
-      assert.equal(await response.text(), source);
-      const contrast = await code.evaluate(syntaxContrast);
-      assert.ok(
-        contrast.colors >= 3,
-        `${stem}.${language}: multiple syntax colors`,
-      );
-      assert.ok(
-        contrast.minimum >= 4.5,
-        `${stem}.${language}: readable syntax contrast`,
-      );
-      assert.equal(
-        await page
-          .locator(".source-content pre")
-          .evaluate((pre) => pre.scrollTop),
-        0,
-      );
-    }
-  }
-
-  // The same editor shows the page that hosts the selected example, from real
-  // source. It mounts and imports only that example's component.
-  const componentFiles = page.getByRole("group", { name: "Component files" });
-  const pageFiles = page.getByRole("group", { name: "Page files" });
-  const tags = {
-    counter: "Counter",
-    search: "LiveSearch",
-    keyed_list: "KeyedList",
-    async_data: "AsyncData",
-  };
-  const checkPage = async (stem, name) => {
-    const path =
-      name === "index.html"
-        ? `host/${stem}/web/index.html`
-        : `host/${stem}/src/app.rs`;
-    await expect(
-      pageFiles.getByRole("button", { name, exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
-    await expect(
-      page.locator('.source-tabs button[aria-pressed="true"]'),
-    ).toHaveCount(1);
-    const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
-    assert.equal(await code.textContent(), source, `${path}: complete page source`);
-    await expect(
-      page.getByRole("link", { name: "Open the displayed source file" }),
-    ).toHaveAttribute("href", `./source/${path}.txt`);
-    const response = await context.request.get(`${base}/source/${path}.txt`);
-    assert.equal(response.status(), 200);
-    assert.match(response.headers()["content-type"], /^text\/plain/);
-    assert.equal(await response.text(), source);
-    const contrast = await code.evaluate(syntaxContrast);
-    assert.ok(contrast.colors >= 3, `${path}: multiple syntax colors`);
-    assert.ok(contrast.minimum >= 4.5, `${path}: readable syntax contrast`);
-    const tag = tags[stem];
-    assert.ok(
-      name === "index.html"
-        ? source.includes(`<${tag}></${tag}>`)
-        : source.includes(`use crate::${stem}::${tag};`),
-      `${path}: uses ${tag}`,
-    );
-    for (const other of Object.values(tags).filter((other) => other !== tag)) {
-      assert.ok(!source.includes(other), `${path}: does not reference ${other}`);
-    }
-  };
-  await select("Counter");
-  let open = "index.html";
-  await pageFiles.getByRole("button", { name: open, exact: true }).click();
-  for (const [label, stem] of examples) {
-    // Changing examples keeps the open page file, now showing this example's page.
-    await select(label);
-    await expect(page.locator(".page-tag")).toHaveText(`<${tags[stem]}>`);
-    await checkPage(stem, open);
-    open = open === "index.html" ? "app.rs" : "index.html";
-    await pageFiles.getByRole("button", { name: open, exact: true }).click();
-    await checkPage(stem, open);
-  }
-  // From a component file, choosing another example opens that component's HTML.
-  await componentFiles
-    .getByRole("button", { name: "async_data.rs", exact: true })
-    .click();
-  await select("Counter");
-  await expect(
-    componentFiles.getByRole("button", { name: "counter.html", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-
-  await select("Live search");
-  const query = page.getByLabel("Find a guide");
-  await query.fill("  TYPED  ");
-  await expect(page.locator(".search-results li")).toHaveCount(2);
-  await expect(page.locator(".result-count")).toHaveText("2 of 4 guides");
-  await page.getByRole("button", { name: "search.rs", exact: true }).click();
-  await expect(query).toHaveValue("  TYPED  ");
-  // Viewing the host page's source leaves the running component intact.
-  for (const name of ["index.html", "app.rs"]) {
-    await pageFiles.getByRole("button", { name, exact: true }).click();
-    await expect(query).toHaveValue("  TYPED  ");
-    await expect(page.locator(".search-results li")).toHaveCount(2);
-  }
-  await componentFiles
-    .getByRole("button", { name: "search.html", exact: true })
-    .click();
-  await page.screenshot({ path: `${artifacts}search-rust.png` });
-  await query.fill("<script>alert(1)</script>");
-  await expect(page.locator(".search-results li")).toHaveCount(0);
-  await expect(
-    page.getByText("No matching guides.", { exact: true }),
-  ).toBeVisible();
-  await query.fill("");
-  await expect(page.locator(".search-results li")).toHaveCount(4);
-
-  await select("Keyed lists");
-  await page
-    .getByLabel("Note for row 1", { exact: true })
-    .fill("Keep this draft");
-  await page.evaluate(() => {
-    window.originalRow = document.querySelector('[data-row="1"] input');
-  });
-  await page
-    .getByRole("button", { name: "Reverse order", exact: true })
-    .click();
+  assert.equal(await page.title(), "Fusor — An open source lab working in Rust");
+  await expectHughieStrip();
+  // The index lists the tools, then the things made with them; fusor is on stage first.
+  await expect(index.getByRole("heading")).toHaveText(["Tools", "Things"]);
+  await expect(index.locator(".index-name")).toHaveText(projects.map(([name]) => name));
+  await expect(entry("fusor")).toHaveAttribute("aria-pressed", "true");
+  await expect(index.locator('[aria-pressed="true"]')).toHaveCount(1);
+  // Every enabled button shows the pointer, from the index to the install bar.
   assert.deepEqual(
     await page
-      .locator(".keyed-rows li")
-      .evaluateAll((rows) => rows.map((row) => row.dataset.row)),
-    ["3", "2", "1"],
+      .locator("button:not(:disabled)")
+      .evaluateAll((buttons) => [...new Set(buttons.map((button) => getComputedStyle(button).cursor))]),
+    ["pointer"],
   );
-  await expect(page.getByLabel("Note for row 1", { exact: true })).toHaveValue(
-    "Keep this draft",
-  );
-  assert.equal(
-    await page.evaluate(
-      () =>
-        window.originalRow === document.querySelector('[data-row="1"] input'),
-    ),
-    true,
-  );
-  await page.getByRole("button", { name: "Add row", exact: true }).click();
-  await expect(page.locator(".keyed-rows li")).toHaveCount(4);
-  await page.getByRole("button", { name: "Remove row 2", exact: true }).click();
-  await expect(page.locator(".keyed-rows li")).toHaveCount(3);
-  await expect(page.getByLabel("Note for row 1", { exact: true })).toHaveValue(
-    "Keep this draft",
-  );
-  await page.screenshot({ path: `${artifacts}keyed-list.png` });
-  for (const id of [1, 3, 4])
-    await page
-      .getByRole("button", { name: `Remove row ${id}`, exact: true })
-      .click();
-  await expect(
-    page.getByText("No rows. Add one to start again.", { exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Reverse order", exact: true })
-    .isDisabled()
-    .then((disabled) => assert.ok(disabled));
-  await page.getByRole("button", { name: "Add row", exact: true }).click();
-  await expect(
-    page.getByLabel("Note for row 5", { exact: true }),
-  ).toBeVisible();
+  await expect(entry("fusor").locator("time")).toHaveAttribute("datetime", "2026-10-18");
+  await expect(entry("fusor").locator("time")).toHaveText("Oct 18");
 
-  await select("Async data");
-  await asyncReady();
-  await expect(page.locator(".issue-result")).toHaveAttribute(
-    "data-issue",
-    "12",
-  );
-  const titleReady = page.waitForResponse(
-    (response) => response.url().endsWith("/34-title.txt") && response.ok(),
-  );
-  await page.getByRole("button", { name: "Issue #34", exact: true }).click();
-  await titleReady;
-  await expect(page.locator(".issue-result")).toHaveAttribute(
-    "data-issue",
-    "12",
-  );
-  await expect(page.locator('[data-field="title"]')).toHaveText(
-    "Add keyboard shortcuts",
-  );
-  await expect(page.locator('[data-field="status"]')).toHaveText("Open");
-  await asyncReady();
-  await expect(page.locator(".issue-result")).toHaveAttribute(
-    "data-issue",
-    "34",
-  );
-  await expect(page.locator('[data-field="title"]')).toHaveText(
-    "Support nested routes",
-  );
-  await expect(page.locator('[data-field="status"]')).toHaveText("Closed");
-  await page.screenshot({ path: `${artifacts}async-data.png` });
+  // The browser on stage greets whoever types, from a Rust String shown as Rust prints it.
+  const name = front.getByLabel("What should Rust call you?");
+  await name.fill("  Ana ");
+  await expect(front.getByText("Hello, Ana.", { exact: true })).toBeVisible();
+  await expect(front.getByText('self.name = "  Ana "', { exact: true })).toBeVisible();
+  await name.fill("   ");
+  await expect(front.getByText("Hello.", { exact: true })).toBeVisible();
+  await page.screenshot({ path: `${artifacts}desktop.png` });
 
-  // Delay an obsolete request beyond the latest selection; it must not publish.
-  let started, release;
-  const oldStarted = new Promise((resolve) => {
-    started = resolve;
-  });
-  const oldResponse = new Promise((resolve) => {
-    release = resolve;
-  });
-  const staleRoute = async (route) => {
-    started();
-    await oldResponse;
-    await route.fulfill({ status: 200, body: "Stale response" });
-  };
-  await page.route("**/12-status.txt", staleRoute);
-  await page.getByRole("button", { name: "Issue #12", exact: true }).click();
-  await oldStarted;
-  await page.getByRole("button", { name: "Issue #34", exact: true }).click();
-  await asyncReady();
-  release();
-  await page.unrouteAll({ behavior: "wait" });
-  await expect(page.locator(".issue-result")).toHaveAttribute(
-    "data-issue",
-    "34",
-  );
-  await expect(page.locator('[data-field="status"]')).toHaveText("Closed");
-
-  await page.route("**/12-status.txt", (route) =>
-    route.fulfill({ status: 503, body: "Test failure" }),
-  );
-  const failedRead = page.waitForResponse(
-    (response) =>
-      response.url().endsWith("/12-status.txt") && response.status() === 503,
-  );
-  await page.getByRole("button", { name: "Issue #12", exact: true }).click();
-  await failedRead;
-  await expect(page.locator(".issue-result")).toHaveAttribute(
-    "data-issue",
-    "34",
-  );
-  await expect(page.locator('[data-field="status"]')).toHaveText("Closed");
-  await page.unrouteAll({ behavior: "wait" });
-  await page.getByRole("button", { name: "Issue #34", exact: true }).click();
-  await asyncReady();
-  await page.getByRole("button", { name: "Issue #12", exact: true }).click();
-  await asyncReady();
-  await expect(page.locator(".issue-result")).toHaveAttribute(
-    "data-issue",
-    "12",
-  );
-
-  // Switching away during a request disposes that example's work.
-  await page.getByRole("button", { name: "Issue #34", exact: true }).click();
-  await select("Counter");
-  await expect(output).toHaveText("0");
-  await page.evaluate(() => {
-    window.counterElement = document.querySelector(".counter output");
-    window.counterText = window.counterElement.firstChild;
-  });
-  const increment = page.getByRole("button", {
-    name: "Increment",
-    exact: true,
-  });
-  for (let n = 0; n < 5; n++) await increment.click();
-  await increment.focus();
-  await page.keyboard.press("Enter");
-  await expect(output).toHaveText("6");
-  assert.equal(
-    await page.evaluate(() => {
-      const output = document.querySelector(".counter output");
-      return (
-        output === window.counterElement &&
-        output.firstChild === window.counterText
-      );
-    }),
-    true,
-  );
-  await page.getByRole("button", { name: "counter.rs", exact: true }).click();
-  await expect(output).toHaveText("6");
-  await page.getByRole("button", { name: "Reset", exact: true }).click();
-  await expect(output).toHaveText("0");
-  await expect(page.locator(".async-demo")).toHaveCount(0);
-  await select("Async data");
-  await asyncReady();
-  await expect(page.locator(".issue-result")).toHaveAttribute(
-    "data-issue",
-    "12",
-  );
+  // Each project takes the stage: the page takes on its world, the frame its shape.
+  // A tool turns over to the exact files that make its front; a thing does not turn.
+  for (const [project, key, colors, shape, paths] of projects) {
+    await entry(project).click();
+    await expect(entry(project)).toHaveAttribute("aria-pressed", "true");
+    await expect(index.locator('[aria-pressed="true"]')).toHaveCount(1);
+    await expect(world).toHaveAttribute("data-project", key);
+    await expect(world).toHaveAttribute("data-world", colors);
+    await expect(frame).toHaveAttribute("data-shape", shape);
+    await expect(caption.getByText(project, { exact: true })).toBeVisible();
+    await page.screenshot({ path: `${artifacts}desktop-${key}.png` });
+    if (paths.length === 0) {
+      await expect(turn).toBeHidden();
+      continue;
+    }
+    await turn.click();
+    await expect(frame).toHaveAttribute("data-flipped", "true");
+    await expect(front).toHaveAttribute("inert", "");
+    const shown = back.locator("pre code");
+    await expect(shown).toHaveCount(paths.length);
+    for (const [position, path] of paths.entries()) {
+      const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
+      await expect.poll(() => shown.nth(position).textContent()).toBe(source);
+      const contrast = await shown.nth(position).evaluate(syntaxContrast);
+      assert.ok(contrast.minimum >= 4.5, `${path}: readable syntax contrast`);
+      const response = await context.request.get(`${base}/source/${path}.txt`);
+      assert.equal(response.status(), 200);
+      assert.equal(await response.text(), source, `${path}: published copy`);
+    }
+    await turn.click();
+    await expect(frame).toHaveAttribute("data-flipped", "false");
+    await expect(back).toHaveAttribute("inert", "");
+  }
+  // A greeting that left the stage comes back fresh.
+  await entry("fusor").click();
+  await expect(name).toHaveValue("");
+  // Choosing a thing while a tool is turned over lands it face up.
+  await entry("HyperCMD").click();
+  await turn.click();
+  await expect(frame).toHaveAttribute("data-flipped", "true");
+  await entry("Hughie").click();
+  await expect(frame).toHaveAttribute("data-flipped", "false");
+  await expect(front).not.toHaveAttribute("inert", "");
 
   if (engine === chromium) {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -436,73 +187,78 @@ try {
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), command);
     }
   }
+
   const docs = JSON.parse(
-    await readFile(
-      new URL("../../docs/content/navigation.json", import.meta.url),
-      "utf8",
-    ),
+    await readFile(new URL("../../docs/content/navigation.json", import.meta.url), "utf8"),
   );
   const slugs = new Set(docs.map((page) => `/docs/${page.slug}`));
   slugs.add("/docs/showcase");
-  for (const [label] of examples) {
-    await select(label);
+  for (const [project] of projects) {
+    await entry(project).click();
     for (const href of await page
       .locator('a[href^="/docs/"]')
       .evaluateAll((links) => links.map((link) => link.getAttribute("href")))) {
       assert.ok(slugs.has(href), `Documentation link exists: ${href}`);
     }
-    for (const width of [320, 390, 701, 768, 1024, 1440]) {
+    for (const width of [320, 390, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 844 });
       assert.equal(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= window.innerWidth,
-        ),
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
         true,
-        `${label}: no overflow at ${width}px`,
+        `${project}: no overflow at ${width}px`,
       );
-      // The panel clips overflow, so check each file tab and link fits inside it.
-      const clipped = await page.evaluate(() => {
-        const panel = document
-          .querySelector(".source-panel")
-          .getBoundingClientRect();
-        return [...document.querySelectorAll(".source-tabs button, .source-tabs a")]
-          .filter((control) => {
-            const box = control.getBoundingClientRect();
-            return (
-              box.left < panel.left - 1 ||
-              box.right > panel.right + 1 ||
-              box.top < panel.top - 1 ||
-              box.bottom > panel.bottom + 1
-            );
-          })
-          .map((control) => control.textContent.trim() || control.ariaLabel);
-      });
-      assert.deepEqual(clipped, [], `${label}: source tabs fit at ${width}px`);
     }
   }
+
+  // The hobby projects have their own page, reached from beside the index.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("link", { name: "Made with fusor, for fun", exact: true }).click();
+  await expect(page).toHaveURL(`${base}/made-with-fusor`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Made with fusor.");
+  await expect(index).toHaveCount(0);
+  await expectHughieStrip();
+  const hobbyNames = page.locator("main li h2 span:first-child");
+  await expect(hobbyNames).toHaveText(hobbies);
+  // Each tile names the lab's tool it is built with.
+  for (const hobby of hobbies) {
+    const tile = page.locator("main li", { has: page.getByText(hobby, { exact: true }) });
+    await expect(tile.locator(".tool-badge")).toHaveText("Built with HyperCMD");
+    await expect(tile.locator(".tool-badge img")).toHaveAttribute("src", "./lab/hypercmd-mark.svg");
+    await expect(tile.getByText("Hobby project", { exact: true })).toBeVisible();
+    await expect(tile.getByRole("link", { name: "Source ↗" })).toHaveAttribute(
+      "href",
+      `https://github.com/fusor-rs/${hobby}`,
+    );
+  }
+  await page.screenshot({ path: `${artifacts}made-with-fusor.png`, fullPage: true });
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 844 });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true,
+      `Made with fusor: no overflow at ${width}px`,
+    );
+  }
+  // It also loads directly at its own address.
+  await page.goto(`${base}/made-with-fusor`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Made with fusor.");
+  await page.getByRole("link", { name: "The lab", exact: true }).click();
+  await expect(index).toBeVisible();
+
+  // On phones the object comes first and the index is a dial beneath it.
   await page.setViewportSize({ width: 390, height: 844 });
-  await select("Live search");
-  const previewBounds = await page.locator(".preview-panel").boundingBox();
-  const sourceBounds = await page.locator(".source-panel").boundingBox();
-  assert.ok(
-    previewBounds.y < sourceBounds.y,
-    "Keep the live result above source on phones",
-  );
+  await entry("fusor").click();
+  const stageBounds = await page.locator(".bench-stage").boundingBox();
+  const indexBounds = await index.boundingBox();
+  assert.ok(stageBounds.y < indexBounds.y, "Keep the object above the index on phones");
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: `${artifacts}mobile.png`, fullPage: true });
-  await page.screenshot({ path: `${artifacts}mobile-fold.png` });
-  await page.getByLabel("Find a guide").fill("state");
-  await expect(page.locator(".search-results li")).toHaveCount(1);
-  await picker
-    .getByRole("button", { name: "Keyed lists", exact: true })
-    .focus();
+  await entry("hyperpane").focus();
   await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("region", { name: "Keyed list example" }),
-  ).toBeVisible();
+  await expect(world).toHaveAttribute("data-project", "hyperpane");
   assert.deepEqual(errors, [], "No uncaught browser errors");
   console.log(
-    `${engine.name()}: all four examples, eight component and eight page source files, syntax contrast, keyed DOM identity, automatic async coherence/supersession/recovery/disposal, keyboard interaction, and responsive layouts passed.`,
+    `${engine.name()}: the Hughie strip, index, worlds and stage shapes for ${projects.length} projects, the Made with fusor page, the greeting, exact sources behind each tool with readable contrast, install commands, documentation links, responsive layouts and keyboard selection passed.`,
   );
 } finally {
   await browser.close();

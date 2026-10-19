@@ -1,22 +1,16 @@
 use crate::{
-    async_data::AsyncData,
-    code::{CodeBlock, CodeFile},
-    counter::Counter,
-    examples::Example,
-    keyed_list::KeyedList,
-    search::LiveSearch,
+    code::CodeBlock,
+    greeting::Greeting,
+    project::{GROUPS, MADE_WITH, ProjectId, Shape},
 };
 use fusor::prelude::*;
 
 const INSTALL_UNIX: &str = "curl -fsSL https://fusor.build/install.sh | sh";
 const INSTALL_WINDOWS: &str = "irm https://fusor.build/install.ps1 | iex";
-// Shown literally in the source key; `{{` in template text starts a binding.
-const INTERPOLATION: &str = "{{ … }}";
 
 struct App {
-    example: Signal<Example>,
-    show_page: Signal<bool>,
-    show_rust: Signal<bool>,
+    project: Signal<ProjectId>,
+    flipped: Signal<bool>,
     install_windows: Signal<bool>,
     copy_label: Signal<&'static str>,
 }
@@ -24,9 +18,8 @@ struct App {
 impl App {
     fn new() -> Self {
         Self {
-            example: signal(Example::Counter),
-            show_page: signal(false),
-            show_rust: signal(false),
+            project: signal(ProjectId::Fusor),
+            flipped: signal(false),
             install_windows: signal(
                 web_sys::window()
                     .and_then(|window| window.navigator().user_agent().ok())
@@ -36,39 +29,14 @@ impl App {
         }
     }
 
-    // A page file stays open so it follows the new example; otherwise start at its HTML.
-    fn select(&self, example: Example) {
+    // A project with nothing on its back lands face up.
+    fn select(&self, project: ProjectId) {
         fusor::batch(|| {
-            self.example.set(example);
-            if !self.show_page.get() {
-                self.show_rust.set(false);
+            self.project.set(project);
+            if project.project().sources.is_empty() {
+                self.flipped.set(false);
             }
         });
-    }
-
-    // The editor shows the selected component's files or the page that hosts it.
-    fn file(&self, page: bool, rust: bool) -> &'static CodeFile {
-        let example = self.example.get();
-        if page {
-            example.page_source(rust)
-        } else {
-            example.source(rust)
-        }
-    }
-
-    fn shows(&self, page: bool, rust: bool) -> bool {
-        self.show_page.get() == page && self.show_rust.get() == rust
-    }
-
-    fn show_file(&self, page: bool, rust: bool) {
-        fusor::batch(|| {
-            self.show_page.set(page);
-            self.show_rust.set(rust);
-        });
-    }
-
-    fn source(&self) -> &'static CodeFile {
-        self.file(self.show_page.get(), self.show_rust.get())
     }
 
     fn select_install(&self, windows: bool) {
@@ -81,14 +49,6 @@ impl App {
             INSTALL_WINDOWS
         } else {
             INSTALL_UNIX
-        }
-    }
-
-    fn install_note(&self) -> &'static str {
-        if self.install_windows.get() {
-            "Run in PowerShell, then open a new terminal to use fusor."
-        } else {
-            "Follow the installer’s PATH instructions to make fusor available in your shell."
         }
     }
 

@@ -29,15 +29,14 @@ impl Highlighter {
             .syntaxes
             .find_syntax_by_extension(extension)
             .ok_or_else(|| format!("Missing syntax for {extension}"))?;
-        let mut highlighter = HighlightLines::new(syntax, &self.themes.themes["InspiredGitHub"]);
+        let mut highlighter =
+            HighlightLines::new(syntax, &self.themes.themes["base16-eighties.dark"]);
         let mut tokens: Vec<(String, String)> = Vec::new();
         for line in LinesWithEndings::from(code) {
             for (style, text) in highlighter.highlight_line(line, &self.syntaxes)? {
-                // Match .source-panel's #f0f2ef background; keep all text at 4.5:1.
-                let style = format!(
-                    "color:{}",
-                    accessible_color(style.foreground, [240, 242, 239])
-                );
+                // Match .source-panel's lightest background, --color-night (#272a2c),
+                // and keep all text at 4.5:1.
+                let style = format!("color:{}", accessible_color(style.foreground, [39, 42, 44]));
                 if let Some((previous, _)) = tokens.last_mut().filter(|(_, color)| *color == style)
                 {
                     previous.push_str(text);

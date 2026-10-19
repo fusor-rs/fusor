@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="441" viewBox="264 40 640 441" font-family="SF Mono, Menlo, Consolas, DejaVu Sans Mono, monospace" font-size="14.2">
+<rect width="100%" height="100%" rx="10" fill="#0b0b0b"/>
+<rect x="1" y="1" width="1169" height="570" rx="10" fill="none" stroke="#2a2a2a"/>
+<rect x="18" y="44" width="1135.2" height="509.6" fill="#171717"/>
+<circle cx="24" cy="22" r="6" fill="#ff5f57"/><circle cx="44" cy="22" r="6" fill="#febc2e"/><circle cx="64" cy="22" r="6" fill="#28c840"/>
+<text x="586" y="27" fill="#8a8a8a" text-anchor="middle" font-size="12.5">supatui — supabase-tui</text>
+<text x="26.6" y="58.4" fill="#3ecf8e" font-weight="bold" xml:space="preserve" textLength="129.0" lengthAdjust="spacingAndGlyphs">⚡ supabase-tui</text>
+<text x="172.8" y="58.4" fill="#a0a0a0" xml:space="preserve" textLength="189.2" lengthAdjust="spacingAndGlyphs">acme / shop-production</text>
+<text x="362.0" y="58.4" fill="#ededed" xml:space="preserve" textLength="791.2" lengthAdjust="spacingAndGlyphs">                                                              SQL 2    Refresh r    Keys ?  </text>
+<text x="18.0" y="78.0" fill="#2e2e2e" xml:space="preserve" textLength="240.8" lengthAdjust="spacingAndGlyphs">╭──────────────────────────╮</text>
+<text x="276.0" y="78.0" fill="#ededed" font-weight="bold" xml:space="preserve" textLength="722.4" lengthAdjust="spacingAndGlyphs">Users                                                                               </text>
+<text x="1015.6" y="78.0" fill="#a0a0a0" xml:space="preserve" textLength="120.4" lengthAdjust="spacingAndGlyphs">9 rows · 19 ms</text>
+<text x="18.0" y="97.6" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="26.6" y="97.6" fill="#707070" xml:space="preserve" textLength="223.6" lengthAdjust="spacingAndGlyphs"> PROJECT                  </text>
+<text x="250.2" y="97.6" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<rect x="276.0" y="83.2" width="68.8" height="19.6" fill="#2e2e2e"/>
+<text x="276.0" y="97.6" fill="#ededed" xml:space="preserve" textLength="68.8" lengthAdjust="spacingAndGlyphs"> Find f </text>
+<rect x="353.4" y="83.2" width="86.0" height="19.6" fill="#2e2e2e"/>
+<text x="353.4" y="97.6" fill="#ededed" xml:space="preserve" textLength="86.0" lengthAdjust="spacingAndGlyphs"> Invite i </text>
+<rect x="448.0" y="83.2" width="154.8" height="19.6" fill="#2e2e2e"/>
+<text x="448.0" y="97.6" fill="#ededed" xml:space="preserve" textLength="154.8" lengthAdjust="spacingAndGlyphs"> Reset password p </text>
+<rect x="611.4" y="83.2" width="120.4" height="19.6" fill="#2e2e2e"/>
+<text x="611.4" y="97.6" fill="#ededed" xml:space="preserve" textLength="120.4" lengthAdjust="spacingAndGlyphs"> Magic link m </text>
+<rect x="740.4" y="83.2" width="77.4" height="19.6" fill="#2e2e2e"/>
+<text x="740.4" y="97.6" fill="#ededed" xml:space="preserve" textLength="77.4" lengthAdjust="spacingAndGlyphs"> Unban b </text>
+<rect x="826.4" y="83.2" width="86.0" height="19.6" fill="#2e2e2e"/>
+<text x="826.4" y="97.6" fill="#f87171" xml:space="preserve" textLength="86.0" lengthAdjust="spacingAndGlyphs"> Delete D </text>
+<text x="18.0" y="117.2" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="26.6" y="117.2" fill="#a0a0a0" xml:space="preserve" textLength="223.6" lengthAdjust="spacingAndGlyphs"> 1  Tables                </text>
+<text x="250.2" y="117.2" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="117.2" fill="#3ecf8e" xml:space="preserve" textLength="877.2" lengthAdjust="spacingAndGlyphs">┌────────────────────────────────────────────────────────────────────────────────────────────────────┐</text>
+<text x="18.0" y="136.8" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="26.6" y="136.8" fill="#a0a0a0" xml:space="preserve" textLength="223.6" lengthAdjust="spacingAndGlyphs"> 2  SQL editor            </text>
+<text x="250.2" y="136.8" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="136.8" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="284.6" y="136.8" fill="#707070" xml:space="preserve" textLength="842.8" lengthAdjust="spacingAndGlyphs">Email         Phone         Provider      Status        Created (UTC) Last sign-in  ID            </text>
+<text x="1136.0" y="136.8" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="156.4" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="26.6" y="156.4" fill="#3ecf8e" font-weight="bold" xml:space="preserve" textLength="223.6" lengthAdjust="spacingAndGlyphs"> 3  Users                 </text>
+<text x="250.2" y="156.4" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="156.4" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="276.0" y="156.4" fill="#ededed" xml:space="preserve" textLength="860.0" lengthAdjust="spacingAndGlyphs"> ana@example.c               email         active        2026-10-07 09 2026-10-07 18 0b5a0000-0000  </text>
+<text x="1136.0" y="156.4" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="176.0" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="26.6" y="176.0" fill="#a0a0a0" xml:space="preserve" textLength="223.6" lengthAdjust="spacingAndGlyphs"> 4  Storage               </text>
+<text x="250.2" y="176.0" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="176.0" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<rect x="284.6" y="161.6" width="361.2" height="19.6" fill="#2e2e2e"/>
+<text x="284.6" y="176.0" fill="#ffffff" xml:space="preserve" textLength="361.2" lengthAdjust="spacingAndGlyphs">bo@example.co               email         </text>
+<rect x="645.8" y="161.6" width="120.4" height="19.6" fill="#2e2e2e"/>
+<text x="645.8" y="176.0" fill="#f87171" font-weight="bold" xml:space="preserve" textLength="120.4" lengthAdjust="spacingAndGlyphs">banned        </text>
+<rect x="766.2" y="161.6" width="361.2" height="19.6" fill="#2e2e2e"/>
+<text x="766.2" y="176.0" fill="#ffffff" xml:space="preserve" textLength="361.2" lengthAdjust="spacingAndGlyphs">2026-10-06 22 2026-10-06 22 0b5a0000-0000 </text>
+<text x="1136.0" y="176.0" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="195.6" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="26.6" y="195.6" fill="#a0a0a0" xml:space="preserve" textLength="223.6" lengthAdjust="spacingAndGlyphs"> 5  Edge Functions        </text>
+<text x="250.2" y="195.6" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="195.6" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="276.0" y="195.6" fill="#ededed" xml:space="preserve" textLength="860.0" lengthAdjust="spacingAndGlyphs"> chen.li@examp               github        active        2026-10-06 14 2026-10-07 08 0b5a0000-0000  </text>
+<text x="1136.0" y="195.6" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="215.2" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="26.6" y="215.2" fill="#f5a524" xml:space="preserve" textLength="223.6" lengthAdjust="spacingAndGlyphs"> 6  Advisors  ⚠ 2         </text>
+<text x="250.2" y="215.2" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="215.2" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="276.0" y="215.2" fill="#ededed" xml:space="preserve" textLength="860.0" lengthAdjust="spacingAndGlyphs"> dara@example.               google        active        2026-10-05 11 2026-10-07 17 0b5a0000-0000  </text>
+<text x="1136.0" y="215.2" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="234.8" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="26.6" y="234.8" fill="#a0a0a0" xml:space="preserve" textLength="223.6" lengthAdjust="spacingAndGlyphs"> 7  Backups               </text>
+<text x="250.2" y="234.8" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="234.8" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="276.0" y="234.8" fill="#ededed" xml:space="preserve" textLength="369.8" lengthAdjust="spacingAndGlyphs">               +15551230987  phone         </text>
+<text x="645.8" y="234.8" fill="#f5a524" xml:space="preserve" textLength="120.4" lengthAdjust="spacingAndGlyphs">unconfirmed   </text>
+<text x="766.2" y="234.8" fill="#ededed" xml:space="preserve" textLength="369.8" lengthAdjust="spacingAndGlyphs">2026-10-05 08 never         0b5a0000-0000  </text>
+<text x="1136.0" y="234.8" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="254.4" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="26.6" y="254.4" fill="#a0a0a0" xml:space="preserve" textLength="223.6" lengthAdjust="spacingAndGlyphs"> 8  Migrations            </text>
+<text x="250.2" y="254.4" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="254.4" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="276.0" y="254.4" fill="#ededed" xml:space="preserve" textLength="369.8" lengthAdjust="spacingAndGlyphs"> emeka@example               email         </text>
+<text x="645.8" y="254.4" fill="#f5a524" xml:space="preserve" textLength="120.4" lengthAdjust="spacingAndGlyphs">unconfirmed   </text>
+<text x="766.2" y="254.4" fill="#ededed" xml:space="preserve" textLength="369.8" lengthAdjust="spacingAndGlyphs">2026-10-04 19 never         0b5a0000-0000  </text>
+<text x="1136.0" y="254.4" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="274.0" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="250.2" y="274.0" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="274.0" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="276.0" y="274.0" fill="#ededed" xml:space="preserve" textLength="860.0" lengthAdjust="spacingAndGlyphs"> fatima@exampl               google        active        2026-10-03 16 2026-10-06 21 0b5a0000-0000  </text>
+<text x="1136.0" y="274.0" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="293.6" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="26.6" y="293.6" fill="#707070" xml:space="preserve" textLength="223.6" lengthAdjust="spacingAndGlyphs"> PROJECTS                 </text>
+<text x="250.2" y="293.6" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="293.6" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="276.0" y="293.6" fill="#ededed" xml:space="preserve" textLength="860.0" lengthAdjust="spacingAndGlyphs"> gus@example.i               github        active        2026-10-02 10 2026-10-07 12 0b5a0000-0000  </text>
+<text x="1136.0" y="293.6" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="313.2" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="26.6" y="313.2" fill="#3ecf8e" font-weight="bold" xml:space="preserve" textLength="223.6" lengthAdjust="spacingAndGlyphs"> ● shop-production        </text>
+<text x="250.2" y="313.2" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="313.2" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="276.0" y="313.2" fill="#ededed" xml:space="preserve" textLength="860.0" lengthAdjust="spacingAndGlyphs"> hana@example.               email         active        2026-09-30 07 2026-10-05 09 0b5a0000-0000  </text>
+<text x="1136.0" y="313.2" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="332.8" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="26.6" y="332.8" fill="#707070" xml:space="preserve" textLength="223.6" lengthAdjust="spacingAndGlyphs"> ○ side-project           </text>
+<text x="250.2" y="332.8" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="332.8" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="1136.0" y="332.8" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="352.4" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="250.2" y="352.4" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="352.4" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="1136.0" y="352.4" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="372.0" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="250.2" y="372.0" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="372.0" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="1136.0" y="372.0" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="391.6" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="250.2" y="391.6" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="391.6" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="1136.0" y="391.6" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="411.2" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="250.2" y="411.2" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="411.2" fill="#3ecf8e" xml:space="preserve" textLength="877.2" lengthAdjust="spacingAndGlyphs">└────────────────────────────────────────────────────────────────────────────────────────────────────┘</text>
+<text x="18.0" y="430.8" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="250.2" y="430.8" fill="#2e2e2e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="267.4" y="430.8" fill="#707070" xml:space="preserve" textLength="877.2" lengthAdjust="spacingAndGlyphs"> row 2 of 9                                                                                           </text>
+<text x="18.0" y="450.4" fill="#2e2e2e" xml:space="preserve" textLength="240.8" lengthAdjust="spacingAndGlyphs">╰──────────────────────────╯</text>
+<text x="258.8" y="450.4" fill="#ededed" xml:space="preserve" textLength="894.4" lengthAdjust="spacingAndGlyphs">  bo@example.com · email · banned · 2026-10-06 22:03 · 2026-10-06 22:05 · 0b5a0000-0000-0000-0000-0000  </text>
+<text x="18.0" y="470.0" fill="#3ecf8e" xml:space="preserve" textLength="1135.2" lengthAdjust="spacingAndGlyphs">╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮</text>
+<text x="18.0" y="489.6" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="35.2" y="489.6" fill="#ededed" font-weight="bold" xml:space="preserve" textLength="189.2" lengthAdjust="spacingAndGlyphs">acme / shop-production</text>
+<text x="241.6" y="489.6" fill="#3ecf8e" xml:space="preserve" textLength="77.4" lengthAdjust="spacingAndGlyphs">● healthy</text>
+<text x="336.2" y="489.6" fill="#a0a0a0" xml:space="preserve" textLength="799.8" lengthAdjust="spacingAndGlyphs">ref aaaabbbbccccddddeeee · us-east-1 · Postgres 17.4.1.054                                   </text>
+<text x="1144.6" y="489.6" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="509.2" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="35.2" y="509.2" fill="#707070" xml:space="preserve" textLength="68.8" lengthAdjust="spacingAndGlyphs">Services</text>
+<text x="121.2" y="509.2" fill="#3ecf8e" xml:space="preserve" textLength="34.4" lengthAdjust="spacingAndGlyphs">● db</text>
+<text x="172.8" y="509.2" fill="#3ecf8e" xml:space="preserve" textLength="51.6" lengthAdjust="spacingAndGlyphs">● auth</text>
+<text x="241.6" y="509.2" fill="#3ecf8e" xml:space="preserve" textLength="51.6" lengthAdjust="spacingAndGlyphs">● rest</text>
+<text x="310.4" y="509.2" fill="#3ecf8e" xml:space="preserve" textLength="77.4" lengthAdjust="spacingAndGlyphs">● storage</text>
+<text x="405.0" y="509.2" fill="#3ecf8e" xml:space="preserve" textLength="86.0" lengthAdjust="spacingAndGlyphs">✕ realtime</text>
+<text x="508.2" y="509.2" fill="#3ecf8e" xml:space="preserve" textLength="68.8" lengthAdjust="spacingAndGlyphs">● pooler</text>
+<text x="852.2" y="509.2" fill="#3ecf8e" xml:space="preserve" textLength="283.8" lengthAdjust="spacingAndGlyphs">⚠ 1 error and 1 warning · press 6</text>
+<text x="1144.6" y="509.2" fill="#3ecf8e" xml:space="preserve" textLength="8.6" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="18.0" y="528.8" fill="#3ecf8e" xml:space="preserve" textLength="1135.2" lengthAdjust="spacingAndGlyphs">╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯</text>
+<text x="18.0" y="548.4" fill="#3ecf8e" xml:space="preserve" textLength="1135.2" lengthAdjust="spacingAndGlyphs"> shop-production has 1 error and 1 warning; press 6 to review.                                                                      </text>
+</svg>
