@@ -129,7 +129,13 @@ impl Project {
                 .remedy("publish to a real directory; fusor never renames through a symlink"));
             }
         }
-        let occupied = output.exists()
+        // `build --site` stages each application in fusor's part of Cargo's
+        // target directory, where nothing is authored. CI caches such as
+        // Swatinem/rust-cache prune it to bare directories, deleting the output
+        // manifest along with every other file.
+        let staged_for_site = output.starts_with(self.target.join(layout::SITE_BUILD));
+        let occupied = !staged_for_site
+            && output.exists()
             && (!output.is_dir()
                 || (fs::read_dir(&output)?.next().is_some()
                     && !output.join(layout::OUTPUT_MANIFEST).is_file()));
@@ -264,4 +270,44 @@ fn validate_cohort(metadata: &Metadata, dependencies: &BTreeSet<String>) -> Resu
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_site_build_reuses_its_staging_directory_after_a_cache_prunes_it() {
+        let root = std::env::temp_dir().join(format!(
+            "fusor-staging-{}",
+            crate::pipeline::publish::generation().unwrap()
+        ));
+        let _cleanup = crate::transaction::Staging(root.clone());
+        let project = Project {
+            id: "landing".into(),
+            name: "landing".into(),
+            manifest: root.join("Cargo.toml"),
+            workspace: root.clone(),
+            target: root.join("target"),
+            watch_roots: Vec::new(),
+            config: AppConfig::default(),
+            root: root.clone(),
+        };
+        // What a pruning cache leaves of a published output: directories only.
+        let pruned = |output: PathBuf| {
+            fs::create_dir_all(output.join("__fusor/g-1")).unwrap();
+            Context {
+                output: Some(output),
+                ..Context::default()
+            }
+        };
+        let staging = pruned(root.join("target/fusor/site/landing"));
+        project.validate_output(&staging).unwrap();
+        let authored = pruned(root.join("dist"));
+        let error = project.validate_output(&authored).unwrap_err().to_string();
+        assert!(
+            error.contains("is not empty and is not owned by fusor"),
+            "{error}"
+        );
+    }
 }
