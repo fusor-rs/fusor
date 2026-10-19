@@ -108,18 +108,18 @@ fn publish(rendered: &Path, staging: &Path, head: &str) -> Result<usize> {
     let mut documents = 0;
     for file in files(rendered)? {
         let relative = file.strip_prefix(rendered)?;
+        // Messages name a file by its published path, which uses / on every platform.
+        let published = relative.to_string_lossy().replace('\\', "/");
         let target = staging.join(relative);
         if relative.starts_with(layout::GENERATED) {
             return Err(Error::project(format!(
-                "the native renderer wrote {}, under the directory fusor reserves for generated files",
-                relative.display()
+                "the native renderer wrote {published}, under the directory fusor reserves for generated files"
             ))
             .remedy(format!("write pages outside {}/", layout::GENERATED)));
         }
         if target.exists() {
             return Err(Error::project(format!(
-                "the native renderer wrote {}, which a published asset also provides",
-                relative.display()
+                "the native renderer wrote {published}, which a published asset also provides"
             ))
             .remedy("render the page at another path, or remove the asset from [package.metadata.fusor.assets]"));
         }
@@ -131,7 +131,7 @@ fn publish(rendered: &Path, staging: &Path, head: &str) -> Result<usize> {
             .is_some_and(|extension| extension == "html")
         {
             let mut document = fs::read_to_string(&file)?;
-            let start = head_start(&document).map_err(|error| error.context(relative.display()))?;
+            let start = head_start(&document).map_err(|error| error.context(&published))?;
             document.insert_str(start, head);
             fs::write(target, document)?;
             documents += 1;
