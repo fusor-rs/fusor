@@ -215,7 +215,7 @@ fn validate_targets(package: &Package, config: &AppConfig) -> Result {
                 Ok(())
             } else {
                 Err(
-                    Error::project(format!("islands application {} has no renderer binary named {binary}", package.name))
+                    Error::project(format!("natively rendered application {} has no renderer binary named {binary}", package.name))
                         .remedy("add the binary target, or set delivery.binary when its name differs from the package"),
                 )
             }

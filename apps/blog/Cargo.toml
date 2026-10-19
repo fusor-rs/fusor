@@ -1,0 +1,30 @@
+[package]
+name = "fusor-blog"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+fusor-components.workspace = true
+fusor-core = { workspace = true, features = ["derive"] }
+fusor-router.workspace = true
+fusor-server.workspace = true
+pulldown-cmark = { version = "=0.13.0", default-features = false }
+serde = { version = "1", features = ["derive"] }
+toml = "=0.8.23"
+
+[build-dependencies]
+fusor-build.workspace = true
+
+[package.metadata.fusor]
+entry = "web/index.html"
+tailwind = "web/app.css"
+base-path = "/blog/"
+
+[package.metadata.fusor.assets]
+"/" = "public"
+
+[package.metadata.fusor.delivery]
+mode = "static"

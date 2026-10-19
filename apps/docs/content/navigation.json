@@ -159,6 +159,10 @@
     "parent": "islands"
   },
   {
+    "slug": "static-pages",
+    "group": "Application guides"
+  },
+  {
     "slug": "npm",
     "group": "Application guides"
   },

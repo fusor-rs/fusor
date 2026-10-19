@@ -50,7 +50,7 @@ just dev
 `just setup` installs the Wasm target and the pinned wasm-bindgen, the npm
 packages, the Playwright browsers, and the nightly toolchain that threaded
 worker pools build with (the docs' fractal demo uses one). `just dev` serves the whole site, the
-landing page, docs and benchmarks, at http://127.0.0.1:4173, and rebuilds
+landing page, docs, blog and benchmarks, at http://127.0.0.1:4173, and rebuilds
 whichever application you edit. To work on one application alone, such as the
 framework playground, use `just dev-app fusor-playground`.
 
@@ -72,7 +72,7 @@ your local changes.
 | `just test-browser` | The Playwright suite for the playground. |
 | `just test-tools` | Unit tests for the Node tooling. |
 | `just fixtures` | Builds the examples and the site that some suites serve. |
-| `just site` | Builds the landing page, docs and benchmarks into one site in `dist/`. |
+| `just site` | Builds the landing page, docs, blog and benchmarks into one site in `dist/`. |
 | `just preview` | Serves that site at http://127.0.0.1:8080. |
 | `just ci-browser` | Required framework browser and tooling contracts, using focused fixtures and public-API consumers. |
 | `just ci-examples` | Full docs, landing page, benchmark site and third-party library walkthroughs. On Linux, use `xvfb-run -a just ci-examples`. |
@@ -107,7 +107,7 @@ Then run the browser suites for the area you changed:
 | Components, lists, children | `just test-browser`, `just test foreach`, `just test children`, `just test component-tags` |
 | Conditions, async, coherent views | `just test control-flow`, `just test async-components`, `just test coherent` |
 | Routing | `just test router`, `just test navigation` |
-| Islands | `just test islands`, `just test delivery`, `just test component-hydration` |
+| Islands and static pages | `just test islands`, `just test delivery`, `just test component-hydration`, `just test static-pages` |
 | JavaScript modules and npm | `just test javascript`, `just test javascript-build`, `just test javascript-dev`, `just test integrations` |
 | Workers, tasks, shared pools, or streams | `just test worker`, `just test worker-pool`, `just test worker-dev` |
 | The CLI or the dev server | `just test dev`, `just test dev-https`, `just test standalone` |
@@ -233,7 +233,7 @@ anyway, rerun the job; it picks up where it left off.
 
 ## Deploying the site
 
-fusor.build is the landing page, docs and benchmarks from `just site`, hosted on
+fusor.build is the landing page, docs, blog and benchmarks from `just site`, hosted on
 Vercel. Vercel can't build it, since its build machines have no Rust toolchain,
 so the site is built elsewhere and uploaded as finished files. Pushes don't
 deploy.

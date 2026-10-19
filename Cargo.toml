@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/fusor-worker", "crates/fusor-worker-macros", "crates/fusor-core", "crates/fusor-npm", "crates/fusor-components", "crates/fusor-macros", "crates/fusor-async", "crates/fusor-router", "crates/fusor-build", "crates/fusor-cli", "crates/fusor-release", "crates/fusor-test", "crates/fusor-query", "crates/fusor-std", "crates/fusor-islands", "crates/fusor-server", "examples/workers", "examples/control-flow", "examples/children", "examples/async-components", "examples/foreach", "examples/playground", "examples/navigation", "examples/router", "examples/composition", "examples/integrations", "examples/editor", "examples/coherent", "examples/islands/*", "apps/landing", "apps/docs", "apps/benchmarks", "benchmarks/workloads/fusor", "benchmarks/workloads/fusor-hello", "benchmarks/workloads/fusor-todo"]
+members = ["crates/fusor-worker", "crates/fusor-worker-macros", "crates/fusor-core", "crates/fusor-npm", "crates/fusor-components", "crates/fusor-macros", "crates/fusor-async", "crates/fusor-router", "crates/fusor-build", "crates/fusor-cli", "crates/fusor-release", "crates/fusor-test", "crates/fusor-query", "crates/fusor-std", "crates/fusor-islands", "crates/fusor-server", "examples/workers", "examples/control-flow", "examples/children", "examples/async-components", "examples/foreach", "examples/playground", "examples/navigation", "examples/router", "examples/composition", "examples/integrations", "examples/editor", "examples/coherent", "examples/islands/*", "examples/static-pages", "apps/landing", "apps/blog", "apps/docs", "apps/benchmarks", "benchmarks/workloads/fusor", "benchmarks/workloads/fusor-hello", "benchmarks/workloads/fusor-todo"]
 exclude = ["examples/npm"]
 resolver = "2"
 
@@ -10,6 +10,7 @@ output = "dist"
 [workspace.metadata.fusor.site.mounts]
 "/" = "fusor-landing"
 "/docs/" = "fusor-docs"
+"/blog/" = "fusor-blog"
 "/benchmarks/" = "fusor-benchmarks"
 
 [workspace.package]

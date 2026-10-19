@@ -41,14 +41,8 @@ pub(crate) fn respond(
         return build_response(405, "text/plain", b"Method not allowed".to_vec(), false);
     }
     let Some(relative) = url.strip_prefix(base) else {
-        // Redirect a base path missing its trailing slash, so relative URLs
-        // resolve.
         if base != "/" && url == base.trim_end_matches('/') {
-            return Response::builder()
-                .status(308)
-                .header("Location", base)
-                .body(Vec::new())
-                .expect("validated base path");
+            return with_trailing_slash(base);
         }
         return build_response(404, "text/plain", b"Not found".to_vec(), false);
     };
@@ -57,6 +51,12 @@ pub(crate) fn respond(
             return response;
         }
     }
+    // A directory holding a document is served at its URL, as static hosts do.
+    let document = directory_document(directory, relative);
+    if document.is_some() && !url.ends_with('/') {
+        return with_trailing_slash(&format!("{url}/"));
+    }
+    let relative = document.as_deref().unwrap_or(relative);
     let immutable = relative
         .strip_prefix(&format!("{}/", layout::GENERATED))
         .is_some_and(|path| path.contains('/'));
@@ -115,6 +115,27 @@ fn update(directory: &Path) -> Result<Vec<u8>> {
 
 /// Canonicalizing both sides is what makes the containment check hold against
 /// links.
+/// Redirects a URL missing its trailing slash, so relative URLs in the
+/// document resolve inside its directory.
+fn with_trailing_slash(location: &str) -> Body {
+    let Ok(location) = HeaderValue::from_str(location) else {
+        return build_response(404, "text/plain", b"Not found".to_vec(), false);
+    };
+    let mut response = build_response(308, "text/plain", Vec::new(), false);
+    response.headers_mut().insert("Location", location);
+    response
+}
+
+/// The `index.html` inside the directory a URL names, relative to the site.
+fn directory_document(directory: &Path, relative: &str) -> Option<String> {
+    let path = decode_path(relative)?;
+    directory
+        .join(path)
+        .join("index.html")
+        .is_file()
+        .then(|| format!("{}/index.html", relative.trim_end_matches('/')))
+}
+
 fn read_file(directory: &Path, relative: &str) -> std::io::Result<Option<(PathBuf, Vec<u8>)>> {
     let Some(relative) = decode_path(relative) else {
         return Ok(None);
@@ -292,6 +313,45 @@ mod tests {
             std::os::unix::fs::symlink("cycle", directory.join("cycle")).unwrap();
             assert_eq!(respond("/cycle").status(), 500);
         }
+    }
+
+    #[test]
+    fn directories_serve_their_document_at_a_url_ending_in_a_slash() {
+        let directory = std::env::temp_dir().join(format!(
+            "fusor-http-{}",
+            crate::pipeline::publish::generation().unwrap()
+        ));
+        let _cleanup = crate::transaction::Staging(directory.clone());
+        fs::create_dir_all(directory.join("first-post")).unwrap();
+        fs::create_dir(directory.join("drafts")).unwrap();
+        fs::write(directory.join("index.html"), "posts").unwrap();
+        fs::write(directory.join("first-post/index.html"), "first").unwrap();
+        let respond = |path| {
+            super::respond(
+                &Method::GET,
+                path,
+                "text/html",
+                Route {
+                    directory: &directory,
+                    base: "/blog/",
+                    history_fallback: &[],
+                },
+                Serving::Preview,
+            )
+        };
+        assert_eq!(respond("/blog/").body(), b"posts");
+        assert_eq!(respond("/blog/first-post/").body(), b"first");
+        assert_eq!(respond("/blog/first-post/?from=feed").body(), b"first");
+        for (path, location) in [
+            ("/blog", "/blog/"),
+            ("/blog/first-post", "/blog/first-post/"),
+        ] {
+            let response = respond(path);
+            assert_eq!(response.status(), 308, "{path}");
+            assert_eq!(response.headers()["Location"], location, "{path}");
+        }
+        assert_eq!(respond("/blog/drafts/").status(), 404);
+        assert_eq!(respond("/blog/first-post/../index.html").status(), 404);
     }
 
     #[test]

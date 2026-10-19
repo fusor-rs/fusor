@@ -14,6 +14,7 @@ use crate::{
     toolchain,
     workspace::{self, Project},
 };
+use fusor_build::app::DeliveryMode;
 use pipeline::site::{Mount, SiteConfig, shown};
 use std::{fs, time::Instant};
 
@@ -81,10 +82,15 @@ pub(crate) fn run(
 ) -> Result {
     cx.reporter.step(format!("Compiling {} ...", project.name));
     let started = Instant::now();
-    if project.config.delivery.is_some() {
-        pipeline::islands::build(cx, project, mode, watched)?;
-    } else {
-        application(cx, project, mode, watched)?;
+    match project
+        .config
+        .delivery
+        .as_ref()
+        .map(|delivery| delivery.mode)
+    {
+        Some(DeliveryMode::Islands) => pipeline::islands::build(cx, project, mode, watched)?,
+        Some(DeliveryMode::Static) => pipeline::pages::build(cx, project, mode, watched)?,
+        None => application(cx, project, mode, watched)?,
     }
     cx.reporter.done(format!(
         "Compiled {} in {}",
@@ -178,16 +184,7 @@ fn write_boot(
         .transpose()?
         .unwrap_or_default();
     let reload = if mode == BuildMode::Development {
-        fs::write(
-            publication.generated().join(layout::REFRESH_MODULE),
-            crate::dev::refresh::CLIENT,
-        )?;
-        format!(
-            "import {{ watch }} from './{}';\nwatch({:?}, {:?});\n",
-            layout::REFRESH_MODULE,
-            publication.generation,
-            project.config.base_path
-        )
+        publication.reload_module()?
     } else {
         String::new()
     };

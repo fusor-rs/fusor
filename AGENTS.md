@@ -63,8 +63,9 @@ and `apps/docs/public/content/html-and-rust/built-in-components.md`.
 - `crates/fusor-npm`: internal npm bundling for the CLI.
 - `crates/fusor-test`: deterministic requests, clock, executor and lifetime probes.
 - `crates/fusor-release`: contributor tooling for release archives.
-- `apps/landing`, `apps/docs`, `apps/benchmarks`: the fusor.build site at `/`,
-  `/docs/`, `/benchmarks/`; configured in `[workspace.metadata.fusor.site]`.
+- `apps/landing`, `apps/docs`, `apps/blog`, `apps/benchmarks`: the fusor.build site
+  at `/`, `/docs/`, `/blog/`, `/benchmarks/`; configured in
+  `[workspace.metadata.fusor.site]`. The blog uses static delivery.
 - `apps/docs/tutorial`: a separate Cargo project the guides compile against.
 - `examples/`: runnable apps; most are workspace members. `examples/npm` is
   excluded from the workspace.

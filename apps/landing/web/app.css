@@ -1,45 +1,6 @@
 @import "tailwindcss";
 
-@theme {
-  --color-canvas: #faf9f6;
-  --color-surface: #f1efea;
-  --color-raised: #ffffff;
-  --color-ink: #272a2c;
-  --color-ink-soft: #5c5f61;
-  --color-ink-faint: #686b6d;
-  --color-hairline: #e3e0d9;
-  --color-accent: #a83228;
-  /* The source on the back of the stage; brand charcoal in every world. */
-  --color-night: #272a2c;
-  --color-night-ink: #f2f1ed;
-  --color-night-soft: #a9abac;
-
-  /* Sampled springs (response 0.4 s): smooth for arrivals, brisk for a moved thumb. */
-  --ease-spring: linear(
-    0, 0.049, 0.157, 0.285, 0.411, 0.525, 0.624, 0.705, 0.772,
-    0.825, 0.866, 0.899, 0.924, 0.943, 0.957, 0.968, 0.976, 0.982,
-    0.987, 0.99, 0.993, 0.995, 0.996, 0.997, 1
-  );
-  --ease-spring-brisk: linear(
-    0, 0.047, 0.154, 0.287, 0.422, 0.548, 0.658, 0.749, 0.822,
-    0.878, 0.92, 0.951, 0.972, 0.987, 0.996, 1.002, 1.005, 1.006,
-    1.006, 1.006, 1.005, 1.004, 1.003, 1.003, 1
-  );
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-canvas: #121314;
-    --color-surface: #1b1d1e;
-    --color-raised: #222426;
-    --color-ink: #f2f1ed;
-    --color-ink-soft: #b4b5b3;
-    --color-ink-faint: #8b8d8d;
-    --color-hairline: #303335;
-    --color-accent: #f0715a;
-    --color-night: #1d1f21;
-  }
-}
+@import "./theme.css";
 
 /* Registered so the page can glide from one project's world to the next. */
 @property --color-canvas {

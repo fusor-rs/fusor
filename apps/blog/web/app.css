@@ -1,0 +1,364 @@
+@import "tailwindcss";
+@import "../../landing/web/theme.css";
+@plugin "@tailwindcss/typography";
+
+@layer base {
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+}
+
+@layer components {
+  /* Across the top of every page, as on the rest of fusor.build. */
+  .hughie-line {
+    @apply block px-5 py-2 text-center text-xs sm:text-sm;
+    background-color: #0d0c0b;
+    color: #f5efe6;
+  }
+
+  .hughie-line:hover .text-\[\#f3b07a\] {
+    text-decoration: underline;
+  }
+
+  .share-button {
+    @apply cursor-pointer rounded-full border border-hairline px-4 py-1.5 text-sm font-medium
+      text-ink-soft transition-colors hover:border-ink-faint hover:text-ink;
+  }
+
+  /* The outlined wordmark, painted in the page's ink. */
+  .wordmark {
+    background-color: currentColor;
+    mask: url("/brand/fusor-wordmark.svg") center / contain no-repeat;
+  }
+
+  /* The list of posts is the lab's timeline: one line through every note,
+     newest first, beneath a pulse that says how recent the latest is. */
+  .journal {
+    --rail: 2.75rem;
+    --gutter: 1.5rem;
+    max-width: 56rem;
+    margin-inline: auto;
+  }
+
+  .journal-intro,
+  .journal-empty {
+    @apply mb-14;
+  }
+
+  .now,
+  .moment {
+    display: grid;
+    grid-template-columns: var(--rail) minmax(0, 1fr);
+    column-gap: var(--gutter);
+    position: relative;
+  }
+
+  .now {
+    align-items: center;
+    padding-bottom: 3.5rem;
+  }
+
+  .now-label {
+    text-align: right;
+    @apply text-xs font-semibold tracking-[0.12em] text-accent uppercase;
+  }
+
+  .now-since {
+    @apply text-sm text-ink-soft;
+  }
+
+  /* Dots sit on the line, which runs down the middle of the gutter. */
+  .now::before,
+  .moment::before {
+    content: "";
+    position: absolute;
+    left: calc(var(--rail) + var(--gutter) / 2);
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 9999px;
+    translate: -50% -50%;
+  }
+
+  .now::before {
+    top: calc(50% - 1.75rem);
+    background-color: var(--color-accent);
+  }
+
+  /* Now is joined to the latest note from the start; the rest of the line
+     is drawn as the reader scrolls back through older notes. */
+  .now-label::after {
+    content: "";
+    position: absolute;
+    top: calc(50% - 1.75rem);
+    bottom: -1.05rem;
+    left: calc(var(--rail) + var(--gutter) / 2);
+    width: 1px;
+    translate: -50% 0;
+    background-color: var(--color-accent);
+  }
+
+  .now::after {
+    content: "";
+    position: absolute;
+    top: calc(50% - 1.75rem);
+    left: calc(var(--rail) + var(--gutter) / 2);
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 9999px;
+    background-color: var(--color-accent);
+    translate: -50% -50%;
+    animation: pulse 2.4s ease-out infinite;
+  }
+
+  .timeline {
+    position: relative;
+  }
+
+  /* The line, and over it the accent drawn as the reader scrolls. Where
+     scroll timelines are missing, or the page does not scroll, it is drawn
+     whole. */
+  .timeline::before,
+  .timeline::after {
+    content: "";
+    position: absolute;
+    top: 1.05rem;
+    bottom: 0;
+    left: calc(var(--rail) + var(--gutter) / 2);
+    width: 1px;
+    translate: -50% 0;
+    mask-image: linear-gradient(to bottom, black 80%, transparent);
+  }
+
+  .timeline::before {
+    background-color: var(--color-hairline);
+  }
+
+  .timeline::after {
+    background-color: var(--color-accent);
+    transform-origin: top;
+    animation: draw linear both;
+    animation-timeline: scroll(root);
+  }
+
+  .moment {
+    padding-bottom: 5rem;
+  }
+
+  .moment::before {
+    top: 1.05rem;
+    background-color: var(--color-canvas);
+    box-shadow: inset 0 0 0 2px var(--color-hairline);
+    animation: light linear both;
+    animation-timeline: view();
+    animation-range: entry 60% entry 100%;
+  }
+
+  .moment-day {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    padding-top: 0.2rem;
+  }
+
+  .moment-numeral {
+    @apply text-2xl leading-none font-semibold tracking-tight tabular-nums;
+  }
+
+  .moment-month {
+    @apply mt-1.5 text-[0.6875rem] leading-tight tracking-wide text-ink-faint uppercase;
+    text-align: right;
+  }
+
+  .moment-link {
+    display: flex;
+    flex-direction: column;
+    animation: arrive ease-out both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 50%;
+  }
+
+  .moment-title {
+    @apply text-[clamp(1.5rem,2.8vw,2.25rem)] leading-tight font-semibold tracking-[-0.025em] text-balance;
+    transition: color 200ms ease-out;
+  }
+
+  .moment-link:hover .moment-title {
+    color: var(--color-accent);
+  }
+
+  .moment-summary {
+    @apply mt-3 max-w-2xl text-lg leading-relaxed text-ink-soft;
+  }
+
+  .moment-by {
+    @apply mt-3 text-sm text-ink-faint;
+  }
+
+  /* The banner, over a blur of its own colors that drifts slowly, so each
+     post lights the page around it. */
+  .moment-art {
+    position: relative;
+    isolation: isolate;
+    margin-top: 2rem;
+  }
+
+  .moment-glow {
+    position: absolute;
+    inset: 10% 6%;
+    z-index: -1;
+    width: 88%;
+    height: 80%;
+    object-fit: cover;
+    filter: blur(48px) saturate(1.6);
+    opacity: 0.4;
+    animation: drift 14s ease-in-out infinite alternate;
+    transition: opacity 540ms var(--ease-spring);
+  }
+
+  .moment-image {
+    width: 100%;
+    aspect-ratio: 1200 / 630;
+    object-fit: cover;
+    border-radius: 1rem;
+    box-shadow: 0 0 0 1px var(--color-hairline);
+    transition: translate 540ms var(--ease-spring);
+  }
+
+  .moment-link:hover .moment-image {
+    translate: 0 -4px;
+  }
+
+  .moment-link:hover .moment-glow {
+    opacity: 0.65;
+  }
+
+  @media (width >= 48rem) {
+    .journal {
+      --rail: 5rem;
+      --gutter: 3rem;
+    }
+
+    .journal-intro,
+    .journal-empty {
+      margin-left: calc(var(--rail) + var(--gutter));
+    }
+
+    .moment-numeral {
+      @apply text-4xl;
+    }
+  }
+}
+
+/* Opening a post from the list morphs its banner and title into the article,
+   and back again. Browsers without cross-document view transitions navigate
+   as usual. */
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-group(*) {
+  animation-duration: 520ms;
+  animation-timing-function: var(--ease-spring);
+}
+
+/* Without scroll-driven animations the line is never drawn, rather than
+   drawn full. */
+@supports (animation-timeline: scroll()) {
+  .reading-progress {
+    position: fixed;
+    inset-inline: 0;
+    top: 0;
+    z-index: 10;
+    height: 2px;
+    background-color: var(--color-accent);
+    transform-origin: left;
+    scale: 0 1;
+    animation: read linear both;
+    animation-timeline: scroll(root);
+  }
+}
+
+@keyframes read {
+  to {
+    scale: 1 1;
+  }
+}
+
+@keyframes draw {
+  from {
+    scale: 1 0;
+  }
+}
+
+@keyframes light {
+  from {
+    background-color: var(--color-canvas);
+    box-shadow: inset 0 0 0 2px var(--color-hairline);
+  }
+
+  to {
+    background-color: var(--color-accent);
+    box-shadow: inset 0 0 0 2px var(--color-accent);
+  }
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+    translate: 0 2rem;
+  }
+}
+
+@keyframes pulse {
+  to {
+    opacity: 0;
+    scale: 3;
+  }
+}
+
+@keyframes drift {
+  to {
+    translate: 3% -4%;
+    scale: 1.08;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @view-transition {
+    navigation: none;
+  }
+
+  .now::after,
+  .moment-link,
+  .moment-glow {
+    animation: none;
+  }
+
+  .moment-image,
+  .moment-glow {
+    transition: none;
+  }
+}
+
+/* Post bodies take the lab's ink, hairlines and accent in both schemes. Kept
+   outside the layers so they win over the typography plugin's own colors. */
+.prose {
+  --tw-prose-body: var(--color-ink-soft);
+  --tw-prose-headings: var(--color-ink);
+  --tw-prose-links: var(--color-accent);
+  --tw-prose-bold: var(--color-ink);
+  --tw-prose-quotes: var(--color-ink);
+  --tw-prose-quote-borders: var(--color-hairline);
+  --tw-prose-code: var(--color-ink);
+  --tw-prose-pre-code: var(--color-night-ink);
+  --tw-prose-pre-bg: var(--color-night);
+  --tw-prose-bullets: var(--color-ink-faint);
+  --tw-prose-counters: var(--color-ink-faint);
+  --tw-prose-hr: var(--color-hairline);
+}
+
+/* Inline code is set apart by its typeface, without the plugin's backticks. */
+.prose :where(code)::before,
+.prose :where(code)::after {
+  content: none;
+}

@@ -193,6 +193,11 @@ try {
   );
   const slugs = new Set(docs.map((page) => `/docs/${page.slug}`));
   slugs.add("/docs/showcase");
+  // The header's Blog link reaches the blog mounted in the same site.
+  await expect(page.getByRole("link", { name: "Blog", exact: true })).toHaveAttribute("href", "/blog/");
+  const blog = await context.request.get(`${base}/blog/`);
+  assert.equal(blog.status(), 200);
+  assert.match(await blog.text(), /From the lab\./);
   for (const [project] of projects) {
     await entry(project).click();
     for (const href of await page

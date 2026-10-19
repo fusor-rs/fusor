@@ -553,6 +553,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "fusor-blog"
+version = "0.1.8"
+dependencies = [
+ "fusor-build",
+ "fusor-components",
+ "fusor-core",
+ "fusor-router",
+ "fusor-server",
+ "pulldown-cmark",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "fusor-build"
 version = "0.1.8"
 dependencies = [
@@ -845,6 +859,16 @@ dependencies = [
  "fusor-islands",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "fusor-static-pages-example"
+version = "0.1.8"
+dependencies = [
+ "fusor-build",
+ "fusor-components",
+ "fusor-core",
+ "fusor-server",
 ]
 
 [[package]]

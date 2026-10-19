@@ -15,7 +15,8 @@ use crate::{
 };
 use fusor_islands::{DeliveryManifest, Unit, UnitWitness};
 use std::{collections::BTreeMap, env, fs, path::Path, process::Command};
-use witness::{reject_javascript, validate_pairs, witness};
+pub(crate) use witness::reject_javascript;
+use witness::{validate_pairs, witness};
 
 mod witness;
 
@@ -56,13 +57,7 @@ pub(crate) fn build(
 
     let manifest_path = publication.generated().join("manifest.json");
     fs::write(&manifest_path, serde_json::to_vec_pretty(&delivery)?)?;
-    write_runtime(
-        publication.generated(),
-        &prefix,
-        &publication.generation,
-        project,
-        dev,
-    )?;
+    write_runtime(&publication, &prefix, dev)?;
     render_document(&executable, &manifest_path, publication.staging(), &prefix)?;
 
     let mut output = OutputManifest::new(publication.generation.clone(), &project.config);
@@ -192,13 +187,8 @@ fn build_unit(
     })
 }
 
-fn write_runtime(
-    generated: &Path,
-    prefix: &str,
-    generation: &str,
-    project: &Project,
-    dev: bool,
-) -> Result {
+fn write_runtime(publication: &Publication<'_>, prefix: &str, dev: bool) -> Result {
+    let generated = publication.generated();
     fs::write(
         generated.join("registry.js"),
         fusor_islands::REGISTRY_JAVASCRIPT,
@@ -212,15 +202,7 @@ fn write_runtime(
         format!("{prefix}/manifest.json")
     );
     if dev {
-        fs::write(
-            generated.join(layout::REFRESH_MODULE),
-            crate::dev::refresh::CLIENT,
-        )?;
-        boot = format!(
-            "import {{ watch }} from './{}';\nwatch({generation:?}, {:?});\n{boot}",
-            layout::REFRESH_MODULE,
-            project.config.base_path
-        );
+        boot = format!("{}{boot}", publication.reload_module()?);
     }
     fs::write(generated.join(layout::BOOT_MODULE), boot)?;
     Ok(())
@@ -241,7 +223,7 @@ fn render_document(executable: &Path, manifest: &Path, staging: &Path, prefix: &
         "<script src=\"{prefix}/composition.js\"></script><script type=\"module\" src=\"{prefix}/{}\"></script>",
         layout::BOOT_MODULE
     );
-    html.insert_str(head_start(&html)?, &scripts);
+    html.insert_str(super::html::head_start(&html)?, &scripts);
     fs::write(path, html)?;
     Ok(())
 }
@@ -271,18 +253,4 @@ fn collect_dependencies(
     }
     output.sort();
     Ok(())
-}
-
-fn head_start(html: &str) -> Result<usize> {
-    let mut emitter = html5gum::DefaultEmitter::<usize>::new_with_span();
-    emitter.naively_switch_states(true);
-    html5gum::Tokenizer::new_with_emitter(html, emitter)
-        .find_map(|token| match token.ok()? {
-            html5gum::Token::StartTag(tag) if &*tag.name == b"head" => Some(tag.span.end),
-            _ => None,
-        })
-        .ok_or_else(|| {
-            Error::project("the native renderer produced a document without a <head>")
-                .remedy("render a complete HTML document from the application's entry")
-        })
 }

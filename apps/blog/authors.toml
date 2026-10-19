@@ -1,0 +1,7 @@
+# Everyone who writes posts, by the id a post's `authors` names.
+# `link` and `avatar` are optional; an avatar is a square image under public/.
+
+[andres]
+name = "Andres Pirela"
+link = "https://github.com/andreespirela"
+avatar = "authors/andres.jpg"

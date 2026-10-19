@@ -477,10 +477,12 @@ impl<'a> ServerRender<'a> {
         {
             let arms = cases.iter().enumerate().map(|(index, case)| {
                 let pattern = &case.pattern;
-                let captures = case
-                    .names
-                    .iter()
-                    .map(|name| quote! { let #name = ::fusor::memo(move || #name.clone()); });
+                let captures = case.names.iter().map(|name| {
+                    quote! {
+                        #[allow(clippy::clone_on_copy, reason = "pattern captures have inferred types and may not be Copy")]
+                        let #name = ::fusor::memo(move || #name.clone());
+                    }
+                });
                 let child = component_body(&components[case.body], components, true);
                 let marker = format!("<!--fusor:branch:{index}-->");
                 quote! { #pattern => { #(#captures)* __fusor_writer.static_markup(#marker, ::std::option::Option::None, false); #child?; } }
@@ -645,8 +647,9 @@ fn server_list(row: &Component, components: &[Component], items: &Rust, key: &Ru
         let mut __fusor_keys = ::std::collections::BTreeSet::new();
         for __fusor_entry in __fusor_items {
             let __fusor_key = ::fusor_components::ForEach::key(&__fusor_entry, #key);
+            // A method call on a borrowed key, such as a &str, warns as a no-op clone.
             #[allow(clippy::clone_on_copy, reason = "list keys have an inferred type and may not be Copy")]
-            let __fusor_unique = __fusor_keys.insert(__fusor_key.clone());
+            let __fusor_unique = __fusor_keys.insert(::std::clone::Clone::clone(&__fusor_key));
             if !__fusor_unique { return ::std::result::Result::Err("duplicate key in ForEach".into()); }
             __fusor_writer.keyed_child(&__fusor_key, |mut __fusor_writer| {
                 #[allow(unused_variables, reason = "template scope bindings may be unused")] let state = #row_constructor(state, __fusor_entry);

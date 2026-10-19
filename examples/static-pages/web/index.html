@@ -1,0 +1,23 @@
+<script type="text/rust" src="../src/main.rs" rust:module="crate"></script>
+<html lang="en" rust:component="Document" rust:render="server">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ state.title }}</title>
+  <meta name="description" content="{{ state.text }}">
+</head>
+<body class="mx-auto max-w-2xl px-6 py-16 font-sans text-stone-800">
+  <main>
+    <h1 class="text-3xl font-semibold tracking-tight">{{ state.heading }}</h1>
+    <p class="mt-4 leading-relaxed text-stone-600">{{ state.text }}</p>
+    <ul class="mt-8 space-y-2">
+      <ForEach items="{{ state.notes.clone() }}" key="{{ |note| note.slug }}">
+        <li><a class="text-orange-700 underline" href="{{ note_url(item.get().slug) }}">{{ item.get().title }}</a></li>
+      </ForEach>
+    </ul>
+    <If condition="{{ state.notes.is_empty() }}">
+      <a class="mt-8 inline-block text-orange-700 underline" href="{{ BASE }}">All notes</a>
+    </If>
+  </main>
+</body>
+</html>

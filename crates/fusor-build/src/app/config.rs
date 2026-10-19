@@ -125,12 +125,17 @@ pub struct DevConfig {
 pub struct DeliveryConfig {
     pub mode: DeliveryMode,
     pub binary: Option<String>,
+    #[serde(default)]
     pub units: BTreeMap<String, DeliveryUnit>,
 }
-#[derive(Debug, Clone, Deserialize, Serialize)]
+/// How a natively rendered application reaches the browser.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DeliveryMode {
+    /// One native document whose islands load independently built Wasm units.
     Islands,
+    /// Every page is a native document, and nothing runs in the browser.
+    Static,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
@@ -184,7 +189,7 @@ impl AppConfig {
     pub fn validate(&self) -> Result<()> {
         if let Some(delivery) = &self.delivery {
             delivery.validate()?;
-            if self.tailwind.is_some() {
+            if delivery.mode == DeliveryMode::Islands && self.tailwind.is_some() {
                 return Err("tailwind is not supported with islands delivery".into());
             }
         }
@@ -396,8 +401,20 @@ const KEYWORDS: &[&str] = &[
 
 impl DeliveryConfig {
     fn validate(&self) -> Result<()> {
-        if self.units.is_empty() {
-            return Err("islands delivery requires at least one independently built unit".into());
+        match self.mode {
+            DeliveryMode::Islands if self.units.is_empty() => {
+                return Err(
+                    "islands delivery requires at least one independently built unit".into(),
+                );
+            }
+            DeliveryMode::Static if !self.units.is_empty() => {
+                return Err(
+                    "static delivery runs nothing in the browser and has no units; \
+                     use mode = \"islands\" to make parts of a page interactive"
+                        .into(),
+                );
+            }
+            DeliveryMode::Islands | DeliveryMode::Static => {}
         }
         let mut packages = BTreeSet::new();
         for (name, unit) in &self.units {

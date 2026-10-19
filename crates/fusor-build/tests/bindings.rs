@@ -418,6 +418,52 @@ fn server_direct_text_uses_escaped_writer_content_and_preserves_anchored_sibling
 }
 
 #[test]
+fn a_title_whose_whole_text_is_one_binding_renders_escaped_direct_text() {
+    let page = extract(&format!(
+        r#"{STATE}<html rust:component="Counter" rust:render="server"><head><title>{{{{ state.value }}}}</title></head><body></body></html>"#
+    ))
+    .unwrap();
+    let rust = tokens(&page.rust);
+    assert!(
+        page.html.contains("<title data-fusor-text=\"0\">"),
+        "{}",
+        page.html
+    );
+    assert!(!page.html.contains("<!--fusor:0-->"));
+    assert!(rust.contains(&tokens(
+        "let __fusor_value = &(state.value); __fusor_writer.text(__fusor_value);"
+    )));
+    for (markup, message) in [
+        (
+            "<title>{{ state.value }} · Notes</title>",
+            "a binding in <title> must be its whole text",
+        ),
+        (
+            "<title>{{ state.value }}{{ state.other }}</title>",
+            "a binding in <title> must be its whole text",
+        ),
+    ] {
+        let source = format!(
+            r#"{STATE}<html rust:component="Counter" rust:render="server"><head>{markup}</head><body></body></html>"#
+        );
+        let failure = extract(&source).expect_err(markup);
+        assert!(failure.message.contains(message), "{markup}: {failure}");
+    }
+    // Other elements whose text is not markup still take no bindings.
+    for markup in [
+        "<textarea>{{ state.value }}</textarea>",
+        "<xmp>{{ state.value }}</xmp>",
+    ] {
+        let source = format!(
+            r#"{STATE}<html rust:component="Counter" rust:render="server"><body>{markup}</body></html>"#
+        );
+        let message = "raw-text elements cannot contain bindings";
+        let failure = extract(&source).expect_err(markup);
+        assert!(failure.message.contains(message), "{markup}: {failure}");
+    }
+}
+
+#[test]
 fn single_quoted_strings_explain_rust_quotes_at_the_bad_literal() {
     for markup in [
         r#"<p class:dark="state.theme == 'dark'"></p>"#,

@@ -267,6 +267,16 @@ impl Frame {
         )
     }
 
+    fn text_host(&self) -> bool {
+        matches!(
+            self.kind,
+            FrameKind::Element(ElementFrame {
+                text_host: Some(_),
+                ..
+            })
+        )
+    }
+
     fn owns_children(&self) -> bool {
         matches!(
             self.kind,
@@ -372,6 +382,12 @@ fn replace_tag(span: &Span<usize>, replacement: impl Into<String>) -> Edit {
 struct ElementRegion {
     id: ElementId,
     region: Option<Region>,
+}
+
+/// Whether text is exactly one `{{ }}` binding, with nothing around it.
+fn whole_binding(source: &str, raw: &str, offset: usize) -> Result<bool, ExtractError> {
+    let parts = interpolations(source, raw, offset, true)?;
+    Ok(matches!(parts.as_slice(), [part] if part.range == (0..raw.len())))
 }
 
 struct ContentOwner {
@@ -1995,7 +2011,8 @@ impl Parser<'_> {
                     && !name.contains('-')
                     // Leading newlines in pre and listing, and noscript's
                     // scripting-dependent parsing, keep them out of direct text.
-                    && !text_only_element(name)
+                    // A title holds escaped text, so its whole text may be one binding.
+                    && (!text_only_element(name) || name == "title")
                     && !matches!(name, "template" | "pre" | "listing" | "noscript")
                     && !self.foreach_hosts.contains(&tag.span.start)
                     && !tag.attributes.contains_key(b"rust:slot".as_slice())
@@ -2295,7 +2312,16 @@ impl Parser<'_> {
         if !raw.contains("{{") {
             return Ok(());
         }
-        if frame.inert() || text_only_element(&frame.name) {
+        if frame.name == "title" && !(frame.text_host() && whole_binding(source, raw, offset)?) {
+            // Text bindings elsewhere sit between comment markers, which a title
+            // would show as literal text.
+            return Err(error(
+                source,
+                offset,
+                "a binding in <title> must be its whole text, as in <title>{{ state.title }}</title>",
+            ));
+        }
+        if frame.inert() || text_only_element(&frame.name) && frame.name != "title" {
             return Err(error(
                 source,
                 offset,
@@ -2312,7 +2338,8 @@ impl Parser<'_> {
         self.text_bindings(index, raw, offset)
     }
 
-    /// Each `{{ }}` in rendered text becomes a Text binding between two markers.
+    /// Each `{{ }}` in rendered text becomes a Text binding between two markers,
+    /// or direct text when it is its element's whole content.
     fn text_bindings(&mut self, index: usize, raw: &str, start: usize) -> Result<(), ExtractError> {
         let source = self.source;
         let Self {

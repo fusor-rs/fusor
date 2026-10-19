@@ -7,6 +7,7 @@ pub(crate) mod diagnostics;
 pub(crate) mod html;
 pub(crate) mod islands;
 pub(crate) mod manifest;
+pub(crate) mod pages;
 pub(crate) mod publish;
 pub(crate) mod site;
 pub(crate) mod tailwind;
@@ -176,6 +177,21 @@ impl<'a> Publication<'a> {
     /// collide.
     pub fn generated(&self) -> &Path {
         &self.generated
+    }
+
+    /// Writes the development live-reload client into this generation and
+    /// returns the module statement that starts it.
+    pub fn reload_module(&self) -> Result<String> {
+        std::fs::write(
+            self.generated.join(layout::REFRESH_MODULE),
+            crate::dev::refresh::CLIENT,
+        )?;
+        Ok(format!(
+            "import {{ watch }} from './{}';\nwatch({:?}, {:?});\n",
+            layout::REFRESH_MODULE,
+            self.generation,
+            self.project.config.base_path
+        ))
     }
 
     pub fn url_prefix(&self) -> String {

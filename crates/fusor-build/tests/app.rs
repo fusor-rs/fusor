@@ -261,6 +261,52 @@ fn configuration_rejects_typos_invalid_modules_and_overlapping_output() {
 }
 
 #[test]
+fn delivery_modes_decide_units_and_tailwind() {
+    let dir = setup();
+    let path = dir.path().join("Cargo.toml");
+    let valid = fs::read_to_string(&path).unwrap();
+    fs::write(dir.path().join("web/app.css"), "@import \"tailwindcss\";").unwrap();
+    const UNIT: &str = "\n[package.metadata.fusor.delivery.units.cart]\npackage = \"cart-web\"";
+    for (delivery, tailwind, error) in [
+        ("mode = \"static\"", true, None),
+        ("mode = \"static\"", false, None),
+        (
+            &format!("mode = \"static\"{UNIT}"),
+            false,
+            Some("static delivery runs nothing in the browser and has no units"),
+        ),
+        (&format!("mode = \"islands\"{UNIT}"), false, None),
+        (
+            &format!("mode = \"islands\"{UNIT}"),
+            true,
+            Some("tailwind is not supported with islands delivery"),
+        ),
+        (
+            "mode = \"islands\"",
+            false,
+            Some("islands delivery requires at least one independently built unit"),
+        ),
+    ] {
+        let mut text = valid.clone();
+        if tailwind {
+            text = text.replace("entry =", "tailwind = \"web/app.css\"\nentry =");
+        }
+        text.push_str(&format!("[package.metadata.fusor.delivery]\n{delivery}\n"));
+        fs::write(&path, &text).unwrap();
+        match error {
+            None => assert!(AppConfig::load(&path).is_ok(), "rejected {text}"),
+            Some(error) => assert!(
+                AppConfig::load(&path)
+                    .unwrap_err()
+                    .to_string()
+                    .contains(error),
+                "{text}"
+            ),
+        }
+    }
+}
+
+#[test]
 fn asset_entries_take_paths_patterns_and_suffixes_and_reject_unsafe_urls() {
     let dir = setup();
     let path = dir.path().join("Cargo.toml");

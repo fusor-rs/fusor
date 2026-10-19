@@ -1,0 +1,22 @@
+[package]
+name = "fusor-static-pages-example"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+fusor-components.workspace = true
+fusor-core.workspace = true
+fusor-server.workspace = true
+
+[build-dependencies]
+fusor-build.workspace = true
+
+[package.metadata.fusor]
+entry = "web/index.html"
+tailwind = "web/app.css"
+
+[package.metadata.fusor.delivery]
+mode = "static"

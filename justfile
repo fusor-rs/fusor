@@ -57,7 +57,7 @@ lock:
     cargo fetch --manifest-path examples/npm/Cargo.toml
     cargo fetch --manifest-path apps/docs/tutorial/Cargo.toml
 
-# Develop the whole site (landing page, docs, benchmarks) with live reload.
+# Develop the whole site (landing page, docs, blog, benchmarks) with live reload.
 [group('develop')]
 dev:
     cargo fusor dev --site
@@ -67,7 +67,7 @@ dev:
 dev-app app:
     cargo fusor dev -p {{app}}
 
-# Build the landing page, docs and benchmarks into one site in dist/.
+# Build the landing page, docs, blog and benchmarks into one site in dist/.
 [group('site')]
 site:
     cargo fusor build --site
@@ -158,6 +158,7 @@ ci-browser:
     just test islands
     just test delivery
     just test islands-consumer
+    just test static-pages
 
 # Full application and third-party library walkthroughs. On Linux these need Xvfb.
 # Run separately from the framework gate: just setup && xvfb-run -a just ci-examples.

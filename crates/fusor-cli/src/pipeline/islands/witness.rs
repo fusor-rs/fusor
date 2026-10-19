@@ -72,7 +72,7 @@ pub(crate) fn reject_javascript(artifact: &ArtifactManifest) -> Result {
         return Ok(());
     };
     Err(Error::project(format!(
-        "{}:{}:{}: component JavaScript modules are not supported in island delivery",
+        "{}:{}:{}: component JavaScript modules are not supported in island or static delivery",
         module.source.display(),
         module.line,
         module.column

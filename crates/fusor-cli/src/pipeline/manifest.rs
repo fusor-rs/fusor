@@ -62,6 +62,7 @@ pub(crate) struct Javascript {
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Delivery {
     Islands,
+    Static,
 }
 
 fn present<'de, T: Deserialize<'de>, D: Deserializer<'de>>(

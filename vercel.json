@@ -7,7 +7,9 @@
   "outputDirectory": "dist",
   "redirects": [
     { "source": "/docs", "destination": "/docs/", "permanent": true },
-    { "source": "/benchmarks", "destination": "/benchmarks/", "permanent": true }
+    { "source": "/benchmarks", "destination": "/benchmarks/", "permanent": true },
+    { "source": "/blog", "destination": "/blog/", "permanent": true },
+    { "source": "/blog/:post([a-z0-9-]+)", "destination": "/blog/:post/", "permanent": true }
   ],
   "rewrites": [
     { "source": "/docs/:path*", "destination": "/docs/index.html" },

@@ -101,6 +101,21 @@ pub(crate) fn render(
     Ok(html)
 }
 
+/// Where a document's `<head>` content begins, for the CLI's own tags.
+pub(crate) fn head_start(html: &str) -> Result<usize> {
+    let mut emitter = html5gum::DefaultEmitter::<usize>::new_with_span();
+    emitter.naively_switch_states(true);
+    html5gum::Tokenizer::new_with_emitter(html, emitter)
+        .find_map(|token| match token.ok()? {
+            html5gum::Token::StartTag(tag) if &*tag.name == b"head" => Some(tag.span.end),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            Error::project("the native renderer produced a document without a <head>")
+                .remedy("render a complete HTML document from the application's entry")
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
