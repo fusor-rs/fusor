@@ -41,6 +41,19 @@ server rendering crates:
 ```toml source=../../examples/static-pages/Cargo.toml title=Cargo.toml · complete file
 ```
 
+The example inherits its dependencies from the fusor workspace. In your own project, depend on
+the published crates:
+
+```toml title=Cargo.toml · dependencies
+[dependencies]
+fusor-core = "=0.1.8"
+fusor-components = "=0.1.8"
+fusor-server = "=0.1.8"
+
+[build-dependencies]
+fusor-build = "=0.1.8"
+```
+
 Static delivery has no units, the separately built browser parts of
 [island delivery](/docs/islands/setup). Declaring one is an error.
 

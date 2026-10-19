@@ -317,6 +317,10 @@ Boolean attributes such as `hidden` use boolean presence semantics.
 <p hidden="{{ !state.visible.get() }}">Hello {{ state.name.get() }}</p>
 ```
 
+In a document rendered with `rust:render="server"`, a `<title>` can hold a binding when the
+binding is its whole text, as in `<title>{{ state.title }}</title>`. A `<textarea>` takes no
+bindings in its text; use [`bind`](#bindings) instead.
+
 When an attribute's whole value is one expression of type `Option<T>`, `Some` sets the
 attribute and `None` removes it. `T` is any type the attribute accepts without `Option`.
 An `Option` mixed with other text, as in `href="/{{ path }}"`, is a compile error.
