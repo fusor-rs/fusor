@@ -98,6 +98,12 @@ const syntaxContrast = (element) => {
 try {
   await page.goto(base);
   assert.equal(await page.title(), "Fusor — An open source lab working in Rust");
+  // Link previews show the lab's card, which the site publishes at the URL they name.
+  const card = new URL(await page.locator('meta[property="og:image"]').getAttribute("content"));
+  assert.equal(card.origin, "https://fusor.build");
+  const published = await page.request.get(base + card.pathname);
+  assert.equal(published.headers()["content-type"], "image/png");
+  assert.equal(await page.locator('meta[name="twitter:card"]').getAttribute("content"), "summary_large_image");
   await expectHughieStrip();
   // The index lists the tools, then the things made with them; fusor is on stage first.
   await expect(index.getByRole("heading")).toHaveText(["Tools", "Things"]);
