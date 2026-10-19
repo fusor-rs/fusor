@@ -62,10 +62,10 @@ rebuild and deployment.
   `fusor dev` and `fusor preview`, and rewritten to `/index.html` in the repository's
   `vercel.json` for the deployed site.
 - `src/project.rs`: everything the lab makes, as a table. Each project has its
-  index entry (name, kind, the day it last shipped), its caption (status, summary,
-  links), the frame shape and the page's world while it is on stage, and for tools
-  the source files on the back of the frame, plus the lab's tools it is built with
-  (the gallery's badges, with each tool's mark). Add a project there and to a group
+  index entry (name and kind), the day it last shipped (shown in the gallery), its
+  caption (status, summary, links), the frame shape and the page's world while it
+  is on stage, and for tools the source files on the back of the frame, plus the
+  lab's tools it is built with (the gallery's badges, with each tool's mark). Add a project there and to a group
   in `GROUPS` for the index, or to `MADE_WITH` for the "Made with fusor" gallery.
 - `src/greeting.rs` and `web/components/greeting.html`: the live component in the
   browser frame. Its strip shows the Rust `String` it binds, `Debug`-formatted.

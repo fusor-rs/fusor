@@ -111,8 +111,7 @@ try {
       .evaluateAll((buttons) => [...new Set(buttons.map((button) => getComputedStyle(button).cursor))]),
     ["pointer"],
   );
-  await expect(entry("fusor").locator("time")).toHaveAttribute("datetime", "2026-10-18");
-  await expect(entry("fusor").locator("time")).toHaveText("Oct 18");
+  await expect(index.locator("time")).toHaveCount(0);
 
   // The browser on stage greets whoever types, from a Rust String shown as Rust prints it.
   const name = front.getByLabel("What should Rust call you?");

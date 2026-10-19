@@ -197,8 +197,7 @@
   }
 
   .index-heading,
-  .index-kind,
-  .index-day {
+  .index-kind {
     @apply sr-only;
   }
 
@@ -285,7 +284,7 @@
     .index-item {
       display: grid;
       width: 100%;
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto 1fr;
       align-items: baseline;
       column-gap: 0.875rem;
       padding-block: 0.3rem;
@@ -296,18 +295,13 @@
       @apply text-2xl font-semibold tracking-tight;
     }
 
-    .index-kind,
-    .index-day {
+    .index-kind {
       position: static;
       width: auto;
       height: auto;
       margin: 0;
       clip-path: none;
       @apply text-sm text-ink-faint;
-    }
-
-    .index-day {
-      font-variant-numeric: tabular-nums;
     }
   }
 
