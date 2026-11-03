@@ -121,7 +121,7 @@ mod tests {
                 .contains(".fusor-output.json")
         );
         assert!(
-            crate::dev::sources::snapshot(&cx, &project)
+            crate::dev::sources::snapshot(&cx, &project, &crate::dev::sources::Snapshot::new())
                 .unwrap_err()
                 .to_string()
                 .contains(".fusor-output.json")

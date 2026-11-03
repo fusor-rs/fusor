@@ -41,7 +41,7 @@ pub(crate) fn start(
     project: Project,
     current: Arc<RwLock<Project>>,
 ) -> Result<Watcher> {
-    let previous = sources::snapshot(cx, &project)?;
+    let previous = sources::snapshot(cx, &project, &sources::Snapshot::new())?;
     let reporter = cx.reporter.clone();
     let cx = cx.clone();
     let (stop, stopped) = mpsc::channel();
@@ -64,7 +64,7 @@ fn watch(
         stopped.recv_timeout(INTERVAL),
         Err(mpsc::RecvTimeoutError::Timeout)
     ) {
-        let next = match sources::snapshot(&cx, &project) {
+        let next = match sources::snapshot(&cx, &project, &previous) {
             Ok(next) => next,
             Err(error) => {
                 cx.reporter.warn(format!("watching sources: {error}"));

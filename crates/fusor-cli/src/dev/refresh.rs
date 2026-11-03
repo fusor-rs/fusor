@@ -34,7 +34,7 @@ pub(crate) fn enabled(
     if !project.config.dev_refresh || !artifact.javascript.is_empty() {
         return Ok(false);
     }
-    let watched = super::sources::source_snapshot(cx, project)?;
+    let watched = super::sources::source_snapshot(cx, project, &super::sources::Snapshot::new())?;
     let inputs = RefreshInputs::new(project, &watched)?;
     for path in watched
         .keys()
@@ -347,6 +347,7 @@ fn non_css_assets(root: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::sources::{Snapshot, snapshot};
     use super::*;
 
     struct RefreshFixture {
@@ -432,7 +433,7 @@ mod tests {
                 &Context::default(),
                 &fixture.project,
                 &[fixture.dependency.join("runtime/registry.js")],
-                &mut super::super::sources::Snapshot::new(),
+                &mut Snapshot::new(),
             )
             .unwrap()
         );
@@ -450,10 +451,24 @@ mod tests {
                 &Context::default(),
                 &fixture.project,
                 &[module],
-                &mut super::super::sources::Snapshot::new(),
+                &mut Snapshot::new(),
             )
             .unwrap()
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn polling_skips_reading_files_whose_size_and_time_are_unchanged() {
+        use std::os::unix::fs::PermissionsExt;
+        let cx = Context::default();
+        let fixture = RefreshFixture::new();
+        let watched = snapshot(&cx, &fixture.project, &Snapshot::new()).unwrap();
+        let asset = fixture.project.root.join("public/data.bin");
+        fs::set_permissions(&asset, fs::Permissions::from_mode(0o000)).unwrap();
+        let error = snapshot(&cx, &fixture.project, &Snapshot::new()).unwrap_err();
+        assert!(error.to_string().contains("Permission denied"), "{error}");
+        assert_eq!(snapshot(&cx, &fixture.project, &watched).unwrap(), watched);
     }
 
     #[test]
@@ -480,7 +495,7 @@ exit "$1"
                 "asset-hook".into(),
                 exit_code.to_string(),
             ];
-            let mut watched = super::super::sources::snapshot(&cx, &fixture.project).unwrap();
+            let mut watched = snapshot(&cx, &fixture.project, &Snapshot::new()).unwrap();
             let original_source = watched[&source];
             let result = Publication::begin(&cx, &fixture.project, Some(&mut watched));
             match result {
@@ -490,12 +505,12 @@ exit "$1"
                     assert!(error.to_string().contains("exit status: 1"), "{error}");
                 }
             }
-            let mut current = super::super::sources::snapshot(&cx, &fixture.project).unwrap();
+            let mut current = snapshot(&cx, &fixture.project, &Snapshot::new()).unwrap();
             assert_ne!(current[&source], original_source);
             current.insert(source, original_source);
             assert_eq!(watched, current);
             fs::write(&asset, "manual edit after the hook").unwrap();
-            let edited = super::super::sources::snapshot(&cx, &fixture.project).unwrap();
+            let edited = snapshot(&cx, &fixture.project, &Snapshot::new()).unwrap();
             assert_ne!(watched[&asset], edited[&asset]);
         }
     }
