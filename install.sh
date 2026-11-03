@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://fusor.build/install.sh | sh
 #
-# Install a specific release with `sh -s v0.1.9`, or FUSOR_VERSION=v0.1.9.
+# Install a specific release with `sh -s v0.1.10`, or FUSOR_VERSION=v0.1.10.
 # FUSOR_INSTALL chooses the directory (default ~/.fusor); the binary goes in its bin/.
 set -eu
 

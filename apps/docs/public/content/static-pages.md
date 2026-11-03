@@ -46,12 +46,12 @@ the published crates:
 
 ```toml title=Cargo.toml · dependencies
 [dependencies]
-fusor-core = "=0.1.9"
-fusor-components = "=0.1.9"
-fusor-server = "=0.1.9"
+fusor-core = "=0.1.10"
+fusor-components = "=0.1.10"
+fusor-server = "=0.1.10"
 
 [build-dependencies]
-fusor-build = "=0.1.9"
+fusor-build = "=0.1.10"
 ```
 
 Static delivery has no units, the separately built browser parts of
